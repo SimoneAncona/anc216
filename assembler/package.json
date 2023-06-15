@@ -1,0 +1,22 @@
+{
+  "name": "anc216-assembler",
+  "version": "1.0.0",
+  "description": "ANC216 assembler",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SimoneAncona/anc216.git"
+  },
+  "keywords": [
+    "Assembler"
+  ],
+  "author": "Simone Ancona",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/SimoneAncona/anc216/issues"
+  },
+  "homepage": "https://github.com/SimoneAncona/anc216#readme"
+}

@@ -1,3 +1,4 @@
+import { Result } from "./common";
 import { Token } from "./lexer";
 import { Rule } from "./rules";
 

@@ -1,7 +1,7 @@
 ; Strings and constants
 
 section .data
-    message: “Hello, World!”
+    message: "Hello, World!"
     message_size: $ - message
 
 section .text

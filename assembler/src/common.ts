@@ -1,4 +1,4 @@
-type Interrupt = {
+export type Interrupt = {
     type: string;
     message: string;
 };
@@ -8,7 +8,7 @@ type ResultInterface<Type> = {
     error?: Interrupt;
 };
 
-class Result<Type> {
+export class Result<Type> {
     private value: Type | undefined;
     private error: Interrupt | undefined;
 

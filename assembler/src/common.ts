@@ -19,7 +19,7 @@ class Result<Type> {
 
     getValue(): Type | undefined { return this.value; }
 
-    catch(fn: (e: Interrupt | undefined) => void): Result<Type> { if (this.error !== undefined) fn(this.error); return this }
+    catch(fn: (e: Interrupt) => void): Result<Type> { if (this.error !== undefined) fn(this.error); return this; }
 
     finally<ReturnType>(fn: (value: Type | undefined) => ReturnType): ReturnType { return fn(this.value); }
 }

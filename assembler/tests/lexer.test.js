@@ -1,5 +1,5 @@
-import { tokenize } from "../src/lexer"
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const correctLexerTest1 = `
 ; Strings and constants
 
@@ -18,23 +18,19 @@ _code:
     load l0, 0
     load r0, 0
     syscall ; exit
-`
+`;
 const correctLexerTest2 = `
 `;
 const correctLexerTest3 = `
 `;
 const correctLexerTest4 = `
 `;
-
 const wrongLexerTest1 = `
 impo#rt hello
 
 `;
-
 test("Lexer correct 1", () => {
-    expect(correctLexerTest1)
+    expect(correctLexerTest1);
 });
-
 test("Lexer incorrect 1", () => {
-    
-})
+});

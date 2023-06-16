@@ -8,22 +8,45 @@ const reserved: RegExp = /\b(use|used|as|import|org|word|byte|if|else|elif|endif
 const specials: RegExp = /(&|\*|:|,|;)g/gmi;
 const registers: RegExp = /(r|l)[0-7]g/gmi;
 const brackets: RegExp = /(\[|\]|\(|\))/gmi;
-const whitespaces: RegExp = /\n| /gmi;
+const newLines: RegExp = /\n/gmi;
 const comments: RegExp = /;.*/gmi;
 
 const regularExpressions = [
-
+    literalNumbers,
+    literalStrings,
+    identifiers,
+    moduleNames,
+    sectionNames,
+    instructions,
+    reserved,
+    specials,
+    registers,
+    brackets,
+    newLines,
 ]
 
-type TokenType =
+export type TokenType =
     "literalNumber"
     | "literalString"
     | "identifier"
     | "moduleName"
 
-type Token = {}
+export type Token = {
+    line: number;
+    column: number;
+    type: TokenType;
+    value: string;
+}
 
-export function tokenize(): Result<Token[]> {
-    return new Result<Token[]>({error: []});
-    return new Result<Token[]>({value: []});
+export function tokenize(source: string): Result<Token[]> {
+    let tokens: Token[] = [];
+
+    source = source.replace(comments, "");
+
+    for (let tokenType of regularExpressions) {
+        let matched = Array.from(source.matchAll(tokenType));
+        console.log(matched)
+    }
+
+    return new Result<Token[]>({value: tokens});
 }

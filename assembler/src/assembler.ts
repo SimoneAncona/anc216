@@ -1,6 +1,6 @@
 import { logErrorAndExit } from "./console";
 import { Token, tokenize } from "./lexer";
-import { ModuleInfo, registerModule } from "./linker";
+import { ModuleInfo, registerModule, setCurrentModule } from "./linker";
 import { parse } from "./parser";
 import { Rule } from "./rules";
 
@@ -18,6 +18,7 @@ type AssembleOptions = {
 };
 
 export function assemble(module: ModuleInfo, source: string, options: AssembleOptions) {
+    setCurrentModule(module);
     registerModule(module);
 
     let tokens = tokenize(source).catch((e) => {

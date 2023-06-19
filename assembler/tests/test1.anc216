@@ -8,7 +8,7 @@ section .text
 _code:
     load l0, 5
     load r1, message
-    load r2, & message_size
+    load reserve r2, & message_size
     load r3, 0
     syscall
 

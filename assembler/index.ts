@@ -91,4 +91,4 @@ if (!fs.existsSync(sourceFileName)) {
     logErrorAndExit({type: "FileNotFound", message: `The file ${sourceFileName} does not exist.`});
 }
 
-assemble({name: path.basename(sourceFileName), path: path.resolve(sourceFileName)}, fs.readFileSync(sourceFileName).toString(), {head: false, zeros: false, link: []});
+assemble({name: path.basename(sourceFileName), path: path.resolve(sourceFileName), isMain: true}, fs.readFileSync(sourceFileName).toString(), {head: false, zeros: false, link: []});

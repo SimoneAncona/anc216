@@ -1,5 +1,5 @@
 import { Result } from "./common";
-import { logErrorAndExit } from "./console";
+import { logErrorAndExit, pushCodeErrorStack } from "./console";
 
 const literalNumbers: TokenType = { regex: /\b(\-?(0x[0-9a-fA-F]+|\d+|0o[0-7]+|0b[0-1]+))/gmi, type: "literalNumber" };
 const literalStrings: TokenType = { regex: /".*"/gmi, type: "literalString" };
@@ -53,7 +53,7 @@ export type Token = {
     value: string;
 }
 
-export function tokenize(source: string): Result<Token[]> {
+export function tokenize(source: string): Token[] {
     let tokens: Token[] = [];
     let lines: string[];
 
@@ -61,14 +61,14 @@ export function tokenize(source: string): Result<Token[]> {
     lines = source.split("\n");
 
     for (let i = 0; i < lines.length; i++) {
-        tokens.push(...tokenizeLine(lines[i], i).catch((e) => { logErrorAndExit(e) }).getValue() as Token[]);
+        tokens.push(...tokenizeLine(lines[i], i));
     }
 
-    return new Result<Token[]>({ value: tokens });
+    return tokens;
 }
 
-function tokenizeLine(line: string, lineNumber: number): Result<Token[]> {
-    if (line.length === 0) return new Result<Token[]>({ value: [] });
+function tokenizeLine(line: string, lineNumber: number): Token[] {
+    if (line.length === 0) return [];
     let tokens: Token[] = [];
 
     for (let tokenType of regularExpressions) {
@@ -78,12 +78,13 @@ function tokenizeLine(line: string, lineNumber: number): Result<Token[]> {
             column: matched[0].index ?? 0,
             type: tokenType.type,
             value: matched[0][0]
-        }, tokens)) return new Result<Token[]>({
-            error: {
+        }, tokens)) {
+            pushCodeErrorStack({
                 type: "SyntaxError",
-                message: `Unexpected token '${matched[0][0]}' at line ${lineNumber} and column ${(matched[0].index ?? 0) + 1}`
-            }
-        });
+                message: `Unexpected token '${matched[0][0]}'`
+            }, [], (matched[0].index ?? 0) + 1, lineNumber + 1);
+            return [];
+        }
 
         matched.forEach((match) => {
             let token = {
@@ -105,7 +106,7 @@ function tokenizeLine(line: string, lineNumber: number): Result<Token[]> {
         value: "\n"
     });
 
-    return new Result<Token[]>({ value: tokens });
+    return tokens;
 }
 
 function tokenOverlap(token: Token, tokens: Token[]) {

@@ -1,4 +1,4 @@
-import { logErrorAndExit } from "./console";
+import { displayErrorStackIfNecessary, logErrorAndExit, pushCodeErrorStack } from "./console";
 import { Token, tokenize } from "./lexer";
 import { ModuleInfo, registerModule, setCurrentModule } from "./linker";
 import { parse } from "./parser";
@@ -21,12 +21,9 @@ export function assemble(module: ModuleInfo, source: string, options: AssembleOp
     setCurrentModule(module);
     registerModule(module);
 
-    let tokens = tokenize(source).catch((e) => {
-        logErrorAndExit(e);
-    }).getValue() as Token[];
-
-    let rules = parse(tokens).catch((e) => {
-        logErrorAndExit(e);
-    }).getValue() as Rule[];
+    let tokens = tokenize(source);
+    displayErrorStackIfNecessary();
+    let rules = parse(tokens);
+    displayErrorStackIfNecessary();
 
 }

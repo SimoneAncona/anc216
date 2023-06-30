@@ -2,6 +2,7 @@ import { displayErrorStackIfNecessary, logErrorAndExit, pushCodeErrorStack } fro
 import { Token, tokenize } from "./lexer";
 import { ModuleInfo, registerModule, setCurrentModule } from "./linker";
 import { parse } from "./parser";
+import { preProcess } from "./preProcessor";
 import { Rule } from "./rules";
 
 type AssembleOptions = {
@@ -23,7 +24,9 @@ export function assemble(module: ModuleInfo, source: string, options: AssembleOp
 
     let tokens = tokenize(source);
     displayErrorStackIfNecessary();
-    let rules = parse(tokens);
+    let objs = parse(tokens);
+    displayErrorStackIfNecessary();
+    preProcess(objs);
     displayErrorStackIfNecessary();
 
 }

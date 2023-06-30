@@ -1,4 +1,5 @@
 import { Token, TokenTypeName } from "./lexer";
+import { AssemblyObject } from "./parser";
 
 type RuleName =
     "useAs"
@@ -28,12 +29,17 @@ type RuleName =
     | "relativeToSP"
     | "registerToRegister"
     | "instruction"
+    | "immediate"
+    | "registerToMemory"
+    | "memoryToRegister"
     | "oneArgInstruction"
     | "twoArgsInstruction"
+    | "labelAccess"
     | "expression"
 
 export type RuleSpecifier = {
     name: RuleName,
+    subRule: RuleSpecifier | null,
     args: RuleSpecifierArgument[][],
     restrict: boolean, // that means that if a rule does not follow the specific pattern it raises a SyntaxError
     // for example, if the rule use %i is restrict that means that is there is:
@@ -46,7 +52,7 @@ type RuleSpecifierArgument = {
     value: string
 } | {
     type: "generic",
-    value: TokenTypeName
+    value: TokenTypeName | "plusMinus"
 }
 
 type RuleAttributeType =
@@ -57,11 +63,17 @@ type RuleAttributeType =
 
 export class Rule {
     private name: RuleName;
+    private subRule: Rule | null;
     private attributes: RuleAttribute[];
+    private initialToken: Token;
+    private finalToken: Token;
 
-    constructor(name: RuleName, attributes: RuleAttribute[]) {
+    constructor(name: RuleName, subRule: Rule | null, attributes: RuleAttribute[], initialToken: Token, finalToken: Token) {
         this.name = name;
+        this.subRule = subRule;
         this.attributes = attributes;
+        this.initialToken = initialToken;
+        this.finalToken = finalToken;
     }
 
     getName(): RuleName { return this.name; }
@@ -76,6 +88,10 @@ export class Rule {
         };
         return null;
     }
+
+    getInitialToken() { return this.initialToken; }
+
+    getFinalToken() { return this.finalToken; }
 }
 
 export type RuleAttribute = {
@@ -87,9 +103,54 @@ export type RuleAttribute = {
 function getRuleSpecifier(rules: { name: RuleName, rules: string[] }[]) {
     let parsedRules: RuleSpecifier[] = [];
     for (let rule of rules) {
-
+        let args: RuleSpecifierArgument[][] = [];
+        for (let singleRule of rule.rules) {
+            args.push(parseRuleSpecifier(singleRule.split(" ")));
+        }
+        parsedRules.push({ 
+            name: rule.name,
+            subRule: null,
+            args: args,
+            restrict: true,
+        });
     }
     return parsedRules;
+}
+
+function parseRuleSpecifier(rule: string[]) {
+    let ruleArgs: RuleSpecifierArgument[] = [];
+    for (let str of rule) {
+        if (str.startsWith("<")) {
+            continue;
+        }
+        switch (str) {
+            case "%i":
+                ruleArgs.push({ type: "generic", value: "identifier" });
+                break;
+            case "%si":
+                ruleArgs.push({ type: "generic", value: "sectionName" });
+                break;
+            case "%n":
+                ruleArgs.push({ type: "generic", value: "literalNumber" });
+                break;
+            case "%s":
+                ruleArgs.push({ type: "generic", value: "literalString" });
+                break;
+            case "%x":
+                ruleArgs.push({ type: "generic", value: "instruction" });
+                break;
+            case "%+-":
+                ruleArgs.push({ type: "generic", value: "plusMinus" });
+                break;
+            case "%r":
+                ruleArgs.push({ type: "generic", value: "register" });
+                break;
+            default:
+                ruleArgs.push({ type: "specific", value: str });
+                break;
+        }
+    }
+    return ruleArgs;
 }
 
 /**
@@ -113,8 +174,8 @@ function getRuleSpecifier(rules: { name: RuleName, rules: string[] }[]) {
  * <rule|anotherRule> other rules
  * |    a separator, it can be , or a new line
  */
-export const rules: RuleSpecifier[] = getRuleSpecifier([
-    { name: "useAs", rules: ["use %i as %i \n", "use %i as %n \n"] },
+export const preProcessorRules: RuleSpecifier[] = getRuleSpecifier([
+    { name: "useAs", rules: ["use %i as %i \n", "use %i as %n \n", "use %i as %s \n"] },
     { name: "use", rules: ["use %i \n"] },
     { name: "importAs", rules: ["import %i as %i \n"] },
     { name: "import", rules: ["import %i \n"] },
@@ -132,14 +193,27 @@ export const rules: RuleSpecifier[] = getRuleSpecifier([
     { name: "sizeof", rules: ["sizeof %i"] },
     { name: "wordCasting", rules: ["word %n", "word %i"] },
     { name: "byteCasting", rules: ["byte %n", "byte %i"] },
+]);
+
+export const rules: RuleSpecifier[] = getRuleSpecifier([
     { name: "register", rules: ["%r"] },
     { name: "registerToRegister", rules: ["<register> , <register> \n"] },
     { name: "absolute", rules: ["& %i", "& %n"] },
     { name: "absoluteIndexed", rules: ["& %i %+- %r", "% %n %+- %r"] },
     { name: "indirect", rules: ["[ %i ]", "[ %n ]"] },
     { name: "indirect", rules: ["[ %i ] %+- %r", "[ %n ] %+- %r"] },
-    { name: "relativeToPC", rules: ["* %n"]},
+    { name: "relativeToPC", rules: ["* %n", "* %+- %n", "* %i", "* %+- %i"] },
+    { name: "relativeToSP", rules: ["& sp %+- %n", "& sp %+- %i"] },
+    { name: "immediate", rules: ["%n", "%i"] },
+    { name: "memoryToRegister", rules: ["<register> , <absolute|relativeToPC|relativeToSP|immediate> \n"] },
+    { name: "registerToMemory", rules: ["<absolute|relativeToPC|relativeToSP|immediate> , <register> \n"] },
     { name: "instruction", rules: ["%x"] },
-    { name: "twoArgsInstruction", rules: ["%x <registerToRegister>"] },
-    { name: "oneArgInstruction", rules: ["%x <register|relativeToPC|relativeToSP>"] },
+    { name: "labelAccess", rules: ["%i . %i"] },
+    { name: "twoArgsInstruction", rules: ["%x <registerToRegister|registerToMemory|memoryToRegister>"] },
+    { name: "oneArgInstruction", rules: ["%x <register|absolute|absoluteIndexed|indirect|indirectIndexed|relativeToPC|relativeToSP|immediate>"] },
 ]);
+
+export function generateRules(objs: AssemblyObject[], ruleSpecifiers: RuleSpecifier[]) {
+    let rules: Rule[] = [];
+    return rules;
+}

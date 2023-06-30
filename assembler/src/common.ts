@@ -24,3 +24,18 @@ export class Result<Type> {
     finally<ReturnType>(fn: (value: Type | undefined) => ReturnType): ReturnType { return fn(this.value); }
 }
 
+export function fitsIn8(value: number) {
+    return (
+		value == 0 ||
+		value < 0 && ((~value) & 0xFF) === ~value ||
+		(value & 0xFF) === value
+	);
+}
+
+export function fitsIn16(value: number) {
+    return (
+        value == 0 ||
+		value < 0 && ((~value) & 0xFFFF) === ~value ||
+		(value & 0xFFFF) === value
+    );
+}

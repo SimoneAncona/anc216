@@ -1,6 +1,7 @@
 import colors from 'colors';
 import fs from "fs";
 import path from 'path';
+import { assemble } from './src/assembler';
 
 colors.enable();
 
@@ -88,3 +89,5 @@ if (outFileName.startsWith("'") || outFileName.startsWith('"')) {
 if (!fs.existsSync(sourceFileName)) {
     console.error({type: "FileNotFound", message: `The file ${sourceFileName} does not exist.`});
 }
+
+assemble(sourceFileName);

@@ -1,25 +1,22 @@
-import ohm from "ohm-js";
+import * as ohm from "ohm-js";
 import fs from "fs";
 import path from "path";
 
-const ANC216grammar = ohm.grammar(fs.readFileSync(path.join(__dirname, "anc216grammar.ohm")).toString());
+export function parse(source: string, grammar: ohm.Grammar) {
+	source = source.replace(/;.*/gmi, "");
 
-const matched = ANC216grammar.match(
-    `section .text
+	let lines = source.split("\n");
+	let matches = [];
 
-    _code:
-        load r0, 56
-        load r1, 16
-        call add_two_numbers
-        load l0, 0
-        load r0, 0
-        syscall
+	for (let line of lines) {
+	    if (line.trim() === "") continue;
+	    const matched = grammar.match(line);
+	    if (matched.failed()) {
+	        console.error(matched.message);
+	        process.exit(1);
+	    }
+		matches.push(matched);
+	}
 
-    add_two_numbers:
-        tran r3, r0
-        ret
-
-    `
-);
-
-console.log(matched.message)
+	return matches;
+}

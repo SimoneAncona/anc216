@@ -1,0 +1,108 @@
+ANC216 {
+	Program = Statement+
+	Statement = PreProcessor | Code | String | Exp
+	Exp = Exp "+" Term	--plus
+		| Exp "-" Term	--minus
+		| Exp "/" Term	--div
+		| Exp "*" Term	--mul
+		| Term
+
+	Term = Num
+		| "(" Exp ")"			--paren
+		| Byte					--byteCasting
+		| Word					--wordCasting
+		| Sizeof				--sizeof
+		| Identifier
+		| "$"
+
+	Num = # ("0x" hexDigit+)	--hex
+		| # ("0b" ("0" | "1")+)	--binary
+		| # ("0o" ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7")+) --octal
+		| # digit+				--decimal
+	String = "\"" (~"\"" any)* "\""
+	
+	PreProcessor	= UseAs		--useas
+					| Use		--use
+					| Import	--import
+					| Link		--link
+					| Org		--org
+					| Reserve	--reserve
+
+	UseAs = caseInsensitive<"use"> Identifier caseInsensitive<"as"> (Identifier | Exp) End
+	Use = caseInsensitive<"use"> Identifier End
+	Import = caseInsensitive<"import"> (Identifier | String) End
+	Link = caseInsensitive<"link"> (Identifier | String) End
+	Org = caseInsensitive<"org"> Exp End
+	Sizeof = caseInsensitive<"sizeof"> Identifier
+	Reserve = caseInsensitive<"reserve"> Exp
+	Byte = caseInsensitive<"byte"> Exp
+	Word = caseInsensitive<"word"> Exp
+
+	Code 	= Label				--label
+			| LocalLabel		--localLabel
+			| GlobalLabel		--globalLabel
+			| Section			--section
+			| ImpliedInstruction	--impliedIns
+			| SingleArgument		--singleArgument
+			| IndexedInstruction 	--indexed
+			| RegisterToMemory		--registerToMemory
+			| MemoryToRegister		--memoryToRegister
+
+	Label = Identifier ":"
+	LocalLabel = "local" Label
+	GlobalLabel = "global" Label
+	Section	= "section" SectionName End
+
+	ImpliedInstruction = (caseInsensitive<"careq"> | caseInsensitive<"clrc"> | caseInsensitive<"clri"> | caseInsensitive<"clrn"> | caseInsensitive<"clro"> | caseInsensitive<"clrs"> | caseInsensitive<"clrt"> | caseInsensitive<"cpuid"> | caseInsensitive<"kill"> | caseInsensitive<"pareq"> | caseInsensitive<"phbp"> | caseInsensitive<"phpc"> | caseInsensitive<"phsp"> | caseInsensitive<"phsr"> | caseInsensitive<"pobp"> | caseInsensitive<"popc"> | caseInsensitive<"posp"> | caseInsensitive<"posr"> | caseInsensitive<"reset"> | caseInsensitive<"ret"> | caseInsensitive<"seti"> | caseInsensitive<"sets"> | caseInsensitive<"sett"> | caseInsensitive<"syscall"> | caseInsensitive<"tstart"> | caseInsensitive<"tstop">) End
+
+	SingleArgument 	= AbsoluteAddressing End
+					| IndirectAddressing End
+					| ImmediateAddressing End
+					| RegisterAddressing End
+
+	Relative = "*" Exp
+	RelativeToSP = "&" "sp" ("+" | "-") LowRegister
+	Absolute = "&" Exp
+	Indirect = "[" Exp "]"
+
+	ImmediateAddressing = Instruction Exp
+	IndirectAddressing = Instruction Indirect
+	AbsoluteAddressing = Instruction Absolute
+	RegisterAddressing = Instruction Register
+	RelativeAddressing = Instruction Relative
+	RelativeToSPAddressing = Instruction RelativeToSP
+
+	IndexedInstruction 	= AbsoluteIndexed
+						| IndirectIndexed
+
+	IndirectIndexed = IndirectAddressing ("+" | "-") LowRegister
+	AbsoluteIndexed = AbsoluteAddressing ("+" | "-") LowRegister
+
+	RegisterToMemory 	= RegisterToAbsolute End
+						| RegisterToRelative End
+						| RegisterToSPRelative End
+
+	MemoryToRegister 	= ImmediateToRegister End
+						| AbsoluteToRegister End
+						| RelativeToRegister End
+						| RelativeToSPRegister End
+
+	RegisterToAbsolute = Instruction Absolute "," Register
+	RegisterToRelative = Instruction Relative "," Register
+	RegisterToSPRelative = Instruction RelativeToSP "," Register
+	
+	ImmediateToRegister = Instruction Register "," Exp
+	AbsoluteToRegister = Instruction Register "," Absolute
+	RelativeToRegister = Instruction Register "," Relative
+	RelativeToSPRegister = Instruction Register "," RelativeToSP
+
+	LowRegister = #(caseInsensitive<"l"> ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"))
+	FullRegister = #(caseInsensitive<"r"> ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"))
+	Register = LowRegister | FullRegister
+	Reserved = caseInsensitive<"use"> | caseInsensitive<"used"> | caseInsensitive<"as"> | caseInsensitive<"import"> | caseInsensitive<"org"> | caseInsensitive<"word"> | caseInsensitive<"byte"> | caseInsensitive<"if"> | caseInsensitive<"else"> | caseInsensitive<"elif"> | caseInsensitive<"endif"> | caseInsensitive<"sizeof"> | caseInsensitive<"reserve"> | caseInsensitive<"local"> | caseInsensitive<"global"> | caseInsensitive<"section"> | caseInsensitive<"link">
+	Instruction = caseInsensitive<"add"> | caseInsensitive<"and"> | caseInsensitive<"call"> | caseInsensitive<"careq"> | caseInsensitive<"clrc"> | caseInsensitive<"clri"> | caseInsensitive<"clrn"> | caseInsensitive<"clro"> | caseInsensitive<"clrs"> | caseInsensitive<"clrt"> | caseInsensitive<"cmp"> | caseInsensitive<"cpuid"> | caseInsensitive<"dec"> | caseInsensitive<"hreq"> | caseInsensitive<"hwrite"> | caseInsensitive<"inc"> | caseInsensitive<"ireq"> | caseInsensitive<"jeq"> | caseInsensitive<"jge"> | caseInsensitive<"jgr"> | caseInsensitive<"jle"> | caseInsensitive<"jls"> | caseInsensitive<"jmp"> | caseInsensitive<"jne"> | caseInsensitive<"jnn"> | caseInsensitive<"jno"> | caseInsensitive<"jnz"> | caseInsensitive<"jn"> | caseInsensitive<"jo"> | caseInsensitive<"jz"> | caseInsensitive<"kill"> | caseInsensitive<"lcpid"> | caseInsensitive<"ldbp"> | caseInsensitive<"ldsp"> | caseInsensitive<"ldsr"> | caseInsensitive<"load"> | caseInsensitive<"neg"> | caseInsensitive<"not"> | caseInsensitive<"or"> | caseInsensitive<"pareq"> | caseInsensitive<"par"> | caseInsensitive<"phbp"> | caseInsensitive<"phpc"> | caseInsensitive<"phsp"> | caseInsensitive<"phsr"> | caseInsensitive<"pobp"> | caseInsensitive<"popc"> | caseInsensitive<"pop"> | caseInsensitive<"posp"> | caseInsensitive<"posr"> | caseInsensitive<"push"> | caseInsensitive<"read"> | caseInsensitive<"req"> | caseInsensitive<"reset"> | caseInsensitive<"ret"> | caseInsensitive<"sbp"> | caseInsensitive<"sehi"> | caseInsensitive<"seli"> | caseInsensitive<"seti"> | caseInsensitive<"sets"> | caseInsensitive<"sett"> | caseInsensitive<"shl"> | caseInsensitive<"shr"> | caseInsensitive<"sign"> | caseInsensitive<"sihi"> | caseInsensitive<"sili"> | caseInsensitive<"stbp"> | caseInsensitive<"store"> | caseInsensitive<"stp"> | caseInsensitive<"stsp"> | caseInsensitive<"stsr"> | caseInsensitive<"sub"> | caseInsensitive<"swap"> | caseInsensitive<"syscall"> | caseInsensitive<"tbp"> | caseInsensitive<"tcpid"> | caseInsensitive<"tehi"> | caseInsensitive<"teli"> | caseInsensitive<"tihi"> | caseInsensitive<"tili"> | caseInsensitive<"time"> | caseInsensitive<"tran"> | caseInsensitive<"trbp"> | caseInsensitive<"trsp"> | caseInsensitive<"trsr"> | caseInsensitive<"trt"> | caseInsensitive<"tstart"> | caseInsensitive<"tstop"> | caseInsensitive<"ttp"> | caseInsensitive<"write"> | caseInsensitive<"xor">
+	Identifier = #((letter | "@") (alnum | "_" | "@")*)
+	SectionName = #("." (letter) (alnum | "_")*)
+	
+	End = end
+}

@@ -1,5 +1,6 @@
 */node_modules/
 *.js
+*.mjs
 
 !*.test.js
 !*.config.js

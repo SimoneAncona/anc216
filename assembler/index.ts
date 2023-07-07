@@ -1,7 +1,5 @@
 import colors from 'colors';
-import { logErrorAndExit } from './src/console';
 import fs from "fs";
-import { assemble } from './src/assembler';
 import path from 'path';
 
 colors.enable();
@@ -66,7 +64,7 @@ for (let i = 0; i < process.argv.length;) {
     }
     if (flagsWithValues.includes(process.argv[i])) {
         
-        if (process.argv[i + 1] === undefined) logErrorAndExit({type: "MissingParameter", message: `A value is required after ${process.argv[i]}.`});
+        if (process.argv[i + 1] === undefined) console.error({type: "MissingParameter", message: `A value is required after ${process.argv[i]}.`});
         
         flags.push({name: process.argv[i], value: process.argv[i + 1]});
         process.argv.splice(i, 2);
@@ -76,7 +74,7 @@ for (let i = 0; i < process.argv.length;) {
     process.argv.splice(i, 1);
 }
 
-let sourceFileName = process.argv[2] ?? logErrorAndExit({type: "MissingParameter", message: "The source file is missing."});
+let sourceFileName = process.argv[2] ?? console.error({type: "MissingParameter", message: "The source file is missing."});
 let outFileName = process.argv[3] ?? "a.out";
 
 if (sourceFileName.startsWith("'") || sourceFileName.startsWith('"')) {
@@ -88,7 +86,5 @@ if (outFileName.startsWith("'") || outFileName.startsWith('"')) {
 }
 
 if (!fs.existsSync(sourceFileName)) {
-    logErrorAndExit({type: "FileNotFound", message: `The file ${sourceFileName} does not exist.`});
+    console.error({type: "FileNotFound", message: `The file ${sourceFileName} does not exist.`});
 }
-
-assemble({name: path.basename(sourceFileName), path: path.resolve(sourceFileName), isMain: true}, fs.readFileSync(sourceFileName).toString(), {head: false, zeros: false, link: []});

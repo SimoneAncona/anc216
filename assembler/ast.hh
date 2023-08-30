@@ -9,7 +9,7 @@ namespace A216
         bool final;
         std::string rule_name;
         std::string value;
-        std::vector<AST &> children;
+        std::vector<AST> children;
 
     public:
         AST() = default;
@@ -20,7 +20,7 @@ namespace A216
             return final;
         }
 
-        inline std::vector<AST &> get_children()
+        inline std::vector<AST> get_children()
         {
             return children;
         }

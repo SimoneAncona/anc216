@@ -1,1 +1,1 @@
-& .\build\Debug\assembler.exe
+& .\build\Debug\assembler.exe $args[0] $args[1]

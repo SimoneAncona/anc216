@@ -6,3 +6,4 @@
 !*.config.js
 
 /**/*/build
+.vscode/

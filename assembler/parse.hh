@@ -4,15 +4,15 @@
 
 #pragma once
 
-#define EOF '\0'
-
 namespace A216
 {
     AST parse(const std::vector<Token> &tokens)
     {
+        return {};
     }
 
     AST recognize_rule(size_t &index)
     {
+        return {};
     }
 }

@@ -1,4 +1,5 @@
 #include <string>
+#pragma once
 #define RED "\u001b[31m"
 #define GREEN "\u001b[32m"
 #define YELLOW "\u001b[33m"

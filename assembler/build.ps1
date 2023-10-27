@@ -3,7 +3,7 @@ if (-not (Test-Path build/)) {
 }
 Set-Location build
 cmake ../
-$vs = (Get-CimInstance MSFT_VSInstance).InstallLocation[0]
+$vs = (Get-CimInstance MSFT_VSInstance).InstallLocation
 $msbuild = "MSBuild\Current\Bin\MSBuild.exe"
 & "$vs\$msbuild" assembler.sln
 Set-Location ../

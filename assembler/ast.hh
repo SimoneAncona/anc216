@@ -17,7 +17,6 @@ namespace ANC216
         EXPRESSION_LIST,
         SECTION,
         PREPROCESSOR,
-        TYPE,
         STRUCT_DEF,
         LABEL,
         BINARY_OP,
@@ -53,8 +52,6 @@ namespace ANC216
                 return "section";
             case PREPROCESSOR:
                 return "preProcessor";
-            case TYPE:
-                return "type";
             case STRUCT_DEF:
                 return "structDefinition";
             case LABEL:
@@ -64,7 +61,9 @@ namespace ANC216
             case UNARY_OP:
                 return "unaryOperation";
             }
+            return "";
         }
+
         std::string children_to_json()
         {
             std::string result = "[";
@@ -72,7 +71,27 @@ namespace ANC216
                 result += children[i].to_json() + ", ";
             if (children.size() > 0)
                 result += children[children.size() - 1].to_json();
-            return result;
+            return result + "]";
+        }
+
+        std::string token_type_to_string(TokenType type)
+        {
+            switch (type)
+            {
+            case IDENTIFIER:
+                return "id";
+            case NEW_LINE:
+                return "newLine";
+            case TYPE:
+                return "type";
+            case SEPARATOR:
+                return "separator";
+            case KEYWORD:
+                return "keyword";
+            case INSTRUCTION:
+                return "instruction";
+            }
+            return "";
         }
 
     public:
@@ -124,7 +143,9 @@ namespace ANC216
 
         std::string to_json()
         {
-            return "{\"rule\": \"" + rule_name_to_string(rule_name) + "\", \"children\": " + children_to_json() + "}";
+            if (!final)
+                return "{\"rule\": \"" + rule_name_to_string(rule_name) + "\", \"children\": " + children_to_json() + "}";
+            return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value + "\"}";
         }
     };
 }

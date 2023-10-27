@@ -12,6 +12,8 @@ namespace ANC216
         OPERATOR,
         NEW_LINE,
         END,
+        TYPE,
+        SEPARATOR,
         OTHER
     };
 

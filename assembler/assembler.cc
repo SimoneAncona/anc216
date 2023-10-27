@@ -13,5 +13,7 @@ int main(int argc, char **argv)
                   << RESET;
         return 0;
     }
+    ANC216::Parser parser("var x: byte");
+    std::cout << parser.parse().to_json() << std::endl;
     return 0;
 }

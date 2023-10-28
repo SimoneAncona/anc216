@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cstring>
 #include <tuple>
+#include <map>
 
 #define expected_error_message(X) \
     X[0] == 'i' || X[0] == 'a' || X[0] == 'o' || X[0] == 'e' ? "An " + std::string(X) + " was expected" : "A " + std::string(X) + " was expected"
@@ -67,6 +68,7 @@ namespace ANC216
         Token current_token;
         size_t column;
         size_t line;
+        std::map<std::string, std::string> pre_processor_subs;
 
         Token next_token()
         {
@@ -684,7 +686,7 @@ namespace ANC216
 
             if (current_token.type == OPERATOR)
             {
-                
+
             }
         }
 

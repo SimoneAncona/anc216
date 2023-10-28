@@ -13,7 +13,19 @@ int main(int argc, char **argv)
                   << RESET;
         return 0;
     }
-    ANC216::Parser parser("var x: byte");
+    ANC216::Parser parser(
+        R"(
+        structure My_struct:
+            id1: byte,
+            id2: word,
+            id3: byte
+        section .text
+        _code:
+            var x: byte
+            var y: byte
+            ret
+        )"
+    );
     std::cout << parser.parse().to_json() << std::endl;
     return 0;
 }

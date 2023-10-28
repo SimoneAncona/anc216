@@ -11,10 +11,12 @@ namespace ANC216
         STRING_LITERAL,
         OPERATOR,
         NEW_LINE,
-        END,
+        REGISTER,
         TYPE,
+        BRACKETS,
         SEPARATOR,
-        OTHER
+        OTHER,
+        END
     };
 
     class Token

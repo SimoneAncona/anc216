@@ -16,7 +16,7 @@ Grammar for parsing
 
 C ::= D | L | DE | I | "\n" C | "" | S | P | ST
 P ::= use id | use id as E | import id | org E | if ...
-S ::= section .id
+S ::= section .id "\n" C
 ST ::= struct id : T | ST , id : T | ST "\n" id : T
 L ::= id : C | local id : C | global id : C
 D ::= var id : T = E | var id : T
@@ -86,7 +86,7 @@ namespace ANC216
 
             if (temp_count >= program.size())
                 return {{"", END}, temp_count};
-            while (program[temp_count] == ' ' || program[temp_count] == '\t')
+            while (program[temp_count] == ' ' || program[temp_count] == '\t' || program[temp_count] == '\r')
             {
                 temp_count++;
                 if (temp_count >= program.size())
@@ -101,7 +101,7 @@ namespace ANC216
                     temp_line++;
                     temp_column = 0;
                 }
-                return {{"\n", NEW_LINE, temp_line - 1, temp_column}, temp_count};
+                return {{"\n", NEW_LINE, temp_line - 1, temp_column}, temp_count + 1};
             }
 
             if (std::isdigit(program[temp_count]))
@@ -115,6 +115,12 @@ namespace ANC216
 
             if (program[temp_count] == ',' || program[temp_count] == '.' || program[temp_count] == ':')
                 return {{std::string(1, program[temp_count]), SEPARATOR, temp_line, temp_column}, temp_count + 1};
+
+            if (program[temp_count] == '&')
+                return {{std::string(1, program[temp_count]), OTHER, temp_line, temp_column}, temp_count + 1};
+
+            if (program[temp_count] == '[' || program[temp_count] == ']' || program[temp_count] == '(' || program[temp_count] == ')')
+                return {{std::string(1, program[temp_count]), BRACKETS, temp_line, temp_column}, temp_count + 1};
 
             error_stack.push({"Unexpected character", {std::string(1, program[temp_count]), OTHER, temp_line, temp_column}});
             return {{"", END}, temp_count};
@@ -130,7 +136,7 @@ namespace ANC216
             for (char c : value)
                 lower += tolower(c);
 
-            if (lower == "use" || lower == "as" || lower == "import" || lower == "if" || lower == "endif" || lower == "elif" || lower == "org" || lower == "section" || lower == "local" || lower == "global" || lower == "struct" || lower == "var")
+            if (lower == "use" || lower == "as" || lower == "import" || lower == "if" || lower == "endif" || lower == "elif" || lower == "org" || lower == "section" || lower == "local" || lower == "global" || lower == "structure" || lower == "var")
                 return {lower, KEYWORD, temp_line, temp_column};
 
             if (lower == "byte" || lower == "word")
@@ -138,6 +144,9 @@ namespace ANC216
 
             if (lower == "kill" || lower == "reset" || lower == "cpuid" || lower == "syscall" || lower == "call" || lower == "ret" || lower == "push" || lower == "pop" || lower == "phpc" || lower == "popc" || lower == "phsr" || lower == "posr" || lower == "phsp" || lower == "posp" || lower == "phbp" || lower == "pobp" || lower == "seti" || lower == "sett" || lower == "sets" || lower == "clri" || lower == "clrt" || lower == "clrs" || lower == "clrn" || lower == "clro" || lower == "clrc" || lower == "ireq" || lower == "req" || lower == "write" || lower == "hreq" || lower == "hwrite" || lower == "read" || lower == "pareq" || lower == "cmp" || lower == "careq" || lower == "jmp" || lower == "jeq" || lower == "jz" || lower == "jne" || lower == "jnz" || lower == "jge" || lower == "jgr" || lower == "jle" || lower == "jls" || lower == "jo" || lower == "jno" || lower == "jn" || lower == "jnn" || lower == "inc" || lower == "dec" || lower == "add" || lower == "sub" || lower == "neg" || lower == "and" || lower == "or" || lower == "xor" || lower == "not" || lower == "sign" || lower == "shl" || lower == "shr" || lower == "par" || lower == "load" || lower == "store" || lower == "tran" || lower == "swap" || lower == "ldsr" || lower == "ldsp" || lower == "ldbp" || lower == "stsr" || lower == "stsp" || lower == "stbp" || lower == "trsr" || lower == "trsp" || lower == "trbp" || lower == "sili" || lower == "sihi" || lower == "seli" || lower == "sehi" || lower == "sbp" || lower == "stp" || lower == "tili" || lower == "tihi" || lower == "teli" || lower == "tehi" || lower == "tbp" || lower == "ttp" || lower == "lcpid" || lower == "tcpid" || lower == "time" || lower == "tstart" || lower == "tstop" || lower == "trt")
                 return {lower, INSTRUCTION, temp_line, temp_column};
+
+            if (lower.size() == 2 && (lower[0] == 'l' || lower[0] == 'r') && (lower[1] >= '0' && lower[1] <= '7'))
+                return {lower, REGISTER, temp_line, temp_column};
 
             return {value, IDENTIFIER, temp_line, temp_column};
         }
@@ -200,16 +209,25 @@ namespace ANC216
         {
             AST *current_node = last_node;
             Token next = next_token();
+            if (next == "\n")
+                next = next_token();
+
             if (next.end())
                 return;
 
             if (next == "var")
             {
-                last_node = current_node;
                 decl();
+                last_node = current_node;
             }
 
-            if (next == "struct")
+            if (next == "section")
+            {
+                section();
+                last_node = current_node;
+            }
+
+            if (next == "structure")
             {
                 struct_def();
                 last_node = current_node;
@@ -242,8 +260,9 @@ namespace ANC216
 
             if (get_next_token().first == "\n")
             {
+                count++;
                 last_node = current_node;
-                command();
+                return command();
             }
 
             if (get_next_token().first.end())
@@ -287,17 +306,19 @@ namespace ANC216
             }
         }
 
+        // D ::= var id : T = E | var id : T
         void decl()
         {
             AST *current_node = last_node;
-            Token next = next_token();
             last_node = last_node->insert_non_terminal(DECLARATION);
-
             last_node->insert_terminal(current_token);
+
+            Token next = next_token();
 
             if (next.type != IDENTIFIER)
             {
                 error_stack.push({expected_error_message("identifier"), next});
+                last_node = current_node;
                 return;
             }
             last_node->insert_terminal(next);
@@ -306,15 +327,17 @@ namespace ANC216
             if (next != ":")
             {
                 error_stack.push({expected_error_message("\":\""), next});
+                last_node = current_node;
                 return;
             }
-            
+
             last_node->insert_terminal(next);
 
             next = next_token();
             if (next.type != IDENTIFIER && next.type != TYPE)
             {
                 error_stack.push({expected_error_message("type"), next});
+                last_node = current_node;
                 return;
             }
 
@@ -326,9 +349,10 @@ namespace ANC216
                 last_node->insert_terminal(next);
 
                 next = next_token();
-                if (next.type != IDENTIFIER && next.type != NUMBER_LITERAL && next.type != STRING_LITERAL && next.type != OPERATOR && next != "(")
+                if (next.type != IDENTIFIER && next.type != NUMBER_LITERAL && next.type != STRING_LITERAL && next.type != OPERATOR && next != "(" && next != "sizeof" && next != "$")
                 {
                     error_stack.push({expected_error_message("expression"), next});
+                    last_node = current_node;
                     return;
                 }
                 expression();
@@ -337,24 +361,331 @@ namespace ANC216
             last_node = current_node;
         }
 
+        // L ::= id : C | local id : C | global id : C
         void label()
         {
+            AST *current_node = last_node;
+            last_node = last_node->insert_non_terminal(LABEL);
+            last_node->insert_terminal(current_token);
+
+            Token next = current_token;
+
+            if (current_token == "local" || current_token == "global")
+            {
+                last_node->insert_terminal(current_token);
+                next = next_token();
+                if (next.type != IDENTIFIER)
+                {
+                    error_stack.push({expected_error_message("identifier"), next});
+                    last_node = current_node;
+                    return;
+                }
+            }
+
+            next = next_token();
+            if (next != ":")
+            {
+                error_stack.push({expected_error_message("\":\""), next});
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            command();
+            last_node = current_node;
         }
 
+        // ST ::= struct id : T | ST , id : T | ST "\n" id : T
         void struct_def()
         {
+            AST *current_node = last_node;
+            last_node = last_node->insert_non_terminal(STRUCT_DEF);
+
+            Token next = current_token;
+
+            if (current_token == "structure")
+            {
+                last_node->insert_terminal(current_token);
+                next = next_token();
+                if (next.type != IDENTIFIER)
+                {
+                    error_stack.push({expected_error_message("identifier"), next});
+                    last_node = current_node;
+                    return;
+                }
+
+                last_node->insert_terminal(next);
+
+                next = next_token();
+                if (next != ":")
+                {
+                    error_stack.push({expected_error_message("\":\""), next});
+                    last_node = current_node;
+                    return;
+                }
+
+                last_node->insert_terminal(next);
+
+                while (get_next_token().first == "\n")
+                    next_token();
+
+                next_token();
+
+                struct_def();
+                last_node = current_node;
+                return;
+            }
+
+            if (next.type != IDENTIFIER)
+            {
+                command();
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            next = next_token();
+
+            if (next != ":")
+            {
+                error_stack.push({expected_error_message("\":\""), next});
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            next = next_token();
+
+            if (next.type != TYPE)
+            {
+                error_stack.push({expected_error_message("type"), next});
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            next = get_next_token().first;
+
+            if (next == ",")
+            {
+                next = next_token();
+                last_node->insert_terminal(next);
+                while (get_next_token().first == "\n")
+                    next_token();
+                next_token();
+                struct_def();
+                last_node = current_node;
+                return;
+            }
+
+            command();
+            last_node = current_node;
+            return;
+        }
+
+        // S ::= section .id "\n"
+        void section()
+        {
+            AST *current_node = last_node;
+            last_node = last_node->insert_non_terminal(SECTION);
+            last_node->insert_terminal(current_token);
+
+            Token next = next_token();
+            if (next != ".")
+            {
+                error_stack.push({expected_error_message("\".\""), next});
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            next = next_token();
+            if (next.type != IDENTIFIER)
+            {
+                error_stack.push({expected_error_message("identifier"), next});
+                last_node = current_node;
+                return;
+            }
+
+            last_node->insert_terminal(next);
+
+            next = next_token();
+            if (next != "\n" && next.type != END)
+            {
+                error_stack.push({"Expected the end of the line after section", next});
+                last_node = current_node;
+                return;
+            }
+
+            command();
+            last_node = current_node;
         }
 
         void line_expression()
         {
         }
 
+        // I ::= Instr Addr
         void instruction()
+        {
+            AST *current_node = last_node;
+            last_node = last_node->insert_non_terminal(INSTRUCTION_RULE);
+            last_node->insert_terminal(current_token);
+
+            next_token();
+            addressing_mode();
+
+            last_node = current_node;
+            return;
+        }
+
+        void addressing_mode()
+        {
+            AST *current_node = last_node;
+            if (current_token == "\n")
+                return;
+
+            Token next = current_token;
+
+            if (current_token.type == TYPE || current_token.type == IDENTIFIER || current_token.type == NUMBER_LITERAL || current_token.type == OPERATOR || current_token == "sizeof" || current_token == "$" || current_token == "(")
+            {
+                last_node = last_node->insert_non_terminal(ADDRESSING_MODE_IMMEDIATE);
+                expression();
+                last_node = current_node;
+                return;
+            }
+
+            if (current_token == "&")
+            {
+                memory_to_memory_or_register_addressing();
+            }
+
+            if (current_token == "[")
+            {
+                last_node = last_node->insert_non_terminal(ADDRESSING_MODE_MEMORY);
+                last_node->insert_terminal(current_token);
+
+                next_token();
+                expression();
+
+                next = next_token();
+                if (next != "]")
+                {
+                    error_stack.push({expected_error_message("\"]\""), next});
+                    return;
+                }
+
+                last_node->insert_terminal(next);
+
+                if (get_next_token().first.type == OPERATOR)
+                {
+                    next = next_token();
+                    last_node->insert_terminal(next);
+                    if (get_next_token().first.type != REGISTER)
+                    {
+                        error_stack.push({expected_error_message("register"), next});
+                        return;
+                    }
+                    next = next_token();
+                    last_node->insert_terminal(next);
+                }
+
+                last_node = current_node;
+                return;
+            }
+
+            if (current_token.type == REGISTER)
+            {
+                if (get_next_token().first == ",")
+                {
+                    register_memory_addressing();
+                    last_node = current_node;
+                    return;
+                }
+                last_node = last_node->insert_non_terminal(ADDRESSING_MODE_REGISTER);
+                last_node->insert_terminal(current_token);
+                last_node = current_node;
+                return;
+            }
+        }
+
+        void memory_to_memory_or_register_addressing()
         {
         }
 
+        void register_memory_addressing()
+        {
+            Token last_token = current_token;
+            Token next = next_token();
+            if (get_next_token().first.type == REGISTER)
+            {
+                last_node = last_node->insert_non_terminal(ADDRESSING_MODE_REGISTER_TO_REGISTER);
+                last_node->insert_terminal(last_token);
+                last_node->insert_terminal(current_token);
+                next_token();
+                last_node->insert_terminal(current_token);
+                return;
+            }
+            if (get_next_token().first == "&")
+            {
+            }
+
+            error_stack.push({"Unexpected token \"" + current_token.value + "\"", current_token});
+            return;
+        }
+
+        /*
+        E ::= value | E Bop1 E | Uop E | (E) | id | T E | sizeof id | $
+        Bop1 ::= + | -
+        Bop2 ::= * | /
+        Uop ::= + | -
+        */
         void expression()
         {
+            AST *current_node = last_node;
+            last_node = last_node->insert_non_terminal(EXPRESSION);
+
+            Token next;
+
+            if (current_token == "(")
+            {
+                next_token();
+                expression();
+                next = next_token();
+                if (next != ")")
+                {
+                    error_stack.push({expected_error_message("\")\""), next});
+                    last_node = current_node;
+                    return;
+                }
+                last_node = current_node;
+                return;
+            }
+
+            if (current_token == "siezof")
+            {
+
+            }
+
+            if (current_token.type == NUMBER_LITERAL || current_token == "$")
+            {
+                
+            }
+
+            if (current_token.type == TYPE)
+            {
+
+            }
+
+            if (current_token.type == OPERATOR)
+            {
+                
+            }
         }
 
     public:

@@ -101,6 +101,14 @@ namespace ANC216
                 return "type";
             case SEPARATOR:
                 return "separator";
+            case BRACKETS:
+                return "brackets";
+            case NUMBER_LITERAL:
+                return "number";
+            case STRING_LITERAL:
+                return "string";
+            case OPERATOR:
+                return "operator";
             case KEYWORD:
                 return "keyword";
             case INSTRUCTION:

@@ -15,17 +15,15 @@ int main(int argc, char **argv)
     }
     ANC216::Parser parser(
         R"(
-        structure My_struct:
-            id1: byte,
-            id2: word,
-            id3: byte
-        section .text
         _code:
-            var x: byte
-            var y: byte
-            ret
-        )"
-    );
+            read [0x345 * 367 + 5]
+        )");
     std::cout << parser.parse().to_json() << std::endl;
+
+    while (parser.get_error_stack().size() != 0)
+    {
+        std::cout << parser.get_error_stack().top().to_string() << std::endl;
+        parser.get_error_stack().pop();
+    }
     return 0;
 }

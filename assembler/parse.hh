@@ -6,6 +6,7 @@
 #include <cstring>
 #include <tuple>
 #include <map>
+#include <sstream>
 
 #define expected_error_message(X) \
     X[0] == 'i' || X[0] == 'a' || X[0] == 'o' || X[0] == 'e' ? "An " + std::string(X) + " was expected" : "A " + std::string(X) + " was expected"
@@ -15,21 +16,50 @@
 /*
 Grammar for parsing
 
-C ::= D | L | DE | I | "\n" C | "" | S | P | ST
-P ::= use id | use id as E | import id | org E | if ...
-S ::= section .id "\n" C
-ST ::= struct id : T | ST , id : T | ST "\n" id : T
-L ::= id : C | local id : C | global id : C
-D ::= var id : T = E | var id : T
-T ::= byte | word | id
-I ::= Instr Addr
+Command ::=
+    Declaration
+    | Label
+    | DE
+    | Instruction
+    | "\n" Command
+    | ""
+    | Section
+    | Preprocessor
+    | StructDef
+Preprocessor ::=
+    use id
+    | use id as Expression
+    | import id
+    | org Eexpression
+    | if Expression then
+    | elif Expression then
+    | endif
+Section ::= section .id "\n" Command
+StructDef ::= structure id : StructEl
+StructEl ::= id : Type, StructEl | Command
+Label ::= id : Command | local id : Command | global id : Command
+Declaration ::= var id : Type = Expression | var id : Type
+Type ::= byte | word | id
+Instruction ::= Instr Addr
 Addr ::= "" |
 Instr ::= load | store | add ...
 DE ::= DE , E | DE , reserve E, E | E
-E ::= value | E Bop1 E | Uop E | (E) | id | T E | sizeof id | $
-Bop1 ::= + | -
-Bop2 ::= * | /
-Uop ::= + | -
+Expression ::= AdditionExpression
+AdditionExpression ::=
+    MulExpression
+    | AdditionExpression + MulExpression
+    | AdditionExpression - MulExpression
+MulExpression ::=
+    UnaryExpression
+    | MulExpression * UnaryExpression
+    | MulExpression / UnaryExpression
+UnaryExpression ::=
+    Value
+    | - Expression
+    | + Experssion
+    | (E)
+    | Type E
+Value ::= number | id | $ | sizeof id
 */
 
 namespace ANC216
@@ -55,6 +85,13 @@ namespace ANC216
         {
             return token.column;
         }
+
+        inline std::string to_string()
+        {
+            std::stringstream ss;
+            ss << RED << "Error: " << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET << "\n\t" << message;
+            return ss.str();
+        }
     };
 
     class Parser
@@ -76,6 +113,11 @@ namespace ANC216
             current_token = next.first;
             count = next.second;
             line = current_token.line;
+            if (next.first == "\n")
+            {
+                line++;
+                column = 0;
+            }
             column += current_token.length();
             return current_token;
         }
@@ -270,7 +312,7 @@ namespace ANC216
             if (get_next_token().first.end())
                 return;
 
-            std::cout << "no" << std::endl;
+            // error_stack.push({"Unexpected token \"" + next.value + "\"", next});
         }
 
         // P ::= use id | use id as E | import id | org E | if E then C endif | else if...
@@ -350,7 +392,7 @@ namespace ANC216
                 next = next_token();
                 last_node->insert_terminal(next);
 
-                next = next_token();
+                next = get_next_token().first;
                 if (next.type != IDENTIFIER && next.type != NUMBER_LITERAL && next.type != STRING_LITERAL && next.type != OPERATOR && next != "(" && next != "sizeof" && next != "$")
                 {
                     error_stack.push({expected_error_message("expression"), next});
@@ -572,13 +614,19 @@ namespace ANC216
                 last_node = last_node->insert_non_terminal(ADDRESSING_MODE_MEMORY);
                 last_node->insert_terminal(current_token);
 
-                next_token();
+                next = get_next_token().first;
+                if (next.type != IDENTIFIER && next.type != NUMBER_LITERAL && next.type != STRING_LITERAL && next.type != OPERATOR && next != "(" && next != "sizeof" && next != "$")
+                {
+                    error_stack.push({expected_error_message("expression"), next});
+                    last_node = current_node;
+                    return;
+                }
                 expression();
-
                 next = next_token();
                 if (next != "]")
                 {
                     error_stack.push({expected_error_message("\"]\""), next});
+                    last_node = current_node;
                     return;
                 }
 
@@ -647,46 +695,138 @@ namespace ANC216
         Bop2 ::= * | /
         Uop ::= + | -
         */
-        void expression()
+        void expression(size_t start = -1, size_t end = -1)
         {
             AST *current_node = last_node;
-            last_node = last_node->insert_non_terminal(EXPRESSION);
-
+            if (start != -1)
+                count = start;
+            size_t current_cnt = count;
+            size_t temp_cnt;
             Token next;
+            next_token();
 
-            if (current_token == "(")
+            while (true)
             {
-                next_token();
-                expression();
-                next = next_token();
-                if (next != ")")
+                if (!(current_token.type == TYPE || current_token.type == IDENTIFIER || current_token.type == NUMBER_LITERAL || current_token.type == OPERATOR || current_token == "sizeof" || current_token == "$" || current_token == "(" || current_token == ")"))
+                    break;
+                if (count >= end)
+                    break;
+                if (current_token == "+" || current_token == "-")
                 {
-                    error_stack.push({expected_error_message("\")\""), next});
+
+                    next = current_token;
+                    last_node = last_node->insert_non_terminal(EXPRESSION);
+                    temp_cnt = count;
+                    mul_expression(current_cnt, count);
+                    count = temp_cnt;
+                    last_node->insert_terminal(next);
+                    expression();
                     last_node = current_node;
                     return;
                 }
-                last_node = current_node;
+                next_token();
+            }
+
+            count = current_cnt;
+            mul_expression(start, end);
+
+            last_node = current_node;
+        }
+
+        void mul_expression(size_t start = -1, size_t end = -1)
+        {
+            AST *current_node = last_node;
+            if (start != -1)
+                count = start;
+            size_t current_cnt = count;
+            size_t temp_cnt;
+            Token next;
+            next_token();
+
+            while (true)
+            {
+                if (!(current_token.type == TYPE || current_token.type == IDENTIFIER || current_token.type == NUMBER_LITERAL || current_token.type == OPERATOR || current_token == "sizeof" || current_token == "$" || current_token == "(" || current_token == ")"))
+                    break;
+                if (count >= end)
+                    break;
+                if (current_token == "*" || current_token == "/")
+                {
+                    next = current_token;
+                    last_node = last_node->insert_non_terminal(EXPRESSION);
+                    temp_cnt = count;
+                    brackets_expression(current_cnt, count);
+                    count = temp_cnt;
+                    last_node->insert_terminal(next);
+                    mul_expression();
+                    last_node = current_node;
+                    return;
+                }
+                next_token();
+            }
+
+            count = current_cnt;
+            brackets_expression(start, end);
+            last_node = current_node;
+        }
+
+        void brackets_expression(size_t start = -1, size_t end = -1)
+        {
+            AST *current_node = last_node;
+            if (start != -1)
+                count = start;
+            size_t current_cnt = count;
+            size_t temp_cnt;
+            Token next;
+            next_token();
+
+            while (true)
+            {
+                if (!(current_token.type == TYPE || current_token.type == IDENTIFIER || current_token.type == NUMBER_LITERAL || current_token.type == OPERATOR || current_token == "sizeof" || current_token == "$" || current_token == "(" || current_token == ")"))
+                    break;
+                if (count >= end)
+                    break;
+                if (current_token == ")")
+                {
+                    next = current_token;
+                    last_node = last_node->insert_non_terminal(EXPRESSION);
+                    temp_cnt = count;
+                    expression(current_cnt + 1, count);
+                    count = temp_cnt;
+                    last_node->insert_terminal(next);
+                    last_node = current_node;
+                    return;
+                }
+                next_token();
+            }
+
+            count = current_cnt;
+            values();
+            last_node = current_node;
+        }
+
+        void values()
+        {
+            Token next;
+            next_token();
+            if (current_token.type == NUMBER_LITERAL || current_token == "$")
+            {
+                last_node->insert_terminal(current_token);
+                // next_token();
                 return;
             }
 
-            if (current_token == "siezof")
+            if (current_token == "sizeof")
             {
-
-            }
-
-            if (current_token.type == NUMBER_LITERAL || current_token == "$")
-            {
-                
-            }
-
-            if (current_token.type == TYPE)
-            {
-
-            }
-
-            if (current_token.type == OPERATOR)
-            {
-
+                last_node->insert_terminal(current_token);
+                next = next_token();
+                if (next.type != IDENTIFIER)
+                {
+                    error_stack.push({expected_error_message("identifier"), next});
+                    return;
+                }
+                last_node->insert_terminal(next);
+                // next_token();
+                return;
             }
         }
 
@@ -709,7 +849,7 @@ namespace ANC216
             return syntax_tree;
         }
 
-        std::stack<SyntaxError> get_error_stack()
+        std::stack<SyntaxError> &get_error_stack()
         {
             return error_stack;
         }

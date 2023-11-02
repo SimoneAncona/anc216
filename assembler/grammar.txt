@@ -56,7 +56,6 @@ Mem ::=
     | "&" "bp" ("+" | "-") lowRegister          -- relative to base pointer with register offset
     | id                                        -- absolute (id reference)
     | id ("+" | "-") lowRegister                -- absolute (id reference) indexed
-    | id "[" lowRegister "]"                    -- absolute (id reference) indexed array access style
     ;
 
 RegMem ::=

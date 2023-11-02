@@ -84,16 +84,32 @@ namespace ANC216
 
         inline size_t get_last_column()
         {
-            return value == "\n" ? 1 : value.length() + column;
+            if (value == "\n")
+                return 1;
+            if (type == STRING_LITERAL)
+            {
+                size_t new_line = value.find_last_of('\n');
+                return value.length() - new_line == value.npos ? 0 : new_line;
+            }
+            return value.length() + column;
         }
 
         inline size_t get_last_line()
         {
-            return value == "\n" ? line + 1 : line;
+            if (value == "\n")
+                return line + 1;
+            if (type == STRING_LITERAL)
+            {
+                size_t n = 0;
+                for (auto ch : value)
+                    if (ch == '\n') n++;
+                return line + n;
+            }
+            return line;
         }
     };
 
-        class SyntaxError
+    class SyntaxError
     {
     public:
         std::string message;

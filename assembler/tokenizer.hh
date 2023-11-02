@@ -14,7 +14,7 @@ namespace ANC216
         size_t column;
         Token current;
         Token next;
-        const std::string &program;
+        std::string program;
         std::stack<SyntaxError> &error_stack;
 
         inline Token nil() const { return {"", END, index, line, column}; };
@@ -62,6 +62,9 @@ namespace ANC216
 
             if (std::isdigit(program[index]))
                 return eat_number(index, line, column);
+
+            if (program[index] == '"' || program[index] == '\'')
+                return eat_string(index, line, column);
 
             error_stack.push({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column}});
             return nil();
@@ -119,6 +122,48 @@ namespace ANC216
 
         Token eat_string(size_t index, size_t line, size_t column)
         {
+            char ending = program[index];
+            std::string value = std::string(1, ending);
+            bool escape = false;
+
+            for (size_t i = index + 1; !(program[i] == ending && !escape); i++)
+            {
+                if (i >= program.size())
+                {
+                    error_stack.push({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column}});
+                    return nil();
+                }
+                if (escape)
+                {
+                    switch (program[i])
+                    {
+                    case 'n':
+                        value += '\n';
+                    case 't':
+                        value += '\t';
+                    case '0':
+                        value += '\0';
+                    case '\\':
+                        value += '\\';
+                    default:
+                        value += '\\';
+                        value += program[i];
+                    }
+                    escape = false;
+                    continue;
+                }
+                if (program[i] == '\\')
+                {
+                    escape = true;
+                    continue;
+                }
+                value += program[i];
+                escape = false;
+            }
+
+            value += std::string(1, ending);
+
+            return {value, STRING_LITERAL, index, line, column};
         }
 
         Token eat_id_or_keyword(size_t index, size_t line, size_t column)
@@ -150,11 +195,54 @@ namespace ANC216
             return {value, IDENTIFIER, index, line, column};
         }
 
+        void remove_comments()
+        {
+            std::string no_comments;
+            char open_string = 0;
+            bool escape = false;
+            bool comment = false;
+            for (auto ch : program)
+            {
+                if (open_string)
+                {
+                    no_comments.push_back(ch);
+                    if (ch == open_string && !escape)
+                    {
+                        open_string = 0;
+                        escape = false;
+                        continue;
+                    }
+                    if (ch == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+                    escape = false;
+                    continue;
+                }
+                if (ch == ';')
+                {
+                    comment = true;
+                    continue;
+                }
+                if (ch == '\n')
+                {
+                    comment = false;
+                }
+                if (!comment)
+                {
+                    no_comments.push_back(ch);
+                }
+            }
+            program = no_comments;
+        }
+
     public:
         Tokenizer(const std::string &str, std::stack<SyntaxError> &errors)
-            : program(str),
-              error_stack(errors)
+            : error_stack(errors)
         {
+            program = str;
+            remove_comments();
             current = eat(0, 1, 1);
             index = current.get_last_index();
             line = current.get_last_line();

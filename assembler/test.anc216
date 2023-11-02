@@ -1,3 +1,6 @@
 section .text
 _code:
-    var x: byte = 10
+    var x: byte = 10    ; create a variable saved into the stack
+    reserve 10, "Hello World!", hi
+
+; let's see if comments work properly

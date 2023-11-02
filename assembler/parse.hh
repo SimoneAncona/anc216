@@ -29,8 +29,13 @@ namespace ANC216
     {
     private:
         Tokenizer tokenizer;
-        std::string program;
         std::stack<SyntaxError> error_stack;
+
+        void skip_line()
+        {
+            while (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+                tokenizer.next_token();
+        }
 
         AST *prog()
         {
@@ -50,6 +55,13 @@ namespace ANC216
                     ast->insert(prog());
                     return ast;
                 }
+                ast->insert(exp_list());
+                ast->insert(prog());
+                return ast;
+            }
+
+            if (tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$")
+            {
                 ast->insert(exp_list());
                 ast->insert(prog());
                 return ast;
@@ -83,15 +95,6 @@ namespace ANC216
 
             if (tokenizer.get_current_token().end())
                 return ast;
-
-            if (tokenizer.get_current_token() == ";")
-            {
-                while (tokenizer.get_next_token() != "\n" && tokenizer.get_current_token().type != END)
-                {
-                    tokenizer.next_token();
-                }
-                return prog();
-            }
 
             error_stack.push({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
             tokenizer.next_token();
@@ -157,12 +160,63 @@ namespace ANC216
 
         AST *exp_list()
         {
-            return nullptr;
+            AST *ast = new AST(EXPRESSION_LIST);
+            if (tokenizer.get_current_token().type == STRING_LITERAL)
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+            }
+            else if (tokenizer.get_current_token() == "reserve")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                if (!(tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                {
+                    error_stack.push({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                tokenizer.next_token();
+                ast->insert(expression());
+            }
+            else {
+                ast->insert(expression());
+            }
+
+            if (tokenizer.get_current_token() == ",")
+            {
+                if (tokenizer.get_next_token() == "\n" || tokenizer.get_next_token().type == END)
+                    return ast;
+                tokenizer.next_token();
+                ast->insert(exp_list());
+                return ast;
+            }
+            if (tokenizer.get_next_token() != "\n" && tokenizer.get_next_token().type != END)
+            {
+                error_stack.push({expected_error_message("\",\""), tokenizer.get_current_token()});
+                tokenizer.next_token();
+                return nullptr;
+            }
+            return ast;
         }
 
         AST *instruction()
         {
-            return nullptr;
+            AST *ast = new AST(INSTRUCTION_RULE);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            AST *res = addr();
+            if (res != nullptr)
+                ast->insert(res);
+            tokenizer.next_token();
+            return ast;
+        }
+
+        AST *addr()
+        {
+            if (tokenizer.get_current_token() == "\n" || tokenizer.get_current_token().type == END)
+                return nullptr;
+            
+
         }
 
         AST *declaration()
@@ -253,10 +307,17 @@ namespace ANC216
                 ast = new AST(EXPRESSION);
                 ast->insert(new AST(tokenizer.get_current_token()));
                 tokenizer.next_token();
+                if (!(tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                {
+                    error_stack.push({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
                 ast->insert(expression());
                 if (tokenizer.get_current_token() != ")")
                 {
                     error_stack.push({expected_error_message("\")\""), tokenizer.get_next_token()});
+                    tokenizer.next_token();
                     return nullptr;
                 }
                 ast->insert(new AST(tokenizer.get_current_token()));
@@ -270,6 +331,7 @@ namespace ANC216
                     if (tokenizer.get_next_token().type != IDENTIFIER)
                     {
                         error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                        tokenizer.next_token();
                         return nullptr;
                     }
                     tokenizer.next_token();
@@ -298,8 +360,7 @@ namespace ANC216
 
     public:
         Parser(const std::string &str)
-            : program(str),
-              tokenizer(str, error_stack)
+            : tokenizer(str, error_stack)
         {
         }
 

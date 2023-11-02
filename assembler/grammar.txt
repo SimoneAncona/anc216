@@ -1,5 +1,6 @@
 Prog ::= 
     Section Prog
+    | StructDef Prog
     | Label Prog
     | Instruction Prog
     | Declaration Prog
@@ -10,6 +11,14 @@ Prog ::=
 
 Section ::=
     section "." id End
+    ;
+
+StructDef ::=
+    "structure" id ":" ("\n" ? StructEl ",")* "\n" ? StructEl 
+    ;
+
+StructEl ::=
+    id ":" ("word" | "byte")
     ;
 
 Label ::=

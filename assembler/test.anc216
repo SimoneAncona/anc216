@@ -1,0 +1,3 @@
+section .text
+_code:
+    var x: byte = 10

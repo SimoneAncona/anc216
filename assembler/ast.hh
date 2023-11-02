@@ -34,7 +34,7 @@ namespace ANC216
         bool final;
         Token token;
         RuleName rule_name;
-        std::vector<AST> children;
+        std::vector<AST *> children;
         std::string rule_name_to_string(RuleName rule_name)
         {
             switch (rule_name)
@@ -81,11 +81,13 @@ namespace ANC216
 
         std::string children_to_json()
         {
+            if (children.size() == 0)
+                return "[]";
             std::string result = "[";
             for (size_t i = 0; i < children.size() - 1; i++)
-                result += children[i].to_json() + ", ";
+                result += children[i]->to_json() + ", ";
             if (children.size() > 0)
-                result += children[children.size() - 1].to_json();
+                result += children[children.size() - 1]->to_json();
             return result + "]";
         }
 
@@ -101,13 +103,16 @@ namespace ANC216
                 return "type";
             case SEPARATOR:
                 return "separator";
-            case BRACKETS:
-                return "brackets";
+            case OPEN_ROUND_BRACKET:
+            case CLOSED_ROUND_BRACKET:
+            case OPEN_SQUARE_BRACKET:
+            case CLOSED_SQUARE_BRACKET:
+                return "bracket";
             case NUMBER_LITERAL:
                 return "number";
             case STRING_LITERAL:
                 return "string";
-            case OPERATOR:
+            case BINARY_OPERATOR:
                 return "operator";
             case KEYWORD:
                 return "keyword";
@@ -127,7 +132,7 @@ namespace ANC216
             final = false;
         }
 
-        AST(const Token& token)
+        AST(const Token &token)
         {
             this->token = token;
             final = true;
@@ -138,7 +143,7 @@ namespace ANC216
             return final;
         }
 
-        inline std::vector<AST> get_children()
+        inline std::vector<AST *> &get_children()
         {
             return children;
         }
@@ -153,15 +158,9 @@ namespace ANC216
             return token;
         }
 
-        inline AST *insert_non_terminal(RuleName rule_name)
+        inline void insert(AST *ast)
         {
-            children.push_back(AST(rule_name));
-            return &children[children.size() - 1];
-        }
-
-        inline void insert_terminal(const Token &token)
-        {
-            children.push_back(AST(token));
+            children.push_back(ast);
         }
 
         std::string to_json()

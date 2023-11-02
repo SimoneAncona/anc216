@@ -1,0 +1,89 @@
+Prog ::= 
+    Section Prog
+    | Label Prog
+    | Instruction Prog
+    | Declaration Prog
+    | ExpList Prog
+    | "\n" Prog
+    | ""
+    ;
+
+Section ::=
+    section "." id End
+    ;
+
+Label ::=
+    ("global" | "local")? id ":" 
+    ;
+
+Instruction ::=
+    instr Addrr End
+    ;
+
+Addrr ::=
+    ""              -- implied
+    | Exp           -- immediate
+    | register      -- register access
+    | Mem           -- memory access
+    | ImmMem        -- immediate to memory
+    | RegMem        -- register to memory, register to register, memory to register
+
+ImmMem ::=                                      
+    "&" "bp" ("+" | "-") Exp "," Exp            -- relative to base pointer
+    | "&" "bp" ("+" | "-") lowRegister "," Exp  -- relative to base pointer with register offset
+    | id "[" Exp "]" "," Exp                    -- array access
+    | id "[" lowRegister "]" "," Exp            -- array access indexed
+    | "&" Exp "," Exp                           -- absolute reference
+    | "&" Exp ("+" | "-") lowRegister "," Exp   -- absolute reference indexed
+    ;
+
+Mem ::=
+    "&" Exp                                     -- absolute
+    | "&" Exp ("+" | "-") lowRegister           -- absolute indexed
+    | "[" Exp "]"                               -- indirect
+    | "[" Exp "]" ("+" | "-") lowRegister       -- indirect indexed
+    | "*" Exp                                   -- relative to PC
+    | "&" "bp" ("+" | "-") Exp                  -- relative to base pointer
+    | "&" "bp" ("+" | "-") lowRegister          -- relative to base pointer with register offset
+    | id                                        -- absolute (id reference)
+    | id ("+" | "-") lowRegister                -- absolute (id reference) indexed
+    | id "[" lowRegister "]"                    -- absolute (id reference) indexed array access style
+    ;
+
+RegMem ::=
+    register "," (register | "&" Exp | "&" "bp" ("+" | "-") Exp | Exp | "*" Exp)    -- memory to register
+    | ("&" Exp | "&" "bp" ("+" | "-") Exp | "*" Exp) "," register                   -- register to memory
+    ;
+
+Declaration ::=
+    "var" id ":" ("byte" | "word" | id) "\n" ("=" Exp)? End
+    ;
+
+ExpList ::=
+    Exp ("," ExpList)* End
+    | "reserve" Exp ("," ExpList)* End
+    | string ("," ExpList)* End
+    | ""
+    ;
+
+Exp ::= 
+    Mul ("+" Mul)*
+    | Mul ("-" Mul)*
+    ;
+
+Mul ::= 
+    Atom ("*" Atom)*
+    | Atom ("/" Atom)*
+    ;
+
+Atom ::=
+    value
+    | id
+    | "(" Exp ")"
+    | "sizeof" id
+    | "byte" Exp
+    | "word" Exp
+    | "$"
+    ;
+
+End ::= "\n" | EOF;

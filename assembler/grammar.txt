@@ -64,7 +64,7 @@ RegMem ::=
     ;
 
 Declaration ::=
-    "var" id ":" ("byte" | "word" | id) "\n" ("=" Exp)? End
+    "var" id ":" "[" ? ("byte" | "word" | id) "]" ? "\n" ("=" Exp)? End
     ;
 
 ExpList ::=

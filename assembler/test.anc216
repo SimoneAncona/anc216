@@ -1,3 +1,8 @@
+structure My_struct:
+    name: word,
+    last_name: word,
+    age: byte
+
 section .text
 _code:
     var x: byte = 10    ; create a variable saved into the stack

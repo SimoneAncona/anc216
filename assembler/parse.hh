@@ -37,12 +37,35 @@ namespace ANC216
                 tokenizer.next_token();
         }
 
+        void preprocessor()
+        {
+        }
+
+        void use_as(std::map<std::string, std::string> &defines)
+        {
+        }
+
+        void import()
+        {
+        }
+
+        void conditional()
+        {
+        }
+
         AST *prog()
         {
             AST *ast = new AST(COMMAND);
             if (tokenizer.get_current_token() == "section")
             {
                 ast->insert(section());
+                ast->insert(prog());
+                return ast;
+            }
+
+            if (tokenizer.get_current_token() == "structure")
+            {
+                ast->insert(structure());
                 ast->insert(prog());
                 return ast;
             }
@@ -132,6 +155,73 @@ namespace ANC216
             return ast;
         }
 
+        AST *structure()
+        {
+            AST *ast = new AST(STRUCT_DEF);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token().type != IDENTIFIER)
+            {
+                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token() != ":")
+            {
+                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                tokenizer.next_token();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            skip_line();
+            if (tokenizer.get_current_token().type != IDENTIFIER)
+            {
+                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(structure_el());
+            return ast;
+        }
+
+        AST *structure_el()
+        {
+            AST *ast = new AST(STRUCT_DEF);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token() != ":")
+            {
+                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token() != "word" && tokenizer.get_current_token() != "byte")
+            {
+                error_stack.push({expected_error_message("type"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token() == ",")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                skip_line();
+                if (tokenizer.get_current_token().type == IDENTIFIER)
+                {
+                    ast->insert(structure_el());
+                }
+                return ast;
+            }
+            return ast;
+        }
+
         AST *label()
         {
             AST *ast = new AST(LABEL);
@@ -178,7 +268,8 @@ namespace ANC216
                 tokenizer.next_token();
                 ast->insert(expression());
             }
-            else {
+            else
+            {
                 ast->insert(expression());
             }
 
@@ -215,14 +306,13 @@ namespace ANC216
         {
             if (tokenizer.get_current_token() == "\n" || tokenizer.get_current_token().type == END)
                 return nullptr;
-            
-
         }
 
         AST *declaration()
         {
             AST *ast = new AST(DECLARATION);
             ast->insert(new AST(tokenizer.get_current_token()));
+            bool brackets = false;
             tokenizer.next_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
@@ -240,6 +330,11 @@ namespace ANC216
             }
             ast->insert(new AST(tokenizer.get_current_token()));
             tokenizer.next_token();
+            if (tokenizer.get_current_token() == "[")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                brackets = true;
+            }
             if (tokenizer.get_current_token() != "byte" && tokenizer.get_current_token() != "word" && tokenizer.get_current_token().type != IDENTIFIER)
             {
                 error_stack.push({expected_error_message("type"), tokenizer.get_next_token()});
@@ -248,8 +343,25 @@ namespace ANC216
             }
             ast->insert(new AST(tokenizer.get_current_token()));
             tokenizer.next_token();
+            if (brackets)
+            {
+                if (tokenizer.get_current_token() != "]")
+                {
+                    error_stack.push({expected_error_message("\"]\""), tokenizer.get_next_token()});
+                    tokenizer.next_token();
+                    return nullptr;
+                }
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+            }
             if (tokenizer.get_current_token() == "=")
             {
+                if (brackets)
+                {
+                    error_stack.push({unexpected_error_message("\"=\""), tokenizer.get_next_token()});
+                    tokenizer.next_token();
+                    return nullptr;
+                }
                 ast->insert(new AST(tokenizer.get_current_token()));
                 tokenizer.next_token();
                 ast->insert(expression());
@@ -368,6 +480,7 @@ namespace ANC216
 
         inline AST *parse()
         {
+            preprocessor();
             return prog();
         }
 

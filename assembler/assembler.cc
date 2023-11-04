@@ -30,10 +30,9 @@ int main(int argc, char **argv)
     if (parser.get_error_stack().size() == 0)
         std::cout << res->to_json() << std::endl;
 
-    while (parser.get_error_stack().size() != 0)
+    for (auto &error : parser.get_error_stack())
     {
-        std::cout << parser.get_error_stack().top().to_string() << std::endl;
-        parser.get_error_stack().pop();
+        std::cout << error.to_string() << std::endl;
     }
     return 0;
 }

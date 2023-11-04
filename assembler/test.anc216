@@ -1,4 +1,8 @@
 use lolly as 10
+use pippo
+
+if !pippo then
+
 
 structure My_struct:
     name: word,
@@ -10,4 +14,10 @@ _code:
     var x: byte = 10    ; create a variable saved into the stack
     reserve lolly, "Hello World!", hi
 
+elif lolly then
+
+_code:
+    reserve lolly, "Hello World"
+
+endif
 ; let's see if comments work properly

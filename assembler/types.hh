@@ -109,13 +109,13 @@ namespace ANC216
         }
     };
 
-    class SyntaxError
+    class Error
     {
     public:
         std::string message;
         Token token;
 
-        SyntaxError(std::string message, const Token token)
+        Error(std::string message, const Token token)
         {
             this->message = message;
             this->token = token;

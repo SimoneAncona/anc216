@@ -13,7 +13,7 @@ namespace ANC216
         Token current;
         Token next;
         std::string program;
-        std::stack<SyntaxError> &error_stack;
+        std::vector<Error> &error_stack;
         std::vector<Token> tokens;
         size_t i;
 
@@ -51,7 +51,7 @@ namespace ANC216
             if (program[index] == ')')
                 return {")", CLOSED_ROUND_BRACKET, index, line, column};
 
-            if (program[index] == '&' || program[index] == '*' || program[index] == '+' || program[index] == '-' || program[index] == '=')
+            if (program[index] == '&' || program[index] == '*' || program[index] == '+' || program[index] == '-' || program[index] == '=' || program[index] == '!')
                 return {std::string(1, program[index]), OTHER, index, line, column};
 
             if (program[index] == '$')
@@ -66,7 +66,7 @@ namespace ANC216
             if (program[index] == '"' || program[index] == '\'')
                 return eat_string(index, line, column);
 
-            error_stack.push({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column}});
+            error_stack.push_back({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column}});
             return nil(index, line, column);
         }
 
@@ -79,7 +79,7 @@ namespace ANC216
                 {
                     if (std::isalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
                     {
-                        error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
                         return nil(index, line, column);
                     }
                     if (program[i] != '0' && program[i] != '1')
@@ -95,7 +95,7 @@ namespace ANC216
                 {
                     if ((program[i] > 'f' && program[i] < 'z') || (program[i] > 'F' && program[i] < 'Z'))
                     {
-                        error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
                         return nil(index, line, column);
                     }
                     if (program[i] < '0' || program[i] > '9' && !std::isalpha(program[i]))
@@ -109,7 +109,7 @@ namespace ANC216
             {
                 if (isalpha(program[i]))
                 {
-                    error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                    error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
                     return nil(index, line, column);
                 }
                 if (program[i] < '0' || program[i] > '9')
@@ -129,7 +129,7 @@ namespace ANC216
             {
                 if (i >= program.size())
                 {
-                    error_stack.push({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column}});
+                    error_stack.push_back({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column}});
                     return nil(index, line, column);
                 }
                 if (escape)
@@ -254,7 +254,7 @@ namespace ANC216
         }
 
     public:
-        Tokenizer(const std::string &str, std::stack<SyntaxError> &errors)
+        Tokenizer(const std::string &str, std::vector<Error> &errors)
             : error_stack(errors)
         {
             program = str;
@@ -270,17 +270,17 @@ namespace ANC216
             next = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
         }
 
-        inline Token &get_current_token()
+        inline Token get_current_token()
         {
             return current;
         }
 
-        inline Token &get_next_token()
+        inline Token get_next_token()
         {
             return next;
         }
 
-        inline Token &next_token()
+        inline Token next_token()
         {
             current = next;
             i++;
@@ -339,6 +339,11 @@ namespace ANC216
                 current = token;
                 tokens[i] = token;
             }
+        }
+
+        inline size_t get_index()
+        {
+            return i;
         }
     };
 }

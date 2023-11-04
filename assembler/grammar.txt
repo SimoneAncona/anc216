@@ -1,3 +1,25 @@
+PreProcessor ::=
+    UseAs
+    | Import
+    | If
+    | "\n" PreProcessor
+    | ""
+    ;
+
+UseAs ::= 
+    "use" id ("as" any)?
+    ;
+
+Import ::=
+    "import" (id | string)
+    ;
+
+If ::= 
+    "if" ("!") ? id "then" Prog ("elif" id "then" Prog)* "endif"
+    ;
+
+---------------------------------------------------------
+
 Prog ::= 
     Section Prog
     | StructDef Prog

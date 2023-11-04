@@ -29,7 +29,7 @@ namespace ANC216
     {
     private:
         Tokenizer tokenizer;
-        std::stack<SyntaxError> error_stack;
+        std::vector<Error> error_stack;
 
         void skip_line()
         {
@@ -69,6 +69,7 @@ namespace ANC216
                     import();
                     continue;
                 }
+
                 tokenizer.next_token();
             }
             tokenizer.set_index(0);
@@ -81,8 +82,9 @@ namespace ANC216
             tokenizer.remove_current_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
                 skip_line();
+                return;
             }
             id = tokenizer.get_current_token().value;
             tokenizer.remove_current_token();
@@ -91,8 +93,9 @@ namespace ANC216
                 tokenizer.remove_current_token();
                 if (tokenizer.get_current_token().type == NEW_LINE || tokenizer.get_current_token().type == END)
                 {
-                    error_stack.push({"Unexpected the end of the line", tokenizer.get_next_token()});
+                    error_stack.push_back({"Unexpected the end of the line", tokenizer.get_current_token()});
                     skip_line();
+                    return;
                 }
                 sub = tokenizer.get_current_token();
                 tokenizer.remove_current_token();
@@ -106,6 +109,109 @@ namespace ANC216
 
         void conditional(std::map<std::string, Token> &defines)
         {
+            std::string id;
+            bool neg = false;
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() == "!")
+            {
+                neg = true;
+                tokenizer.remove_current_token();
+            }
+            if (tokenizer.get_current_token().type != IDENTIFIER)
+            {
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
+            id = tokenizer.get_current_token().value;
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() != "then")
+            {
+                error_stack.push_back({expected_error_message("\"then\""), tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() != "\n")
+            {
+                error_stack.push_back({"Expected the end of the line after an if", tokenizer.get_next_token()});
+                skip_line();
+                return;
+            }
+            tokenizer.remove_current_token();
+            int elif = 0;
+            size_t i = tokenizer.get_index();
+            if ((defines.find(id) != defines.end()) && !neg)
+            {
+                while (tokenizer.get_current_token() != "endif")
+                {
+                    if (elif == 1)
+                        tokenizer.remove_current_token();
+                    else
+                        tokenizer.next_token();
+                    if (tokenizer.get_current_token() == "elif")
+                        elif = 1;
+                }
+                tokenizer.remove_current_token();
+                tokenizer.set_index(i);
+                return;
+            }
+            while (tokenizer.get_current_token() != "endif")
+            {
+                if (elif == 0 || elif == -1)
+                    tokenizer.remove_current_token();
+                else
+                    tokenizer.next_token();
+                if (tokenizer.get_current_token().type == END)
+                {
+                    error_stack.push_back({"Unexpected the end of the file, \"endif\" was expected", tokenizer.get_current_token()});
+                    return;
+                }
+                if (tokenizer.get_current_token() == "elif")
+                {
+                    if (elif == 1)
+                    {
+                        elif = -1;
+                        continue;
+                    }
+                    tokenizer.remove_current_token();
+                    neg = false;
+                    if (tokenizer.get_current_token() == "!")
+                    {
+                        neg = true;
+                        tokenizer.remove_current_token();
+                    }
+                    if (tokenizer.get_current_token().type != IDENTIFIER)
+                    {
+                        error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
+                        skip_line();
+                        return;
+                    }
+                    id = tokenizer.get_current_token().value;
+                    tokenizer.remove_current_token();
+                    if (tokenizer.get_current_token() != "then")
+                    {
+                        error_stack.push_back({expected_error_message("\"then\""), tokenizer.get_current_token()});
+                        skip_line();
+                        return;
+                    }
+                    tokenizer.remove_current_token();
+                    if (tokenizer.get_current_token() != "\n")
+                    {
+                        error_stack.push_back({"Expected the end of the line after an elif", tokenizer.get_next_token()});
+                        skip_line();
+                        return;
+                    }
+                    tokenizer.remove_current_token();
+                    if ((defines.find(id) != defines.end()) && !neg)
+                    {
+                        elif = 1;
+                        i = tokenizer.get_index();
+                    }
+                }
+            }
+            tokenizer.remove_current_token();
+            tokenizer.set_index(i);
         }
 
         AST *prog()
@@ -138,7 +244,7 @@ namespace ANC216
                 return ast;
             }
 
-            if (tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$")
+            if (tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == STRING_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$")
             {
                 ast->insert(exp_list());
                 ast->insert(prog());
@@ -174,7 +280,7 @@ namespace ANC216
             if (tokenizer.get_current_token().end())
                 return ast;
 
-            error_stack.push({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
+            error_stack.push_back({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
             tokenizer.next_token();
             return nullptr;
         }
@@ -186,7 +292,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ".")
             {
-                error_stack.push({expected_error_message("\".\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\".\""), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -194,7 +300,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -202,7 +308,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
             {
-                error_stack.push({"Expected the end of the line after a section", tokenizer.get_next_token()});
+                error_stack.push_back({"Expected the end of the line after a section", tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -217,7 +323,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                 skip_line();
                 return nullptr;
             }
@@ -225,7 +331,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ":")
             {
-                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\":\""), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -234,7 +340,7 @@ namespace ANC216
             skip_line();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                 skip_line();
                 return nullptr;
             }
@@ -249,7 +355,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ":")
             {
-                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\":\""), tokenizer.get_next_token()});
                 skip_line();
                 return nullptr;
             }
@@ -257,7 +363,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != "word" && tokenizer.get_current_token() != "byte")
             {
-                error_stack.push({expected_error_message("type"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("type"), tokenizer.get_next_token()});
                 skip_line();
                 return nullptr;
             }
@@ -285,7 +391,7 @@ namespace ANC216
                 tokenizer.next_token();
                 if (tokenizer.get_current_token().type != IDENTIFIER)
                 {
-                    error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                     tokenizer.next_token();
                     return nullptr;
                 }
@@ -294,7 +400,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ":")
             {
-                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\":\""), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -316,7 +422,7 @@ namespace ANC216
                 ast->insert(new AST(tokenizer.get_current_token()));
                 if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
                 {
-                    error_stack.push({expected_error_message("expression"), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                     skip_line();
                     return nullptr;
                 }
@@ -338,7 +444,7 @@ namespace ANC216
             }
             if (tokenizer.get_next_token() != "\n" && tokenizer.get_next_token().type != END)
             {
-                error_stack.push({expected_error_message("\",\""), tokenizer.get_current_token()});
+                error_stack.push_back({expected_error_message("\",\""), tokenizer.get_current_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -371,7 +477,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -379,7 +485,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ":")
             {
-                error_stack.push({expected_error_message("\":\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\":\""), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -392,7 +498,7 @@ namespace ANC216
             }
             if (tokenizer.get_current_token() != "byte" && tokenizer.get_current_token() != "word" && tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push({expected_error_message("type"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("type"), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -402,7 +508,7 @@ namespace ANC216
             {
                 if (tokenizer.get_current_token() != "]")
                 {
-                    error_stack.push({expected_error_message("\"]\""), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("\"]\""), tokenizer.get_next_token()});
                     tokenizer.next_token();
                     return nullptr;
                 }
@@ -413,7 +519,7 @@ namespace ANC216
             {
                 if (brackets)
                 {
-                    error_stack.push({unexpected_error_message("\"=\""), tokenizer.get_next_token()});
+                    error_stack.push_back({unexpected_error_message("\"=\""), tokenizer.get_next_token()});
                     tokenizer.next_token();
                     return nullptr;
                 }
@@ -423,7 +529,7 @@ namespace ANC216
             }
             if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
             {
-                error_stack.push({"Expected the end of the line after a variabile declaration", tokenizer.get_next_token()});
+                error_stack.push_back({"Expected the end of the line after a variabile declaration", tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -476,14 +582,14 @@ namespace ANC216
                 tokenizer.next_token();
                 if (!(tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
                 {
-                    error_stack.push({expected_error_message("expression"), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                     skip_line();
                     return nullptr;
                 }
                 ast->insert(expression());
                 if (tokenizer.get_current_token() != ")")
                 {
-                    error_stack.push({expected_error_message("\")\""), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("\")\""), tokenizer.get_next_token()});
                     tokenizer.next_token();
                     return nullptr;
                 }
@@ -497,7 +603,7 @@ namespace ANC216
                     ast->insert(new AST(tokenizer.get_current_token()));
                     if (tokenizer.get_next_token().type != IDENTIFIER)
                     {
-                        error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                        error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
                         tokenizer.next_token();
                         return nullptr;
                     }
@@ -519,7 +625,7 @@ namespace ANC216
                 tokenizer.next_token();
                 return ast;
             default:
-                error_stack.push({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
+                error_stack.push_back({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -536,10 +642,12 @@ namespace ANC216
         inline AST *parse()
         {
             preprocessor();
+            if (!error_stack.empty())
+                return nullptr;
             return prog();
         }
 
-        inline std::stack<SyntaxError> &get_error_stack()
+        inline std::vector<Error> &get_error_stack()
         {
             return error_stack;
         }

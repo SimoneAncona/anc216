@@ -35,16 +35,18 @@ namespace ANC216
         size_t index;
         size_t line;
         size_t column;
+        std::string module_name;
 
         Token() = default;
 
-        Token(const std::string &value, TokenType type, size_t index, size_t line, size_t column)
+        Token(const std::string &value, TokenType type, size_t index, size_t line, size_t column, std::string module_name)
         {
             this->value = value;
             this->type = type;
             this->index = index;
             this->line = line;
             this->column = column;
+            this->module_name = module_name;
         }
 
         Token(const char *value, TokenType type)

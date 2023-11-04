@@ -15,47 +15,48 @@ namespace ANC216
         std::string program;
         std::vector<Error> &error_stack;
         std::vector<Token> tokens;
+        std::string module_name;
         size_t i;
 
-        inline Token nil(size_t index, size_t line, size_t column) const { return {"", END, index, line, column}; };
+        inline Token nil(size_t index, size_t line, size_t column) const { return {"", END, index, line, column, module_name}; };
 
         Token eat(size_t index, size_t line, size_t column)
         {
             if (index >= program.length())
-                return {"", END, index, line, column};
+                return {"", END, index, line, column, module_name};
 
             for (; (program[index] == '\r' || program[index] == '\t' || program[index] == ' ') && index < program.length(); index++)
                 ;
 
             if (index >= program.length())
-                return {"", END, index, line, column};
+                return {"", END, index, line, column, module_name};
 
             if (program[index] == '\n')
-                return {"\n", NEW_LINE, index, line, column};
+                return {"\n", NEW_LINE, index, line, column, module_name};
 
             if (program[index] == ',' || program[index] == '.' || program[index] == ':')
-                return {std::string(1, program[index]), SEPARATOR, index, line, column};
+                return {std::string(1, program[index]), SEPARATOR, index, line, column, module_name};
 
             if (program[index] == ';')
-                return {";", COMMENT, index, line, column};
+                return {";", COMMENT, index, line, column, module_name};
 
             if (program[index] == '[')
-                return {"[", OPEN_SQUARE_BRACKET, index, line, column};
+                return {"[", OPEN_SQUARE_BRACKET, index, line, column, module_name};
 
             if (program[index] == ']')
-                return {"]", CLOSED_SQUARE_BRACKET, index, line, column};
+                return {"]", CLOSED_SQUARE_BRACKET, index, line, column, module_name};
 
             if (program[index] == '(')
-                return {"(", OPEN_ROUND_BRACKET, index, line, column};
+                return {"(", OPEN_ROUND_BRACKET, index, line, column, module_name};
 
             if (program[index] == ')')
-                return {")", CLOSED_ROUND_BRACKET, index, line, column};
+                return {")", CLOSED_ROUND_BRACKET, index, line, column, module_name};
 
             if (program[index] == '&' || program[index] == '*' || program[index] == '+' || program[index] == '-' || program[index] == '=' || program[index] == '!')
-                return {std::string(1, program[index]), OTHER, index, line, column};
+                return {std::string(1, program[index]), OTHER, index, line, column, module_name};
 
             if (program[index] == '$')
-                return {"$", CURRENT_ADDRESS, index, line, column};
+                return {"$", CURRENT_ADDRESS, index, line, column, module_name};
 
             if (std::isalpha(program[index]) || program[index] == '_')
                 return eat_id_or_keyword(index, line, column);
@@ -66,7 +67,7 @@ namespace ANC216
             if (program[index] == '"' || program[index] == '\'')
                 return eat_string(index, line, column);
 
-            error_stack.push_back({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column}});
+            error_stack.push_back({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column, module_name}});
             return nil(index, line, column);
         }
 
@@ -79,14 +80,14 @@ namespace ANC216
                 {
                     if (std::isalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
                     {
-                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
                     }
                     if (program[i] != '0' && program[i] != '1')
                         break;
                     value += program[i];
                 }
-                return {value, NUMBER_LITERAL, index, line, column};
+                return {value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
             if (program[index] == '0' && index < program.size() && program[index + 1] == 'x')
@@ -95,28 +96,28 @@ namespace ANC216
                 {
                     if ((program[i] > 'f' && program[i] < 'z') || (program[i] > 'F' && program[i] < 'Z'))
                     {
-                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
                     }
                     if (program[i] < '0' || program[i] > '9' && !std::isalpha(program[i]))
                         break;
                     value += program[i];
                 }
-                return {value, NUMBER_LITERAL, index, line, column};
+                return {value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
             for (size_t i = index; i < program.size(); i++)
             {
                 if (isalpha(program[i]))
                 {
-                    error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
+                    error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                     return nil(index, line, column);
                 }
                 if (program[i] < '0' || program[i] > '9')
                     break;
                 value += program[i];
             }
-            return {value, NUMBER_LITERAL, index, line, column};
+            return {value, NUMBER_LITERAL, index, line, column, module_name};
         }
 
         Token eat_string(size_t index, size_t line, size_t column)
@@ -129,7 +130,7 @@ namespace ANC216
             {
                 if (i >= program.size())
                 {
-                    error_stack.push_back({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column}});
+                    error_stack.push_back({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column, module_name}});
                     return nil(index, line, column);
                 }
                 if (escape)
@@ -162,7 +163,7 @@ namespace ANC216
 
             value += std::string(1, ending);
 
-            return {value, STRING_LITERAL, index, line, column};
+            return {value, STRING_LITERAL, index, line, column, module_name};
         }
 
         Token eat_id_or_keyword(size_t index, size_t line, size_t column)
@@ -177,21 +178,21 @@ namespace ANC216
                 lower += tolower(c);
 
             if (lower == "use" || lower == "as" || lower == "import" || lower == "if" || lower == "endif" || lower == "elif" || lower == "org" || lower == "section" || lower == "local" || lower == "global" || lower == "structure" || lower == "var" || lower == "reserve")
-                return {lower, KEYWORD, index, line, column};
+                return {lower, KEYWORD, index, line, column, module_name};
 
             if (lower == "byte" || lower == "word")
-                return {lower, TYPE, index, line, column};
+                return {lower, TYPE, index, line, column, module_name};
 
             if (lower == "sizeof")
-                return {lower, UNARY_LEFT_OPERATOR, index, line, column};
+                return {lower, UNARY_LEFT_OPERATOR, index, line, column, module_name};
 
             if (lower == "kill" || lower == "reset" || lower == "cpuid" || lower == "syscall" || lower == "call" || lower == "ret" || lower == "push" || lower == "pop" || lower == "phpc" || lower == "popc" || lower == "phsr" || lower == "posr" || lower == "phsp" || lower == "posp" || lower == "phbp" || lower == "pobp" || lower == "seti" || lower == "sett" || lower == "sets" || lower == "clri" || lower == "clrt" || lower == "clrs" || lower == "clrn" || lower == "clro" || lower == "clrc" || lower == "ireq" || lower == "req" || lower == "write" || lower == "hreq" || lower == "hwrite" || lower == "read" || lower == "pareq" || lower == "cmp" || lower == "careq" || lower == "jmp" || lower == "jeq" || lower == "jz" || lower == "jne" || lower == "jnz" || lower == "jge" || lower == "jgr" || lower == "jle" || lower == "jls" || lower == "jo" || lower == "jno" || lower == "jn" || lower == "jnn" || lower == "inc" || lower == "dec" || lower == "add" || lower == "sub" || lower == "neg" || lower == "and" || lower == "or" || lower == "xor" || lower == "not" || lower == "sign" || lower == "shl" || lower == "shr" || lower == "par" || lower == "load" || lower == "store" || lower == "tran" || lower == "swap" || lower == "ldsr" || lower == "ldsp" || lower == "ldbp" || lower == "stsr" || lower == "stsp" || lower == "stbp" || lower == "trsr" || lower == "trsp" || lower == "trbp" || lower == "sili" || lower == "sihi" || lower == "seli" || lower == "sehi" || lower == "sbp" || lower == "stp" || lower == "tili" || lower == "tihi" || lower == "teli" || lower == "tehi" || lower == "tbp" || lower == "ttp" || lower == "lcpid" || lower == "tcpid" || lower == "time" || lower == "tstart" || lower == "tstop" || lower == "trt")
-                return {lower, INSTRUCTION, index, line, column};
+                return {lower, INSTRUCTION, index, line, column, module_name};
 
             if (lower.size() == 2 && (lower[0] == 'l' || lower[0] == 'r') && (lower[1] >= '0' && lower[1] <= '7'))
-                return {lower, REGISTER, index, line, column};
+                return {lower, REGISTER, index, line, column, module_name};
 
-            return {value, IDENTIFIER, index, line, column};
+            return {value, IDENTIFIER, index, line, column, module_name};
         }
 
         void remove_comments()
@@ -254,10 +255,11 @@ namespace ANC216
         }
 
     public:
-        Tokenizer(const std::string &str, std::vector<Error> &errors)
+        Tokenizer(const std::string &str, std::vector<Error> &errors, std::string module_name = "_main")
             : error_stack(errors)
         {
             program = str;
+            this->module_name = module_name;
             remove_comments();
             tokenize();
             i = 0;
@@ -344,6 +346,23 @@ namespace ANC216
         inline size_t get_index()
         {
             return i;
+        }
+
+        inline std::vector<Token> &get_tokens()
+        {
+            return tokens;
+        }
+
+        inline void unshift_tokens(std::vector<Token> &token_vector)
+        {
+            for (size_t index = 0; index < token_vector.size(); index++)
+            {
+                if (token_vector[index].type == END)
+                    return;
+                i++;
+                tokens.insert(tokens.begin() + index, token_vector[index]);
+            }
+            
         }
     };
 }

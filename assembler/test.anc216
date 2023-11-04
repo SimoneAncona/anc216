@@ -1,3 +1,5 @@
+import module
+
 use lolly as 10
 use pippo
 

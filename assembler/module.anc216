@@ -1,0 +1,10 @@
+use casa as 10
+
+hello:
+    var l: byte = 10 ; comment
+    casa
+    load
+    ret
+
+section .data
+message: "Hello World!"

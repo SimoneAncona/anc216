@@ -9,6 +9,8 @@
 #include <map>
 #include <sstream>
 #include "console.hh"
+#include <fstream>
+#include <filesystem>
 
 #define expected_error_message(X) \
     X[0] == 'i' || X[0] == 'a' || X[0] == 'o' || X[0] == 'e' ? "An " + std::string(X) + " was expected" : "A " + std::string(X) + " was expected"
@@ -23,6 +25,8 @@ Grammar for parsing
 
 */
 
+namespace fs = std::filesystem;
+
 namespace ANC216
 {
     class Parser
@@ -30,6 +34,8 @@ namespace ANC216
     private:
         Tokenizer tokenizer;
         std::vector<Error> error_stack;
+        std::string filename;
+        std::vector<std::string> modules;
 
         void skip_line()
         {
@@ -78,7 +84,7 @@ namespace ANC216
         void use_as(std::map<std::string, Token> &defines)
         {
             std::string id;
-            Token sub = {"", END, (size_t)-1, (size_t)-1, (size_t)-1};
+            Token sub = {"", END, (size_t)-1, (size_t)-1, (size_t)-1, "_main"};
             tokenizer.remove_current_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
@@ -105,6 +111,59 @@ namespace ANC216
 
         void import()
         {
+            tokenizer.remove_current_token();
+            std::string filename;
+            if (tokenizer.get_current_token().type != IDENTIFIER && tokenizer.get_current_token().type != STRING_LITERAL)
+            {
+                error_stack.push_back({expected_error_message("identifier or string"), tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
+            filename = tokenizer.get_current_token().value;
+            if (tokenizer.get_current_token().type == STRING_LITERAL)
+                filename = filename.substr(1, filename.length() - 1);
+            else
+                filename += ".anc216";
+
+            filename = fs::weakly_canonical("./" + filename).string();
+
+            if (!fs::exists(filename))
+            {
+                error_stack.push_back({"Cannot find or open \"" + filename + "\"", tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
+
+            for (const auto &md : modules)
+            {
+                if (filename == md)
+                {
+                    return;
+                }
+            }
+
+            std::ifstream file = std::ifstream(filename);
+            std::stringstream ss;
+            ss << file.rdbuf();
+            std::string file_string = ss.str();
+            modules.push_back(filename);
+            Parser parser(file_string, filename, modules);
+            parser.preprocessor();
+            tokenizer.unshift_tokens(parser._get_tokens());
+            auto errors = parser.get_error_stack();
+            for (auto e : errors)
+            {
+                error_stack.push_back(e);
+            }
+
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() != "\n")
+            {
+                error_stack.push_back({"Expected the end of the line after an import", tokenizer.get_next_token()});
+                skip_line();
+                return;
+            }
+            tokenizer.remove_current_token();
         }
 
         void conditional(std::map<std::string, Token> &defines)
@@ -442,7 +501,7 @@ namespace ANC216
                 ast->insert(exp_list());
                 return ast;
             }
-            if (tokenizer.get_next_token() != "\n" && tokenizer.get_next_token().type != END)
+            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
             {
                 error_stack.push_back({expected_error_message("\",\""), tokenizer.get_current_token()});
                 tokenizer.next_token();
@@ -632,9 +691,10 @@ namespace ANC216
         }
 
     public:
-        Parser(const std::string &str)
-            : tokenizer(str, error_stack)
+        Parser(const std::string &str, const std::string &filename, const std::vector<std::string> &modules = {})
+            : tokenizer(str, error_stack, filename)
         {
+            this->modules = modules;
         }
 
         ~Parser() = default;
@@ -650,6 +710,11 @@ namespace ANC216
         inline std::vector<Error> &get_error_stack()
         {
             return error_stack;
+        }
+
+        inline std::vector<Token> &_get_tokens()
+        {
+            return tokenizer.get_tokens();
         }
     };
 }

@@ -5,6 +5,12 @@
 #include <fstream>
 #include <sstream>
 
+#define ASSEMBLER_VERSION_MAJOR 1
+#define ASSEMBLER_VERSION_MINOR 0
+#define ASSEMBLER_VERSION_PATCH 0
+
+#define ASSEMBLY_STANDARD_VERSION "ANC216.1"
+
 int main(int argc, char **argv)
 {
     std::ifstream file = std::ifstream("test.anc216");

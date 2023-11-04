@@ -33,23 +33,78 @@ namespace ANC216
 
         void skip_line()
         {
-            while (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+            while (tokenizer.get_current_token() == "\n" && tokenizer.get_current_token().type != END)
                 tokenizer.next_token();
         }
 
         void preprocessor()
         {
+            std::map<std::string, Token> defines;
+            while (tokenizer.get_current_token().type != END)
+            {
+                if (tokenizer.get_current_token().type == KEYWORD || tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == TYPE)
+                {
+                    if (defines.find(tokenizer.get_current_token().value) != defines.end() && defines[tokenizer.get_current_token().value].type != END)
+                    {
+                        tokenizer.set_current_token(defines[tokenizer.get_current_token().value]);
+                        tokenizer.next_token();
+                        continue;
+                    }
+                }
+
+                if (tokenizer.get_current_token() == "use")
+                {
+                    use_as(defines);
+                    continue;
+                }
+
+                if (tokenizer.get_current_token() == "if")
+                {
+                    conditional(defines);
+                    continue;
+                }
+
+                if (tokenizer.get_current_token() == "import")
+                {
+                    import();
+                    continue;
+                }
+                tokenizer.next_token();
+            }
+            tokenizer.set_index(0);
         }
 
-        void use_as(std::map<std::string, std::string> &defines)
+        void use_as(std::map<std::string, Token> &defines)
         {
+            std::string id;
+            Token sub = {"", END, (size_t)-1, (size_t)-1, (size_t)-1};
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token().type != IDENTIFIER)
+            {
+                error_stack.push({expected_error_message("identifier"), tokenizer.get_next_token()});
+                skip_line();
+            }
+            id = tokenizer.get_current_token().value;
+            tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() == "as")
+            {
+                tokenizer.remove_current_token();
+                if (tokenizer.get_current_token().type == NEW_LINE || tokenizer.get_current_token().type == END)
+                {
+                    error_stack.push({"Unexpected the end of the line", tokenizer.get_next_token()});
+                    skip_line();
+                }
+                sub = tokenizer.get_current_token();
+                tokenizer.remove_current_token();
+            }
+            defines.insert({id, sub});
         }
 
         void import()
         {
         }
 
-        void conditional()
+        void conditional(std::map<std::string, Token> &defines)
         {
         }
 
@@ -259,7 +314,7 @@ namespace ANC216
             else if (tokenizer.get_current_token() == "reserve")
             {
                 ast->insert(new AST(tokenizer.get_current_token()));
-                if (!(tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
                 {
                     error_stack.push({expected_error_message("expression"), tokenizer.get_next_token()});
                     skip_line();

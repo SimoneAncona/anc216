@@ -3,21 +3,21 @@
 #include <tuple>
 #include <cstring>
 #include <stack>
+#include <vector>
 
 namespace ANC216
 {
     class Tokenizer
     {
     private:
-        size_t index;
-        size_t line;
-        size_t column;
         Token current;
         Token next;
         std::string program;
         std::stack<SyntaxError> &error_stack;
+        std::vector<Token> tokens;
+        size_t i;
 
-        inline Token nil() const { return {"", END, index, line, column}; };
+        inline Token nil(size_t index, size_t line, size_t column) const { return {"", END, index, line, column}; };
 
         Token eat(size_t index, size_t line, size_t column)
         {
@@ -67,8 +67,7 @@ namespace ANC216
                 return eat_string(index, line, column);
 
             error_stack.push({"Unexpected character", {std::string(1, program[index]), OTHER, index, line, column}});
-            return nil();
-
+            return nil(index, line, column);
         }
 
         Token eat_number(size_t index, size_t line, size_t column)
@@ -81,7 +80,7 @@ namespace ANC216
                     if (std::isalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
                     {
                         error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
-                        return nil();
+                        return nil(index, line, column);
                     }
                     if (program[i] != '0' && program[i] != '1')
                         break;
@@ -97,7 +96,7 @@ namespace ANC216
                     if ((program[i] > 'f' && program[i] < 'z') || (program[i] > 'F' && program[i] < 'Z'))
                     {
                         error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
-                        return nil();
+                        return nil(index, line, column);
                     }
                     if (program[i] < '0' || program[i] > '9' && !std::isalpha(program[i]))
                         break;
@@ -111,7 +110,7 @@ namespace ANC216
                 if (isalpha(program[i]))
                 {
                     error_stack.push({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column}});
-                    return nil();
+                    return nil(index, line, column);
                 }
                 if (program[i] < '0' || program[i] > '9')
                     break;
@@ -131,7 +130,7 @@ namespace ANC216
                 if (i >= program.size())
                 {
                     error_stack.push({"Unexpected the end of the file", {value, STRING_LITERAL, index, line, column}});
-                    return nil();
+                    return nil(index, line, column);
                 }
                 if (escape)
                 {
@@ -237,37 +236,109 @@ namespace ANC216
             program = no_comments;
         }
 
+        void tokenize()
+        {
+            Token token = eat(0, 1, 1);
+            size_t index = token.get_last_index();
+            size_t line = token.get_last_line();
+            size_t column = token.get_last_column();
+            tokens.push_back(token);
+            while (token.type != END)
+            {
+                token = eat(index, line, column);
+                index = token.get_last_index();
+                line = token.get_last_line();
+                column = token.get_last_column();
+                tokens.push_back(token);
+            }
+        }
+
     public:
         Tokenizer(const std::string &str, std::stack<SyntaxError> &errors)
             : error_stack(errors)
         {
             program = str;
             remove_comments();
-            current = eat(0, 1, 1);
-            index = current.get_last_index();
-            line = current.get_last_line();
-            column = current.get_last_column();
-            next = eat(index, line, column);
+            tokenize();
+            i = 0;
+            current = tokens[0];
+            if (tokens.size() > 1)
+            {
+                next = tokens[1];
+                return;
+            }
+            next = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
         }
 
-        inline Token get_current_token()
+        inline Token &get_current_token()
         {
             return current;
         }
 
-        inline Token get_next_token()
+        inline Token &get_next_token()
         {
             return next;
         }
 
-        inline Token next_token()
+        inline Token &next_token()
         {
             current = next;
-            index = current.get_last_index();
-            line = current.get_last_line();
-            column = current.get_last_column();
-            next = eat(index, line, column);
+            i++;
+            if (i >= tokens.size() - 1)
+            {
+                next = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
+                return current;
+            }
+            next = tokens[i + 1];
             return current;
+        }
+
+        inline void set_index(size_t index)
+        {
+            i = index;
+            if (i >= tokens.size())
+            {
+                current = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
+                next = nil(next.get_last_index(), next.get_last_line(), next.get_last_column());
+                return;
+            }
+            current = tokens[i];
+            if (i >= tokens.size() - 1)
+            {
+                next = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
+                return;
+            }
+            next = tokens[i + 1];
+        }
+
+        inline void remove_current_token()
+        {
+            if (i < tokens.size())
+            {
+                tokens.erase(tokens.begin() + i);
+                if (i >= tokens.size())
+                {
+                    current = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
+                    next = nil(next.get_last_index(), next.get_last_line(), next.get_last_column());
+                    return;
+                }
+                current = tokens[i];
+                if (i >= tokens.size() - 1)
+                {
+                    next = nil(current.get_last_index(), current.get_last_line(), current.get_last_column());
+                    return;
+                }
+                next = tokens[i + 1];
+            }
+        }
+
+        inline void set_current_token(Token token)
+        {
+            if (i < tokens.size())
+            {
+                current = token;
+                tokens[i] = token;
+            }
         }
     };
 }

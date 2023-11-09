@@ -3,6 +3,8 @@
 #include <vector>
 #include <tuple>
 
+#pragma once
+
 namespace ANC216
 {
     enum AddressingMode
@@ -48,7 +50,8 @@ namespace ANC216
         MEMORY_RELATED,
         REGISTER_ACCESS,
         REGISTER_TO_MEMORY,
-        MEMORY_TO_REGISTER
+        MEMORY_TO_REGISTER,
+        MTU,
     };
 
     const std::map<std::string, std::pair<unsigned short, std::vector<AddressingModeFamily>>> isa =
@@ -126,23 +129,23 @@ namespace ANC216
             {"trsr", {0x43, {REGISTER_ACCESS}}},
             {"trsp", {0x44, {REGISTER_ACCESS}}},
             {"trbp", {0x45, {REGISTER_ACCESS}}},
-            {"sili", {0x50, {}}},
-            {"sihi", {0x51, {}}},
-            {"seli", {0x52, {}}},
-            {"sehi", {0x53, {}}},
-            {"sbp", {0x54, {}}},
-            {"stp", {0x55, {}}},
-            {"tili", {0x56, {}}},
-            {"tihi", {0x57, {}}},
-            {"teli", {0x58, {}}},
-            {"tehi", {0x59, {}}},
-            {"tbp", {0x5A, {}}},
-            {"ttp", {0x5B, {}}},
-            {"lcpid", {0x5C, {}}},
-            {"tcpid", {0x5D, {}}},
-            {"time", {0x60, {}}},
-            {"tstart", {0x61, {}}},
-            {"tstop", {0x62, {}}},
-            {"trt", {0x63, {}}},
+            {"sili", {0x50, {MTU}}},
+            {"sihi", {0x51, {MTU}}},
+            {"seli", {0x52, {MTU}}},
+            {"sehi", {0x53, {MTU}}},
+            {"sbp", {0x54, {MTU}}},
+            {"stp", {0x55, {MTU}}},
+            {"tili", {0x56, {REGISTER_ACCESS}}},
+            {"tihi", {0x57, {REGISTER_ACCESS}}},
+            {"teli", {0x58, {REGISTER_ACCESS}}},
+            {"tehi", {0x59, {REGISTER_ACCESS}}},
+            {"tbp", {0x5A, {REGISTER_ACCESS}}},
+            {"ttp", {0x5B, {REGISTER_ACCESS}}},
+            {"lcpid", {0x5C, {MTU}}},
+            {"tcpid", {0x5D, {REGISTER_ACCESS}}},
+            {"time", {0x60, {MEMORY_RELATED, REGISTER_ACCESS}}},
+            {"tstart", {0x61, {IMPLIED}}},
+            {"tstop", {0x62, {IMPLIED}}},
+            {"trt", {0x63, {REGISTER_ACCESS}}},
         };
 }

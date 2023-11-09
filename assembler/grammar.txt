@@ -15,7 +15,7 @@ Import ::=
     ;
 
 If ::= 
-    "if" ("!") ? id "then" Prog ("elif" id "then" Prog)* "endif"
+    "if" ("!") ? id "then" "\n" Prog ("elif" id "then" "\n" Prog)* "endif" End
     ;
 
 ---------------------------------------------------------
@@ -76,13 +76,11 @@ Mem ::=
     | "*" Exp                                   -- relative to PC
     | "&" "bp" ("+" | "-") Exp                  -- relative to base pointer
     | "&" "bp" ("+" | "-") lowRegister          -- relative to base pointer with register offset
-    | id                                        -- absolute (id reference)
-    | id ("+" | "-") lowRegister                -- absolute (id reference) indexed
     ;
 
 RegMem ::=
-    register "," (register | "&" Exp | "&" "bp" ("+" | "-") Exp | Exp | "*" Exp)    -- memory to register
-    | ("&" Exp | "&" "bp" ("+" | "-") Exp | "*" Exp) "," register                   -- register to memory
+    register "," (register | "&" Exp | "&" "bp" ("+" | "-") Exp | Exp | "*" Exp, id "[" Exp "]")    -- memory to register
+    | ("&" Exp | "&" "bp" ("+" | "-") Exp | "*" Exp | id "[" Exp "]") "," register                   -- register to memory
     ;
 
 Declaration ::=
@@ -109,11 +107,14 @@ Mul ::=
 Atom ::=
     value
     | id
+    | id "." id
     | "(" Exp ")"
     | "sizeof" id
     | "byte" Exp
     | "word" Exp
     | "$"
+    | + Atom
+    | - Atom
     ;
 
 End ::= "\n" | EOF;

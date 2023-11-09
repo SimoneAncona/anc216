@@ -1,5 +1,7 @@
-#pragma once
 #include <sstream>
+#include "console.hh"
+
+#pragma once
 
 namespace ANC216
 {

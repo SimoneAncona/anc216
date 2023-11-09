@@ -18,6 +18,8 @@
 #define unexpected_error_message(X) \
     "Unexpected " + std::string(X) + " token"
 
+#define expression_if_guard()
+
 #pragma once
 
 /*
@@ -212,6 +214,12 @@ namespace ANC216
                         elif = 1;
                 }
                 tokenizer.remove_current_token();
+                if (tokenizer.get_current_token() != "\n")
+                {
+                    error_stack.push_back({"Expected the end of the line after an endif", tokenizer.get_current_token()});
+                    skip_line();
+                    return;
+                }
                 tokenizer.set_index(i);
                 return;
             }
@@ -269,7 +277,14 @@ namespace ANC216
                     }
                 }
             }
+
             tokenizer.remove_current_token();
+            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+            {
+                error_stack.push_back({"Expected the end of the line after an endif", tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
             tokenizer.set_index(i);
         }
 
@@ -518,7 +533,12 @@ namespace ANC216
             AST *res = addr();
             if (res != nullptr)
                 ast->insert(res);
-            tokenizer.next_token();
+            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+            {
+                error_stack.push_back({"Expected the end of the line after an instruction", tokenizer.get_next_token()});
+                tokenizer.next_token();
+                return nullptr;
+            }
             return ast;
         }
 
@@ -526,6 +546,276 @@ namespace ANC216
         {
             if (tokenizer.get_current_token() == "\n" || tokenizer.get_current_token().type == END)
                 return nullptr;
+            AST *ast = new AST(ADDRESSING_MODE_IMMEDIATE);
+            if (tokenizer.get_current_token().type == IDENTIFIER)
+            {
+                if (tokenizer.get_next_token() == "[")
+                {
+                    ast->insert(array_access_like());
+                    return ast;
+                }
+                if (tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-")
+                {
+                }
+            }
+            if (tokenizer.get_current_token() == "[")
+            {
+                ast->insert(indirect());
+                return ast;
+            }
+            if (tokenizer.get_current_token() == "&")
+            {
+                if (tokenizer.get_next_token() == "bp")
+                {
+                    ast->insert(relative_to_bp());
+                    return ast;
+                }
+                if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                {
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(absolute());
+                return ast;
+            }
+            if (tokenizer.get_current_token() == "*")
+            {
+                ast->insert(relative());
+                return ast;
+            }
+            if (tokenizer.get_current_token().type == REGISTER)
+            {
+                if (tokenizer.get_next_token() == "\n" || tokenizer.get_next_token().type == END)
+                {
+                    ast->insert(new AST(tokenizer.get_current_token()));
+                    return ast;
+                }
+                if (tokenizer.get_next_token() != ",")
+                {
+                    error_stack.push_back({expected_error_message("\",\""), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(memory_to_reg());
+                return ast;
+            }
+            error_stack.push_back({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_current_token()});
+            return nullptr;
+        }
+
+        AST *memory_to_reg()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_REGISTER_TO_MEMORY);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            ast->insert(new AST(tokenizer.next_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token() == "&")
+            {
+                if (tokenizer.get_next_token() == "bp")
+                {
+                    ast->insert(new AST(tokenizer.get_current_token()));
+                    tokenizer.next_token();
+                    if (tokenizer.get_current_token() != "+" && tokenizer.get_current_token() != "-")
+                    {
+                        error_stack.push_back({expected_error_message("\"+\" or \"-\""), tokenizer.get_next_token()});
+                        skip_line();
+                        return nullptr;
+                    }
+                    ast->insert(new AST(tokenizer.get_current_token()));
+
+                    if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                    {
+                        error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                        skip_line();
+                        return nullptr;
+                    }
+                    tokenizer.next_token();
+                    ast->insert(expression());
+                    return ast;
+                }
+                if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+                {
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                tokenizer.next_token();
+                ast->insert(expression());
+                return ast;
+            }
+            if (tokenizer.get_current_token() == "*")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                ast->insert(expression());
+                return ast;
+            }
+            if (tokenizer.get_current_token().type == REGISTER)
+            {
+                ast->set_rule_name(ADDRESSING_MODE_REGISTER_TO_REGISTER);
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                return ast;
+            }
+            if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+            {
+                error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(expression());
+            return ast;
+        }
+
+        AST *array_access_like()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_MEMORY);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            ast->insert(new AST(tokenizer.next_token()));
+            tokenizer.next_token();
+            if (tokenizer.get_current_token().type == REGISTER)
+            {
+                if (tokenizer.get_current_token().value[0] != 'l')
+                {
+                    error_stack.push_back({"The address cannot be indexed with a 16-bit wide register", tokenizer.get_current_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                if (tokenizer.get_current_token() != "]")
+                {
+                    error_stack.push_back({expected_error_message("\"]\""), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(new AST(tokenizer.get_current_token()));
+                if (tokenizer.get_next_token() == ",")
+                {
+                    tokenizer.next_token();
+                    ast->insert(new AST(tokenizer.get_current_token()));
+                    tokenizer.next_token();
+                    if (tokenizer.get_current_token().type == REGISTER)
+                    {
+                        error_stack.push_back({"Cannot access to register while using array like with register addressing mode", tokenizer.get_current_token()});
+                        skip_line();
+                        return nullptr;
+                    }
+                    if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                    {
+                        error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                        skip_line();
+                        return nullptr;
+                    }
+                    ast->insert(expression());
+                }
+                return ast;
+            }
+            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+            {
+                error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(expression());
+            if (tokenizer.get_current_token() != "]")
+            {
+                error_stack.push_back({expected_error_message("\"]\""), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            if (tokenizer.get_next_token() == ",")
+            {
+                tokenizer.next_token();
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                if (tokenizer.get_current_token().type == REGISTER)
+                {
+                    ast->insert(new AST(tokenizer.get_current_token()));
+                    tokenizer.next_token();
+                    return ast;
+                }
+                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                {
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(expression());
+                return ast;
+            }
+            return ast;
+        }
+
+        AST *absolute()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_MEMORY);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+            {
+                error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(expression());
+            if (tokenizer.get_current_token() == ",")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                if (tokenizer.get_current_token().type == REGISTER)
+                {
+                    ast->insert(new AST(tokenizer.get_current_token()));
+                    return ast;
+                }
+            }
+        }
+
+        AST *absoulte_indexed()
+        {
+        }
+
+        AST *relative_to_bp()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_MEMORY);
+            return ast;
+        }
+
+        AST *relative()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_MEMORY);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            tokenizer.next_token();
+            ast->insert(expression());
+            return ast;
+        }
+
+        AST *indirect()
+        {
+            AST *ast = new AST();
+            ast->insert(new AST(tokenizer.get_current_token()));
+            if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+            {
+                error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            tokenizer.next_token();
+            ast->insert(expression());
+            if (tokenizer.get_current_token() != "]")
+            {
+                error_stack.push_back({expected_error_message("\"]\""), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            ast->insert(new AST(tokenizer.get_current_token()));
+            if (tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.get_next_token();
+            }
+            return ast;
         }
 
         AST *declaration()
@@ -553,7 +843,18 @@ namespace ANC216
             if (tokenizer.get_current_token() == "[")
             {
                 ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
                 brackets = true;
+            }
+            if (brackets)
+            {
+                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                {
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(expression());
             }
             if (tokenizer.get_current_token() != "byte" && tokenizer.get_current_token() != "word" && tokenizer.get_current_token().type != IDENTIFIER)
             {
@@ -671,6 +972,16 @@ namespace ANC216
                     tokenizer.next_token();
                     return ast;
                 }
+            case BINARY_OPERATOR:
+                if (tokenizer.get_current_token() != "-" && tokenizer.get_current_token() != "+")
+                {
+                    error_stack.push_back({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});
+                    tokenizer.next_token();
+                    return nullptr;
+                }
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                ast->insert(atom());
             case TYPE:
                 ast = new AST(EXPRESSION);
                 ast->insert(new AST(tokenizer.get_current_token()));

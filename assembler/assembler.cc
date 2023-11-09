@@ -1,5 +1,6 @@
-#include "../common/colors.hh"
+#include "console.hh"
 #include "parse.hh"
+#include "analyzer.hh"
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -35,12 +36,18 @@ int main(int argc, char **argv)
     }
     ANC216::Parser parser(file_string, filename);
     ANC216::AST *res = parser.parse();
-    if (parser.get_error_stack().size() == 0)
-        std::cout << res->to_json() << std::endl;
-
-    for (auto &error : parser.get_error_stack())
+    if (parser.get_error_stack().size() != 0)
     {
-        std::cout << error.to_string() << std::endl;
+        for (auto &error : parser.get_error_stack())
+        {
+            std::cout << error.to_string() << std::endl;
+        }
+        return -1;
     }
+
+    std::cout << res->to_json() << std::endl;
+
+    ANC216::Analyzer analyzer(res);
+    analyzer.assemble();
     return 0;
 }

@@ -3,8 +3,6 @@ import module
 use lolly as 10
 use pippo
 
-if !pippo then
-
 
 structure My_struct:
     name: word,
@@ -14,12 +12,9 @@ structure My_struct:
 section .text
 _code:
     var x: byte = 10    ; create a variable saved into the stack
-    reserve lolly, "Hello World!", hi
-
-elif lolly then
-
-_code:
-    reserve lolly, "Hello World"
-
-endif
-; let's see if comments work properly
+    var y: [10 byte]
+    store y[0], 500
+    store y[1], 20
+    store y[2], 50
+    load r0, * 10
+    load r1, & 10 + lolly * 4

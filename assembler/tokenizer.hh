@@ -5,6 +5,8 @@
 #include <stack>
 #include <vector>
 
+#pragma once
+
 namespace ANC216
 {
     class Tokenizer

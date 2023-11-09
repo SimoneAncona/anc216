@@ -153,6 +153,11 @@ namespace ANC216
             return rule_name;
         }
 
+        inline void set_rule_name(RuleName name)
+        {
+            rule_name = name;
+        }
+
         inline Token get_token()
         {
             return token;

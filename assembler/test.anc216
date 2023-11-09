@@ -18,3 +18,6 @@ _code:
     store y[2], 50
     load r0, * 10
     load r1, & 10 + lolly * 4
+
+_code:
+    "ciao"

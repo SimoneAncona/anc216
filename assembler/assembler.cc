@@ -23,7 +23,6 @@ int main(int argc, char **argv)
     fs::current_path(p.parent_path());
     std::ifstream file = std::ifstream(filename);
     std::stringstream ss;
-    std::cout << fs::current_path() << std::endl;
     ss << file.rdbuf();
     std::string file_string = ss.str();
     if (argc < 2)
@@ -38,16 +37,27 @@ int main(int argc, char **argv)
     ANC216::AST *res = parser.parse();
     if (parser.get_error_stack().size() != 0)
     {
+        size_t i = 1;
         for (auto &error : parser.get_error_stack())
         {
-            std::cout << error.to_string() << std::endl;
+            std::cout << RED << "[" << i << "] " << error.to_string() << std::endl;
+            i++;
         }
         return -1;
     }
 
-    std::cout << res->to_json() << std::endl;
-
     ANC216::Analyzer analyzer(res);
     analyzer.assemble();
+
+    if (analyzer.get_error_stack().size() != 0)
+    {
+        size_t i = 1;
+        for (auto &error : parser.get_error_stack())
+        {
+            std::cout << RED << "[" << i << "] " << error.to_string() << std::endl;
+            i++;
+        }
+        return -1;
+    }
     return 0;
 }

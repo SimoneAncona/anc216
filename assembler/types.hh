@@ -138,7 +138,10 @@ namespace ANC216
         inline std::string to_string()
         {
             std::stringstream ss;
-            ss << RED << "Error: " << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET << "\n\t" << message << "\n\t" << token.value;
+            ss  << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n" 
+                << RED << "error: " << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
+                << "\n\t" << message 
+                << "\n\t" << token.value;
             return ss.str();
         }
     };

@@ -168,12 +168,19 @@ namespace ANC216
             children.push_back(ast);
         }
 
+        bool operator==(const char *str)
+        {
+            if (this->final)
+                return this->token == str;
+            return false;
+        }
+
         std::string to_json()
         {
             if (!final)
                 return "{\"rule\": \"" + rule_name_to_string(rule_name) + "\", \"children\": " + children_to_json() + "}";
             if (token.type == STRING_LITERAL)
-                return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value.substr(1, token.value.length() - 2) + "\"}"; 
+                return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value.substr(1, token.value.length() - 2) + "\"}";
             return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value + "\"}";
         }
     };

@@ -1,6 +1,7 @@
 import module
 
 use lolly as 10
+use asdrubale as 60
 use pippo
 
 
@@ -10,6 +11,7 @@ structure My_struct:
     age: byte
 
 section .text
+org 10 + lolly * 4 + asdrubale
 _code:
     var x: byte = 10    ; create a variable saved into the stack
     var y: [10 byte]
@@ -17,7 +19,7 @@ _code:
     store y[1], 20
     store y[2], 50
     load r0, * 10
-    load r1, & 10 + lolly * 4
+    load r1, & 10 + lolly * 4 + asdrubale
 
 _code:
     "ciao"

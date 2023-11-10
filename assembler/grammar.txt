@@ -27,13 +27,17 @@ Prog ::=
     | Instruction Prog
     | Declaration Prog
     | ExpList Prog
+    | Org Prog
     | "\n" Prog
     | ""
     ;
 
 Section ::=
-    section "." id End
+    "section" "." id End
     ;
+
+Org ::=
+    "org" Expr End
 
 StructDef ::=
     "structure" id ":" ("\n" ? StructEl ",")* "\n" ? StructEl 

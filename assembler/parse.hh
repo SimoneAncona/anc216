@@ -108,6 +108,12 @@ namespace ANC216
                 sub = tokenizer.get_current_token();
                 tokenizer.remove_current_token();
             }
+            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+            {
+                error_stack.push_back({"Expected the end of the line after use as", tokenizer.get_current_token()});
+                skip_line();
+                return;
+            }
             defines.insert({id, sub});
         }
 
@@ -305,6 +311,13 @@ namespace ANC216
                 return ast;
             }
 
+            if (tokenizer.get_current_token() == "org")
+            {
+                ast->insert(org());
+                ast->insert(prog());
+                return ast;
+            }
+
             if (tokenizer.get_current_token().type == IDENTIFIER)
             {
                 if (tokenizer.get_next_token() == ":")
@@ -359,6 +372,27 @@ namespace ANC216
             return nullptr;
         }
 
+        AST *org()
+        {
+            AST *ast = new AST(ORIGIN);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "reserve" || tokenizer.get_next_token() == "$"))
+            {
+                error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                skip_line();
+                return nullptr;
+            }
+            tokenizer.next_token();
+            ast->insert(expression());
+            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
+            {
+                error_stack.push_back({"Expected the end of the line after an origin", tokenizer.get_current_token()});
+                tokenizer.next_token();
+                return nullptr;
+            }
+            return ast;
+        }
+
         AST *section()
         {
             AST *ast = new AST(SECTION);
@@ -366,7 +400,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() != ".")
             {
-                error_stack.push_back({expected_error_message("\".\""), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("\".\""), tokenizer.get_current_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -374,7 +408,7 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token().type != IDENTIFIER)
             {
-                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_next_token()});
+                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
                 tokenizer.next_token();
                 return nullptr;
             }
@@ -973,6 +1007,7 @@ namespace ANC216
                     return ast;
                 }
             case BINARY_OPERATOR:
+                ast = new AST(EXPRESSION);
                 if (tokenizer.get_current_token() != "-" && tokenizer.get_current_token() != "+")
                 {
                     error_stack.push_back({unexpected_error_message("\"" + tokenizer.get_current_token().value + "\""), tokenizer.get_next_token()});

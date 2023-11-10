@@ -140,8 +140,7 @@ namespace ANC216
             std::stringstream ss;
             ss  << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n" 
                 << RED << "error: " << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
-                << "\n\t" << message 
-                << "\n\t" << token.value;
+                << "\n\t" << message;
             return ss.str();
         }
     };

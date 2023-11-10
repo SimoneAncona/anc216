@@ -46,13 +46,15 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    std::cout << res->to_json() << std::endl;
+
     ANC216::Analyzer analyzer(res);
     analyzer.assemble();
 
     if (analyzer.get_error_stack().size() != 0)
     {
         size_t i = 1;
-        for (auto &error : parser.get_error_stack())
+        for (auto &error : analyzer.get_error_stack())
         {
             std::cout << RED << "[" << i << "] " << error.to_string() << std::endl;
             i++;

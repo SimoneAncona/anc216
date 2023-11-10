@@ -21,11 +21,13 @@ namespace ANC216
         ADDRESSING_MODE_MEMORY,
         EXPRESSION_LIST,
         SECTION,
+        ORIGIN,
         PREPROCESSOR,
         STRUCT_DEF,
         LABEL,
         BINARY_OP,
-        UNARY_OP
+        UNARY_OP,
+        NONE,
     };
 
     class AST
@@ -71,6 +73,8 @@ namespace ANC216
                 return "structDefinition";
             case LABEL:
                 return "label";
+            case ORIGIN:
+                return "origin";
             case BINARY_OP:
                 return "binaryOperation";
             case UNARY_OP:
@@ -129,12 +133,14 @@ namespace ANC216
         AST(RuleName rule_name)
         {
             this->rule_name = rule_name;
+            this->token = {"", OTHER, 0, 0, 0, ""};
             final = false;
         }
 
         AST(const Token &token)
         {
             this->token = token;
+            this->rule_name = NONE;
             final = true;
         }
 

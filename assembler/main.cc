@@ -6,6 +6,8 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <vector>
+#include "types.hh"
 
 #define ASSEMBLER_VERSION_MAJOR 1
 #define ASSEMBLER_VERSION_MINOR 0
@@ -14,6 +16,8 @@
 #define ASSEMBLY_STANDARD_VERSION "ANC216.1"
 
 namespace fs = std::filesystem;
+
+void print_error_stack(std::vector<ANC216::Error> &);
 
 int main(int argc, char **argv)
 {
@@ -37,12 +41,7 @@ int main(int argc, char **argv)
     ANC216::AST *res = parser.parse();
     if (parser.get_error_stack().size() != 0)
     {
-        size_t i = 1;
-        for (auto &error : parser.get_error_stack())
-        {
-            std::cout << RED << "[" << i << "] " << error.to_string() << std::endl;
-            i++;
-        }
+        print_error_stack(parser.get_error_stack());
         return -1;
     }
 
@@ -53,13 +52,18 @@ int main(int argc, char **argv)
 
     if (analyzer.get_error_stack().size() != 0)
     {
-        size_t i = 1;
-        for (auto &error : analyzer.get_error_stack())
-        {
-            std::cout << RED << "[" << i << "] " << error.to_string() << std::endl;
-            i++;
-        }
+        print_error_stack(analyzer.get_error_stack());
         return -1;
     }
     return 0;
+}
+
+void print_error_stack(std::vector<ANC216::Error> &error_stack)
+{
+    size_t i = 1;
+    for (auto &error : error_stack)
+    {
+        std::cout << (error.is_warning() ? YELLOW : RED) << "[" << i << "] " << error.to_string() << std::endl;
+        i++;
+    }
 }

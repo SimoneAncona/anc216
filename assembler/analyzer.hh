@@ -8,8 +8,8 @@
 
 #pragma once
 
-#define BYTE_S 8
-#define WORD_S 16
+#define BYTE_S 1
+#define WORD_S 2
 
 namespace ANC216
 {
@@ -64,6 +64,7 @@ namespace ANC216
         Environment env;
 
         size_t current_address;
+        size_t bp_relative_address;
         std::string current_label;
         std::string current_section;
 
@@ -134,6 +135,61 @@ namespace ANC216
 
         void analyze_declaration(AST *ast)
         {
+            if (current_label == "")
+            {
+                error_stack.push_back({"Cannot use var macro here", ast->get_children()[0]->get_token()});
+                return;
+            }
+            auto children = ast->get_children();
+            std::string name = children[1]->get_token().value;
+            if (env.variables.find(name) != env.variables.end())
+            {
+                if (env.variables[name].label == current_label)
+                {
+                    error_stack.push_back({"Redefinition of \"" + name + "\"", children[1]->get_token()});
+                    return;
+                }
+            }
+            size_t size = 1;
+            size_t mul = 1;
+            size_t i = 3;
+            if (children[3]->get_token() == "[")
+            {
+                i = 5;
+                size = eval_expression(children[4]);
+                mul = size;
+            }
+            if (children[i]->get_token().type == IDENTIFIER)
+            {
+                if (env.structures.find(children[i]->get_token().value) == env.structures.end())
+                {
+                    error_stack.push_back({"Undefined structure type \"" + children[i]->get_token().value + "\"", children[i]->get_token()});
+                    return;
+                }
+                size_t struct_size = 0;
+                auto strct = env.structures[children[i]->get_token().value];
+                for (auto el : strct.fields)
+                {
+                    struct_size += el.second;
+                }
+                size *= struct_size;
+            }
+            else
+            {
+                size *= children[i]->get_token() == "byte" ? BYTE_S : WORD_S;
+            }
+            i++;
+            if (children[i]->get_token() == "]")
+                i++;
+
+            if (i >= children.size())
+                return;
+            int res = eval_expression(children[i + 1]);
+            if (res >= pow(2, (8 * size)) || res < -pow(2, (8 * size - 1)))
+            {
+                error_stack.push_back({"The value exceeds the size of the variable", children[i]->get_token(), true});
+                return;
+            }
         }
 
         void analyze_label(AST *ast)
@@ -155,6 +211,7 @@ namespace ANC216
             }
             env.labels[ast->get_children()[i]->get_token().value] = {current_address, is_local, ast->get_children()[i]->get_token().module_name};
             current_label = name;
+            bp_relative_address = 0;
         }
 
         void analyze_instructions(AST *ast)

@@ -13,7 +13,7 @@ structure My_struct:
 section .text
 org 10 + lolly * 4 + asdrubale
 _code:
-    var x: byte = 10    ; create a variable saved into the stack
+    var x: byte = 28    ; create a variable saved into the stack
     var y: [10 byte]
     store y[0], 500
     store y[1], 20

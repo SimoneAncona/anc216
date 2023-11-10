@@ -118,11 +118,13 @@ namespace ANC216
     public:
         std::string message;
         Token token;
+        bool warning;
 
-        Error(std::string message, const Token token)
+        Error(std::string message, const Token token, bool warning = false)
         {
             this->message = message;
             this->token = token;
+            this->warning = warning;
         }
 
         inline size_t line()
@@ -139,9 +141,14 @@ namespace ANC216
         {
             std::stringstream ss;
             ss  << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n" 
-                << RED << "error: " << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
+                << (warning ? YELLOW + std::string("warning: ") : RED + std::string("error: ")) << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
                 << "\n\t" << message;
             return ss.str();
+        }
+
+        inline bool is_warning()
+        {
+            return warning;
         }
     };
 

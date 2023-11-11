@@ -1,0 +1,66 @@
+ANC File System 1
+
+The ANC File System is dived in 3 sections:
+- Header & boot
+- Block info
+- Directories
+- Data
+
+ALL DATA ARE BIG ENDIAN
+
+Header:
+        0        1        2        3        4        5        6        7        8        9        A        B        C        D        E        F
+        |0xFE    |version |boot binary... 255 times                                                                          ...
+
+Where:
+version        is 0x01
+boot binary    255 bytes of boot instructions
+
+There are 196 clusters each of 323 bytes
+Block info:
+        0        1        2        3        4        5        6        7        8        9        A        B        C        D        E        F
+        |dir addr|used    |... 196 * 2 times                                                                                          ...
+Where:
+dir addr        The address to the directory info
+used            How that cluster is used
+                0x00 empty
+                0x01 file
+                0x02 continuation of a file
+
+Directories:
+        0        1        2        3        4        5        6        7        8        9        A        B        C        D        E        F
+        |upper di|D       |i       |r       |n       |a       |m       |e       |0       |0       |0       |0       |0       |0       |0       |0
+        | ... 16 * 96 times                                                                                                                    ...
+
+Where:
+upper dir       is the address to the upper directory (value from 1 to 96, 0 is the root directory)
+Dirname         15 bytes of directory name (if the first byte is 0, there is no directory)
+
+Data:
+There are 2 major types of cluster, the file and the continuation of a file.
+File:
+        0        1        2        3        4        5        6        7        8        9        A        B        C        D        E        F
+        |F       |i       |l       |e       |n       |a       |m       |e       |0       |0       |0       |0       |0       |0       |0       |0
+        |0       |0       |0       |e       |x       |t       |next    |size             |data ...  297 times                                                    ...
+
+Where:
+Filename        is the name of the file (19 bytes)
+ext             is the extension (3 bytes)
+next            is the block id for the continuation of the file (0 if there is no continuation)
+size            is the size of the file in this cluster
+
+
+Continuation of a file:
+        0        1        2        3        4        5        6        7        8        9        A        B        C        D        E        F
+        |next    |size             |data ... 319 times                                                                                                           ...
+
+Where:
+next            is the block id for the continuation of the file (0 if there is no continuation)
+size            is the size of the file in this cluster
+
+
+
+
+
+                                                                                                                                    Simone Ancona
+                                                                                                                                    2023 11 11

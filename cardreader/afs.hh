@@ -33,15 +33,16 @@ namespace ANC216
     class AFS
     {
     private:
-        char buffer[65'536];
-        const char* current_dir;
+        char buffer[65'536] = {0};
+        const char *current_dir;
         char current_dir_addr;
         bool is_corrupt;
-        std::fstream &file;
+        std::fstream *file;
 
         bool check_corrupt()
         {
-            if (buffer[0] != MAGIC_NUMBER) return false;
+            if (buffer[0] != MAGIC_NUMBER)
+                return false;
         }
 
         char get_upper_dir(char dir_addr)
@@ -52,10 +53,8 @@ namespace ANC216
         std::string get_dirname(size_t index)
         {
             std::string res = "";
-            if (!isalpha(buffer[index])) return res;
             for (size_t i = index; i < index + DIR_NAME_SIZE; i++)
             {
-                if (!isalnum(buffer[i])) return "";
                 res += buffer[i];
             }
             return res;
@@ -78,22 +77,25 @@ namespace ANC216
             std::string res = "";
             for (size_t i = index; i < index + FILE_NAME_SIZE; i++)
             {
-                if (buffer[i] == 0) break;
+                if (buffer[i] == 0)
+                    break;
                 res += buffer[i];
             }
             for (size_t i = index + FILE_NAME_SIZE; i < index + FILE_NAME_SIZE + FILE_EXT_SIZE; i++)
             {
-                if (buffer[i] == 0) break;
+                if (buffer[i] == 0)
+                    break;
                 res += buffer[i];
             }
             return res;
         }
 
     public:
-        AFS(std::fstream &file)
-            :file(file)
+        AFS(std::fstream *fl)
         {
-            this->file.read(buffer, sizeof(buffer));
+            this->file = fl;
+            this->file->read(buffer, sizeof(buffer));
+            if (buffer[0] =! MAGIC_NUMBER) buffer[0] = MAGIC_NUMBER;
             this->is_corrupt = check_corrupt();
             this->current_dir = "";
             current_dir_addr = 0;
@@ -134,9 +136,20 @@ namespace ANC216
             return dirs;
         }
 
-        void change_directory(const std::string& dirname)
+        bool change_directory(const std::string &dirname)
         {
-
+            std::string dir;
+            char j = 1;
+            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
+            {
+                dir = get_dirname(i + 1);
+                if (dir == dirname)
+                {
+                    current_dir_addr = j;
+                    return true;
+                }
+            }
+            return false;
         }
 
         std::vector<char> get_file_content(const std::string &filename)
@@ -150,12 +163,12 @@ namespace ANC216
 
         void save()
         {
-            this->file.write(buffer, sizeof(buffer));
+            file->write(buffer, sizeof(buffer));
         }
 
         void close()
         {
-            this->file.close();
+            this->file->close();
         }
 
         bool get_corrupted()
@@ -166,7 +179,7 @@ namespace ANC216
         std::vector<std::string> get_files()
         {
             std::vector<std::string> res;
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++) 
+            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
             {
                 if (buffer[i] == current_dir_addr && buffer[i + 1] == CLUSTER_USED)
                     res.push_back(get_filename(get_block_address(block_id)));
@@ -176,11 +189,20 @@ namespace ANC216
 
         int touch(const std::string &fname)
         {
-            std::string extension = fname.substr(fname.find_first_of("."));
-            std::string filename = fname.substr(0, fname.find_first_of("."));
+            std::string extension;
+            std::string filename = fname;
+            if (fname.find_first_of(".") == std::string::npos)
+            {
+                extension = "";
+            }
+            else
+            {
+                extension = fname.substr(fname.find_first_of("."));
+                filename = fname.substr(0, fname.find_first_of("."));
+            }
             for (char ch : filename)
             {
-                if (!isalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
+                if (!iswalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
                     return INVALID_DIRNAME_FILENAME;
             }
             if (filename.empty())
@@ -195,16 +217,20 @@ namespace ANC216
                 if (file == filename)
                     return DIRNAME_FILENAME_ALREADY_EXIST;
             }
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
+            for (size_t i = BLOCK_INFO_ADDRESS, j = 0, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
             {
                 if (buffer[i + 1] == CLUSTER_UNUSED)
                 {
                     buffer[i] = current_dir_addr;
                     buffer[i + 1] = CLUSTER_USED;
-                    for (size_t j = get_block_address(block_id), k = 0; j < get_block_address(block_id) + FILE_NAME_SIZE; j++, k++)
-                        buffer[j] = filename[k];
-                    for (size_t j = get_block_address(block_id) + FILE_NAME_SIZE, k = 0; j < get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE; j++, k++)
-                        buffer[j] = extension[k];
+                    for (j = 0; j < filename.size(); j++)
+                        buffer[j + get_block_address(block_id)] = filename[j];
+                    for (j++; j < FILE_NAME_SIZE; j++)
+                        buffer[j + get_block_address(block_id)] = 0;
+                    for (j = 0; j < extension.size(); j++)
+                        buffer[j + get_block_address(block_id) + FILE_NAME_SIZE] = filename[j];
+                    for (j++; j < FILE_EXT_SIZE; j++)
+                        buffer[j + get_block_address(block_id) + FILE_EXT_SIZE] = 0;
                     buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE] = 0;
                     buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] = 0;
                     buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] = 0;
@@ -214,11 +240,11 @@ namespace ANC216
             return NO_MORE_SPACE;
         }
 
-        int make_dir(const std::string& dirname)
+        int make_dir(const std::string &dirname)
         {
             for (char ch : dirname)
             {
-                if (!isalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
+                if (!iswalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
                     return INVALID_DIRNAME_FILENAME;
             }
             if (dirname.empty())
@@ -231,17 +257,25 @@ namespace ANC216
                 if (dir == dirname)
                     return DIRNAME_FILENAME_ALREADY_EXIST;
             }
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1)
+            for (size_t i = DIR_INFO_ADDRESS, j = 0; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1)
             {
                 if (buffer[i] == 0 && buffer[i + 1] == 0)
                 {
                     buffer[i] = current_dir_addr;
-                    for (size_t j = 0; j < DIR_NAME_SIZE; j++)
+                    i++;
+                    for (j = 0; j < dirname.size(); j++)
                         buffer[i + j] = dirname[j];
+                    for (j++; j < DIR_NAME_SIZE; j++)
+                        buffer[i + j] = 0;
                     return 0;
                 }
             }
             return NO_MORE_SPACE;
+        }
+
+        char *get_buffer()
+        {
+            return buffer;
         }
     };
 }

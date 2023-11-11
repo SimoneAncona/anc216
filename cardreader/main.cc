@@ -33,14 +33,17 @@ int main(int argc, char **argv)
         std::cout << RED << "error: " << RESET << "Cannot find " << argv[1] << std::endl;
         return -1;
     }
-    std::fstream file(argv[1], std::ios::in | std::ios::binary | std::ios::out);
-    ANC216::AFS afs(file);
+    std::fstream file;
+    file.open(argv[1], std::ios::in | std::ios::binary | std::ios::out);
+    ANC216::AFS afs(&file);
     if (afs.get_corrupted())
     {
         std::cout << RED << "error: " << RESET << "Corrupted card" << std::endl;
         return -1;
     }
     start_console_loop(afs);
+    file.write(afs.get_buffer(), sizeof(char) * 65'536);
+    file.close();
     return 0;
 }
 
@@ -90,8 +93,6 @@ void start_console_loop(ANC216::AFS &fs)
         }
         if (input.starts_with("exit "))
         {
-            fs.save();
-            fs.close();
             return;
         }
         std::cerr << RED << "error: " << RESET << "Unrecognized command" << std::endl;
@@ -114,8 +115,8 @@ void help()
 
 void mkdir(ANC216::AFS &fs, std::string &input)
 {
-    auto arg = input.substr(input.find_first_of(" "));
-    if (arg.empty())
+    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 7);
+    if (arg.empty() || arg == " ")
     {
         std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
         return;
@@ -139,14 +140,26 @@ void mkdir(ANC216::AFS &fs, std::string &input)
 }
 
 void cd(ANC216::AFS &fs, std::string &input)
-{}
+{
+    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
+    if (arg.empty() || arg == " ")
+    {
+        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
+        return;
+    }
+    if (!fs.change_directory(arg))
+    {
+        std::cerr << RED << "error: " << RESET << "Cannot find directory " << arg << std::endl;
+    }
+}
+
 void cat(ANC216::AFS &fs, std::string &input)
 {}
 
 void touch(ANC216::AFS &fs, std::string &input)
 {
-    auto arg = input.substr(input.find_first_of(" "));
-    if (arg.empty())
+    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 7);
+    if (arg.empty() || arg == " ")
     {
         std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
         return;
@@ -173,4 +186,12 @@ void ls(ANC216::AFS &fs, std::string &input)
 {
     auto subdirs = fs.get_sub_diectories();
     auto subfiles = fs.get_files();
+    for (auto &dir : subdirs)
+    {
+        std::cout << CYAN << dir << RESET << std::endl;
+    }
+    for (auto &file : subfiles)
+    {
+        std::cout << file << RESET << std::endl;
+    }
 }

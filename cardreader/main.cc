@@ -17,9 +17,11 @@ void cat(ANC216::AFS &, std::string &);
 void touch(ANC216::AFS &, std::string &);
 void ls(ANC216::AFS &, std::string &);
 void rm(ANC216::AFS &, std::string &);
-void rmdir(ANC216::AFS &, std::string &);
 void find(ANC216::AFS &, std::string &);
+void du(ANC216::AFS &, std::string &);
 void help();
+
+std::string tabs(const std::string &);
 
 int main(int argc, char **argv)
 {
@@ -38,7 +40,7 @@ int main(int argc, char **argv)
     }
     std::ifstream ifile(argv[1], std::ios::binary);
     ANC216::AFS afs(ifile);
-    std::ofstream ofile(argv[1], std::ios::binary | std::ios::app);
+    std::ofstream ofile(argv[1], std::ios::binary);
     if (afs.get_corrupted())
     {
         std::cout << RED << "error: " << RESET << "Corrupted card" << std::endl;
@@ -104,32 +106,42 @@ void start_console_loop(ANC216::AFS &fs)
             rm(fs, input);
             continue;
         }
-        if (command == "rmdir")
-        {
-            rmdir(fs, input);
-            continue;
-        }
         if (command == "find")
         {
             find(fs, input);
+            continue;
+        }
+        if (command == "du")
+        {
+            du(fs, input);
             continue;
         }
         std::cerr << RED << "error: " << RESET << "Unrecognized command" << std::endl;
     }
 }
 
+std::string tabs(const std::string &str)
+{
+    std::string res = "";
+    for (int i = 0; i < 4 - str.size() / 8; i++)
+    {
+        res += "\t";
+    }
+    return res;
+}
+
 void help()
 {
     std::cout <<
-    CYAN << "cd [dir]" << RESET << "\t\t" << "change current directory" << "\n" <<
+    CYAN << "cd <dir>" << RESET << "\t\t" << "change current directory" << "\n" <<
+    CYAN << "du <file | dir>" << RESET << "\t\t" << "disk usage" << "\n" <<
     CYAN << "exit" << RESET << "\t\t\t" << "save end exit" << "\n" <<
     CYAN << "find <file>" << RESET << "\t\t" << "find a file" << "\n" <<
     CYAN << "get <file>" << RESET << "\t\t" << "print the file content" << "\n" <<
     CYAN << "help" << RESET << "\t\t\t" << "print this list" << "\n" <<
     CYAN << "ls" << RESET << "\t\t\t" << "show the content of the current directory" << "\n" <<
     CYAN << "mkdir <name>" << RESET << "\t\t" << "create a new directory" << "\n" <<
-    CYAN << "rm <file>" << RESET << "\t\t" << "remove a file" << "\n" <<
-    CYAN << "rmdir <name>" << RESET << "\t\t" << "remove directory" << "\n" <<
+    CYAN << "rm <file>" << RESET << "\t\t" << "remove a file or a directory" << "\n" <<
     CYAN << "set <file> <real file>" << RESET << "\t" << "set the content of a file based on real file" << "\n" <<
     CYAN << "touch <name>" << RESET << "\t\t" << "create a new file" << "\n" <<
     "";
@@ -147,7 +159,7 @@ void mkdir(ANC216::AFS &fs, std::string &input)
     switch (res)
     {
     case DIRNAME_FILENAME_ALREADY_EXIST:
-        std::cerr << RED << "error: " << RESET << "Directory already exist" << std::endl;
+        std::cerr << RED << "error: " << RESET << "File or directory already exist" << std::endl;
         return;
     case DIRNAME_FILENAME_TOO_LONG:
         std::cerr << RED << "error: " << RESET << "Directory name is too long" << std::endl;
@@ -175,6 +187,30 @@ void cd(ANC216::AFS &fs, std::string &input)
     }
 }
 
+void du(ANC216::AFS &fs, std::string &input)
+{
+    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
+    if (arg.empty() || arg == " ")
+    {
+        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
+        return;
+    }
+    auto res = fs.disk_usage(arg);
+    if (res.empty())
+    {
+        std::cerr << RED << "error: " << RESET << "Cannot find file or directory " << arg << std::endl;
+    }
+    size_t real = 0;
+    size_t file = 0;
+    for (auto &s : res)
+    {
+        real += s.second.first;
+        file += s.second.second;
+        std::cout << s.first << "\t" << tabs(s.first) << "real: " << CYAN << s.second.first << RESET << "\tfile: " << CYAN << s.second.second << RESET << std::endl;
+    }
+    std::cout << "\nreal: " << CYAN << real << RESET << "\tfile: " << CYAN << file << RESET << std::endl; 
+}
+
 void rm(ANC216::AFS &fs, std::string &input)
 {
     auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
@@ -183,9 +219,9 @@ void rm(ANC216::AFS &fs, std::string &input)
         std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
         return;
     }
-    if (!fs.remove_file(arg))
+    if (!fs.remove(arg))
     {
-        std::cerr << RED << "error: " << RESET << "Cannot find the file " << arg << std::endl;
+        std::cerr << RED << "error: " << RESET << "Cannot find the file or directory " << arg << std::endl;
     }
 }
 
@@ -205,23 +241,10 @@ void find(ANC216::AFS &fs, std::string &input)
     }
     for (auto e : res)
     {
-        std::cout << e << "\n";
+        std::cout << "./" << e << "\n";
     }
 }
 
-void rmdir(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 7);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    if (!fs.remove_dir(arg))
-    {
-        std::cerr << RED << "error: " << RESET << "Cannot find directory " << arg << std::endl;
-    }
-}
 
 void cat(ANC216::AFS &fs, std::string &input)
 {}
@@ -238,7 +261,7 @@ void touch(ANC216::AFS &fs, std::string &input)
     switch (res)
     {
     case DIRNAME_FILENAME_ALREADY_EXIST:
-        std::cerr << RED << "error: " << RESET << "File already exist" << std::endl;
+        std::cerr << RED << "error: " << RESET << "File or directory already exist" << std::endl;
         return;
     case DIRNAME_FILENAME_TOO_LONG:
         std::cerr << RED << "error: " << RESET << "File name is too long" << std::endl;

@@ -1,19 +1,29 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <tuple>
+#include <map>
 
 #pragma once
 
 namespace fs = std::filesystem;
 
 #define MAGIC_NUMBER 0xFE
-#define BLOCK_INFO_ADDRESS 257
-#define DIR_INFO_ADDRESS 649
-#define DATA_ADDRESS 2185
+#define VERSION 0x01
 
 #define DIR_NAME_SIZE 15
 #define FILE_NAME_SIZE 17
 #define FILE_EXT_SIZE 3
+#define CLUSTER_SIZE 323
+
+#define MAX_CLUSTER_COUNT 196
+#define MAX_DIR_COUNT 96
+
+#define BOOTX_SIZE 255
+#define BLOCK_INFO_ADDRESS 2 + BOOTX_SIZE
+#define DIR_INFO_ADDRESS BLOCK_INFO_ADDRESS + (MAX_CLUSTER_COUNT * 2)
+#define DATA_ADDRESS DIR_INFO_ADDRESS + (DIR_NAME_SIZE + 1) * MAX_DIR_COUNT
+
 
 #define CLUSTER_UNUSED 0
 #define CLUSTER_USED 1
@@ -26,7 +36,7 @@ namespace fs = std::filesystem;
 #define FILENAME_EXTENSION_TOO_LONG 5
 #define NO_MORE_SPACE -1
 
-#define get_block_address(blockid) ((blockid - 1) * 322) + DATA_ADDRESS
+#define get_block_address(blockid) ((blockid - 1) * CLUSTER_SIZE) + DATA_ADDRESS
 #define get_real_dir_address(dirid) ((dirid - 1) * (DIR_NAME_SIZE + 1)) + DIR_INFO_ADDRESS
 
 namespace ANC216
@@ -39,6 +49,19 @@ namespace ANC216
         char current_dir_addr;
         bool is_corrupt;
         std::ifstream &file;
+
+        char get_dir_addr(const std::string &dirname, char diraddr)
+        {
+            char j = 1;
+            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
+            {
+                if (buffer[i] == diraddr && get_dirname(get_real_dir_address(j) + 1) == dirname)
+                {
+                   return j;
+                }
+            }
+            return -1;
+        }
 
         bool check_corrupt()
         {
@@ -64,11 +87,13 @@ namespace ANC216
             return res;
         }
 
-        size_t find_file_current_dir(const std::string &filename)
+        size_t find_file_current_dir(const std::string &filename, char diraddr = -1)
         {
+            if (diraddr == -1)
+                diraddr = current_dir_addr;
             for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
             {
-                if (buffer[i] == current_dir_addr && buffer[i + 1] == CLUSTER_USED && filename == get_filename(get_block_address(block_id)))
+                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && filename == get_filename(get_block_address(block_id)))
                 {
                     return get_block_address(block_id);
                 }
@@ -96,6 +121,36 @@ namespace ANC216
             return res;
         }
 
+        std::pair<size_t, size_t> get_file_size(size_t index)
+        {
+            size_t real = CLUSTER_SIZE;
+            size_t file = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] << 8 | buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 1];
+
+            if (buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE] != 0)
+            {
+                auto size = get_next_size(buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE]);
+                real += size.first;
+                file = size.second;
+            }
+
+            return {real, file};
+        }
+
+        std::pair<size_t, size_t> get_next_size(size_t index)
+        {
+            size_t real = CLUSTER_SIZE;
+            size_t file = buffer[index + 2] << 8 | buffer[index + 1];
+
+            if (buffer[index] != 0)
+            {
+                auto size = get_next_size(buffer[index]);
+                real += size.first;
+                file = size.second;
+            }
+
+            return {real, file};
+        }
+
     public:
         AFS(std::ifstream &fl)
             : file(fl)
@@ -103,6 +158,7 @@ namespace ANC216
             this->file.read((char*)buffer, sizeof(buffer));
             file.close();
             buffer[0] = MAGIC_NUMBER;
+            buffer[1] = VERSION;
             // this->is_corrupt = check_corrupt();
             this->is_corrupt = false;
             this->current_dir = "";
@@ -154,6 +210,15 @@ namespace ANC216
             return res;
         }
 
+        bool remove(std::string name, char diraddr = -1)
+        {
+            if (diraddr == -1)
+                diraddr = current_dir_addr;
+            if (get_dir_addr(name, diraddr) != -1)
+                return remove_dir(name, diraddr);
+            return remove_file(name, diraddr);
+        }
+
         bool remove_file(std::string file, char diraddr = -1)
         {
             if (diraddr == -1)
@@ -163,13 +228,51 @@ namespace ANC216
                 if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
                 {
                     buffer[i + 1] = CLUSTER_UNUSED;
+                    for (size_t j = get_block_address(block_id); j < get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE; j++)
+                        buffer[j] = 0;
                     return true;
                 }
             }
             return false;
         }
 
-        bool remove_dir(std::string dirname, char diraddr = -1)
+        std::map<std::string, std::pair<size_t, size_t>> disk_usage(const std::string &name, char diraddr = -1)
+        {
+            if (diraddr == -1)
+                diraddr = current_dir_addr;
+            char addr;
+            if (name == "." || name == "./")
+                addr = current_dir_addr;
+            else if (name == "/" || name == "\\")
+                addr = 0;
+            else
+                addr = get_dir_addr(name, diraddr);
+            if (addr != -1)
+            {
+                std::map<std::string, std::pair<size_t, size_t>> res;
+                std::map<std::string, std::pair<size_t, size_t>> r;
+                auto dirs = get_sub_diectories(addr);
+                auto files = get_files(addr);
+                for (auto &dir : dirs)
+                {
+                    r = disk_usage(dir, addr);
+                    for (auto s : r)
+                        res[s.first] = s.second;
+                }
+                for (auto &file : files)
+                {
+                    r = disk_usage(file, addr);
+                    for (auto s : r)
+                        res[s.first] = s.second;
+                }
+                return res;
+            }
+            auto file_addr = find_file_current_dir(name, diraddr);
+            if (file_addr == -1) return {};
+            return {{diraddr == 0 ? "./" + name : "./" + get_dirname(get_real_dir_address(diraddr) + 1) + "/" + name, get_file_size(file_addr)}};
+        }
+
+        bool remove_dir(const std::string &dirname, char diraddr = -1)
         {
             if (diraddr == -1)
                 diraddr = current_dir_addr;
@@ -220,6 +323,10 @@ namespace ANC216
         {
             if (diraddr == -1)
                 diraddr = current_dir_addr;
+            if (dirname == "./" || dirname == ".")
+            {
+                return true;
+            }
             if (dirname == "/")
             {
                 current_dir_addr = 0;
@@ -309,6 +416,12 @@ namespace ANC216
                 if (file == fname)
                     return DIRNAME_FILENAME_ALREADY_EXIST;
             }
+            auto dirs = get_sub_diectories();
+            for (auto dir : dirs)
+            {
+                if (dir == fname)
+                    return DIRNAME_FILENAME_ALREADY_EXIST;
+            }
             for (size_t i = BLOCK_INFO_ADDRESS, j, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
             {
                 if (buffer[i + 1] == CLUSTER_UNUSED)
@@ -343,6 +456,12 @@ namespace ANC216
                 return DIRNAME_FILENAME_TOO_LONG;
             if (dirname.size() > DIR_NAME_SIZE)
                 return DIRNAME_FILENAME_TOO_LONG;
+            auto files = get_files();
+            for (auto file : files)
+            {
+                if (file == dirname)
+                    return DIRNAME_FILENAME_ALREADY_EXIST;
+            }
             auto dirs = get_sub_diectories();
             for (auto dir : dirs)
             {

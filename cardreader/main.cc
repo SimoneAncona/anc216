@@ -292,7 +292,22 @@ void set(ANC216::AFS &fs, std::string &input)
 
 void get(ANC216::AFS &fs, std::string &input)
 {
-
+    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 5);
+     if (arg.empty() || arg == " ")
+    {
+        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
+        return;
+    }
+    std::string content;
+    auto res = fs.get_content(arg, content);
+    switch (res)
+    {
+    case INVALID_DIRNAME_FILENAME:
+        std::cerr << RED << "error: " << RESET << "Cannot find file " << arg << std::endl;
+        return;
+    default:
+        std::cout << content;
+    }
 }
 
 void touch(ANC216::AFS &fs, std::string &input)

@@ -180,6 +180,19 @@ namespace ANC216
             return NO_MORE_SPACE;
         }
 
+        std::string get_next_content(size_t index)
+        {
+            std::string res;
+            size_t size = buffer[index + 1] << 8 | buffer[index + 2];
+            for (size_t i = 3; i < size + 3; i++)
+            {
+                res += buffer[index + i];
+            }
+            if (buffer[index] != 0)
+                return res + get_next_content(get_block_address(buffer[index]));
+            return res;
+        }
+
     public:
         AFS(std::ifstream &fl)
             : file(fl)
@@ -246,6 +259,25 @@ namespace ANC216
             if (get_dir_addr(name, diraddr) != -1)
                 return remove_dir(name, diraddr);
             return remove_file(name, diraddr);
+        }
+
+        int get_content(const std::string &file, std::string &content, char diraddr = -1)
+        {
+            if (diraddr == -1)
+                diraddr = current_dir_addr;
+            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
+            {
+                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
+                {
+                    size_t size = buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] << 8 | buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2];
+                    for (size_t i = FILE_NAME_SIZE + FILE_EXT_SIZE + 3; i < size + FILE_NAME_SIZE + FILE_EXT_SIZE + 3; i++)
+                        content += buffer[get_block_address(block_id) + i];
+                    if (buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE] != 0)
+                        content += get_next_content(get_block_address(buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE]));
+                    return 0;
+                }
+            }
+            return INVALID_DIRNAME_FILENAME;
         }
 
         int set_content(const std::string &file, std::ifstream &content, char diraddr = -1)

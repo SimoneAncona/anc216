@@ -13,7 +13,8 @@ namespace fs = std::filesystem;
 void start_console_loop(ANC216::AFS &);
 void mkdir(ANC216::AFS &, std::string  &);
 void cd(ANC216::AFS &, std::string &);
-void cat(ANC216::AFS &, std::string &);
+void get(ANC216::AFS &, std::string &);
+void set(ANC216::AFS &, std::string &);
 void touch(ANC216::AFS &, std::string &);
 void ls(ANC216::AFS &, std::string &);
 void rm(ANC216::AFS &, std::string &);
@@ -38,6 +39,7 @@ int main(int argc, char **argv)
         std::cout << RED << "error: " << RESET << "Cannot find " << argv[1] << std::endl;
         return -1;
     }
+    fs::current_path(fs::absolute(argv[1]).parent_path());
     std::ifstream ifile(argv[1], std::ios::binary);
     ANC216::AFS afs(ifile);
     std::ofstream ofile(argv[1], std::ios::binary);
@@ -82,9 +84,9 @@ void start_console_loop(ANC216::AFS &fs)
             cd(fs, input);
             continue;
         }
-        if (command == "cat")
+        if (command == "get")
         {
-            cat(fs, input);
+            get(fs, input);
             continue;
         }
         if (command == "touch")
@@ -114,6 +116,16 @@ void start_console_loop(ANC216::AFS &fs)
         if (command == "du")
         {
             du(fs, input);
+            continue;
+        }
+        if (command == "set")
+        {
+            set(fs, input);
+            continue;
+        }
+        if (command == "get")
+        {
+            get(fs, input);
             continue;
         }
         std::cerr << RED << "error: " << RESET << "Unrecognized command" << std::endl;
@@ -246,8 +258,42 @@ void find(ANC216::AFS &fs, std::string &input)
 }
 
 
-void cat(ANC216::AFS &fs, std::string &input)
-{}
+void set(ANC216::AFS &fs, std::string &input)
+{
+    input = input.substr(0, input.find_last_of(" "));
+    auto arg1 = input.substr(input.find_first_of(" ") + 1, input.find_last_of(" ") - input.find_first_of(" ") - 1);
+    auto arg2 = input.substr(input.find_last_of(" ") + 1, input.length() - input.find_last_of(" "));
+    if (arg1.empty() || arg1 == " " || arg2.empty() || arg2 == " ")
+    {
+        std::cerr << RED << "error: " << RESET << "Expected two arguments" << std::endl;
+        return;
+    }
+
+    if (!fs::exists(arg2))
+    {
+        std::cerr << RED << "error: " << RESET << "File " << arg2 << " not found" << std::endl;
+        return;
+    }
+    std::ifstream infile(arg2, std::ios::binary);
+    auto res = fs.set_content(arg1, infile);
+    switch (res)
+    {
+    case INVALID_DIRNAME_FILENAME:
+        std::cerr << RED << "error: " << RESET << "Cannot find file " << arg2 << std::endl;
+        return;
+    case NO_MORE_SPACE:
+        std::cerr << RED << "error: " << RESET << "No more space" << std::endl;
+        return;
+    default:
+        std::cout << "File updated" << std::endl;
+        return;
+    }
+}
+
+void get(ANC216::AFS &fs, std::string &input)
+{
+
+}
 
 void touch(ANC216::AFS &fs, std::string &input)
 {

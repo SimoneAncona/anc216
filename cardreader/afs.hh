@@ -124,13 +124,13 @@ namespace ANC216
         std::pair<size_t, size_t> get_file_size(size_t index)
         {
             size_t real = CLUSTER_SIZE;
-            size_t file = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] << 8 | buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 1];
+            size_t file = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] << 8 | buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 2];
 
             if (buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE] != 0)
             {
-                auto size = get_next_size(buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE]);
+                auto size = get_next_size(get_block_address(buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE]));
                 real += size.first;
-                file = size.second;
+                file += size.second;
             }
 
             return {real, file};
@@ -139,16 +139,45 @@ namespace ANC216
         std::pair<size_t, size_t> get_next_size(size_t index)
         {
             size_t real = CLUSTER_SIZE;
-            size_t file = buffer[index + 2] << 8 | buffer[index + 1];
+            size_t file = buffer[index + 1] << 8 | buffer[index + 2];
 
             if (buffer[index] != 0)
             {
-                auto size = get_next_size(buffer[index]);
+                auto size = get_next_size(get_block_address(buffer[index]));
                 real += size.first;
-                file = size.second;
+                file += size.second;
             }
 
             return {real, file};
+        }
+
+        int resize_write_file(std::ifstream &file, size_t old_block_id, bool is_continue = false)
+        {
+            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
+            {
+                if (buffer[i + 1] == CLUSTER_UNUSED)
+                {
+                    buffer[i + 1] = CLUSTER_CONTINUE;
+                    buffer[get_block_address(old_block_id) + (is_continue ? 0 : FILE_NAME_SIZE + FILE_EXT_SIZE)] = block_id;
+                    short j;
+                    int value;
+                    for (j = 3; j < CLUSTER_SIZE; j++)
+                    {
+                        value = file.get();
+                        if (value == EOF) 
+                            break;
+                        buffer[get_block_address(block_id) + j] = (unsigned char) value;
+                    }
+                    buffer[get_block_address(block_id) + 1] = (unsigned char) ((j - 3) >> 8);
+                    buffer[get_block_address(block_id) + 2] = (unsigned char) ((j - 3) & 0xFF);
+                    if (!file.eof())
+                    {
+                        resize_write_file(file, block_id, true);
+                    }
+                    return 0;
+                }
+            }
+            return NO_MORE_SPACE;
         }
 
     public:
@@ -217,6 +246,34 @@ namespace ANC216
             if (get_dir_addr(name, diraddr) != -1)
                 return remove_dir(name, diraddr);
             return remove_file(name, diraddr);
+        }
+
+        int set_content(const std::string &file, std::ifstream &content, char diraddr = -1)
+        {
+            if (diraddr == -1)
+                diraddr = current_dir_addr;
+
+            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
+            {
+                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
+                {
+                    int value;
+                    short j;
+                    for (j = FILE_NAME_SIZE + FILE_EXT_SIZE + 3; j < CLUSTER_SIZE; j++)
+                    {
+                        value = content.get();
+                        if (value == EOF) return 0;
+                        buffer[j + get_block_address(block_id)] = value;
+                    }
+                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] = (unsigned char) ((j - (FILE_NAME_SIZE + FILE_EXT_SIZE + 3)) >> 8);
+                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] = (unsigned char) ((j - (FILE_NAME_SIZE + FILE_EXT_SIZE + 3)) & 0xFF);
+                    if (!content.eof())
+                    {
+                        return resize_write_file(content, block_id);
+                    }
+                }
+            }
+            return INVALID_DIRNAME_FILENAME;
         }
 
         bool remove_file(std::string file, char diraddr = -1)

@@ -15,7 +15,7 @@ namespace ANC216
         Token current;
         Token next;
         std::string program;
-        std::vector<Error> &error_stack;
+        std::vector<Error> error_stack;
         std::vector<Token> tokens;
         std::string module_name;
         size_t i;
@@ -27,7 +27,7 @@ namespace ANC216
             if (index >= program.length())
                 return {"", END, index, line, column, module_name};
 
-            for (; (program[index] == '\r' || program[index] == '\t' || program[index] == ' ') && index < program.length(); index++)
+            for (; (program[index] == '\r' || program[index] == '\t' || program[index] == ' ') && index < program.length(); index++, column++)
                 ;
 
             if (index >= program.length())
@@ -257,8 +257,7 @@ namespace ANC216
         }
 
     public:
-        Tokenizer(const std::string &str, std::vector<Error> &errors, std::string module_name = "_main")
-            : error_stack(errors)
+        Tokenizer(const std::string &str, std::string module_name = "_main")
         {
             program = str;
             this->module_name = module_name;
@@ -343,6 +342,11 @@ namespace ANC216
                 current = token;
                 tokens[i] = token;
             }
+        }
+
+        inline std::vector<Error> get_error_stack()
+        {
+            return error_stack;
         }
 
         inline size_t get_index()

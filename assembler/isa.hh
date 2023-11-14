@@ -55,7 +55,76 @@ namespace ANC216
         MTU,
     };
 
-    const std::map<std::string, std::pair<unsigned short, std::vector<AddressingModeFamily>>> isa =
+    AddressingModeFamily get_family(AddressingMode mode)
+    {
+        switch (mode)
+        {
+        case IMPLIED_MODE:
+            return IMPLIED;
+        case IMMEDIATE_BYTE:
+            return IMMEDIATE;
+        case IMMEDIATE_WORD:
+            return IMMEDIATE;
+        case REGISTER_ACCESS_MODE:
+            return REGISTER_ACCESS;
+        case REGISTER_TO_REGISTER_MODE:
+            return REGISTER_TO_REGISTER;
+        case MEMORY_ABSOULTE:
+            return MEMORY_RELATED;
+        case MEMORY_ABSOULTE_INDEXED:
+            return MEMORY_RELATED;
+        case MEMORY_INDIRECT:
+            return MEMORY_RELATED;
+        case MEMORY_INDIRECT_INDEXED:
+            return MEMORY_RELATED;
+        case MEMORY_RELATIVE_TO_PC:
+            return MEMORY_RELATED;
+        case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
+            return MEMORY_RELATED;
+        case MEMORY_RELATIVE_TO_BP:
+            return MEMORY_RELATED;
+        case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
+            return MEMORY_RELATED;
+        case IMMEDIATE_TO_MEMORY_ABSOLUTE:
+            return IMMEDIATE_TO_MEMORY;
+        case IMMEDIATE_TO_MEMORY_ABSOLUTE_INDEXED:
+            return IMMEDIATE_TO_MEMORY;
+        case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP:
+            return IMMEDIATE_TO_MEMORY;
+        case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
+            return IMMEDIATE_TO_MEMORY;
+        case REGISTER_TO_MEMORY_ABSOULTE:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_ABSOULTE_TO_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case IMMEDIATE_TO_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case REGISTER_TO_MEMORY_RELATIVE_TO_PC:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case LOW_REGISTER_TO_MEMORY_ABSOLUTE:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_ABSOULTE_TO_LOW_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case IMMEDIATE_TO_LOW_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_PC:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_RELATIVE_TO_PC_TO_LOW_REGISTER:
+            return MEMORY_TO_REGISTER;
+        case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_BP:
+            return REGISTER_TO_MEMORY;
+        case MEMORY_RELATIVE_TO_BP_TO_LOW_REGISTER:
+            return MEMORY_TO_REGISTER;
+        }
+    }
+
+    std::map<std::string, std::pair<unsigned short, std::vector<AddressingModeFamily>>> isa =
         {
             {"kill", {0x00, {IMPLIED}}},
             {"reset", {0x01, {IMPLIED}}},
@@ -91,19 +160,19 @@ namespace ANC216
             {"pareq", {0x1F, {IMPLIED}}},
             {"cmp", {0x1F, {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
             {"careq", {0x20, {IMPLIED}}},
-            {"jmp", {0x21, {MEMORY_RELATED}}},
-            {"jeq", {0x22, {MEMORY_RELATED}}},
-            {"jz", {0x22, {MEMORY_RELATED}}},
-            {"jne", {0x23, {MEMORY_RELATED}}},
-            {"jnz", {0x23, {MEMORY_RELATED}}},
-            {"jge", {0x24, {MEMORY_RELATED}}},
-            {"jgr", {0x25, {MEMORY_RELATED}}},
-            {"jle", {0x26, {MEMORY_RELATED}}},
-            {"jls", {0x27, {MEMORY_RELATED}}},
-            {"jo", {0x28, {MEMORY_RELATED}}},
-            {"jno", {0x29, {MEMORY_RELATED}}},
-            {"jn", {0x2A, {MEMORY_RELATED}}},
-            {"jnn", {0x2B, {MEMORY_RELATED}}},
+            {"jmp", {0x21, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jeq", {0x22, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jz", {0x22, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jne", {0x23, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jnz", {0x23, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jge", {0x24, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jgr", {0x25, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jle", {0x26, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jls", {0x27, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jo", {0x28, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jno", {0x29, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jn", {0x2A, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jnn", {0x2B, {MEMORY_RELATED, IMMEDIATE}}},
             {"inc", {0x2C, {REGISTER_ACCESS}}},
             {"dec", {0x2D, {REGISTER_ACCESS}}},
             {"add", {0x2E, {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},

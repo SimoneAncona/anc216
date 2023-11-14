@@ -87,7 +87,7 @@ namespace ANC216
                     analyze_label(el);
                     break;
                 case INSTRUCTION_RULE:
-                    analyze_instructions(el);
+                    analyze_instruction(el);
                     break;
                 case EXPRESSION_LIST:
                     analyze_expression_list(el);
@@ -214,8 +214,39 @@ namespace ANC216
             bp_relative_address = 0;
         }
 
-        void analyze_instructions(AST *ast)
+        void analyze_instruction(AST *ast)
         {
+            auto addr = get_addressing(ast->get_children()[1]);
+            std::string ins = ast->get_children()[0]->get_token().value;
+            bool found = false;
+            for (auto adr : isa[ins].second)
+            {
+                if (adr == get_family(addr))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                error_stack.push_back({"'" + ins + "' does not support " + addr_to_string(addr) + " addressing mode", ast->get_children()[0]->get_token()});
+                return;
+            }
+        }
+
+        std::string addr_to_string(AddressingMode addr)
+        {
+            switch (addr)
+            {
+            }
+            return "";
+        }
+
+        AddressingMode get_addressing(AST *ast)
+        {
+            #include <iostream>
+            std::cout << ast->to_json() << "\n" << std::endl;
+            return IMMEDIATE_WORD;
         }
 
         void analyze_expression_list(AST *ast)

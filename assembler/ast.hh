@@ -13,7 +13,12 @@ namespace ANC216
         DECLARATION,
         INSTRUCTION_RULE,
         INSTRUCTION_LINE,
+        ADDRESSING_MODE,
         ADDRESSING_MODE_IMMEDIATE,
+        ADDRESSING_MODE_REALTIVE_BP,
+        ADDRESSING_MODE_REALTIVE_PC,
+        ADDRESSING_MODE_ABSOLUTE,
+        ADDRESSING_MODE_INDIRECT,
         ADDRESSING_MODE_MEMORY_TO_MEMORY,
         ADDRESSING_MODE_REGISTER_TO_MEMORY,
         ADDRESSING_MODE_REGISTER_TO_REGISTER,
@@ -51,6 +56,8 @@ namespace ANC216
                 return "instruction";
             case INSTRUCTION_LINE:
                 return "instruction";
+            case ADDRESSING_MODE:
+                return "addressingMode";
             case ADDRESSING_MODE_IMMEDIATE:
                 return "addressingModeImmediate";
             case ADDRESSING_MODE_MEMORY_TO_MEMORY:
@@ -63,6 +70,14 @@ namespace ANC216
                 return "registerAccess";
             case ADDRESSING_MODE_MEMORY:
                 return "memoryAccess";
+            case ADDRESSING_MODE_INDIRECT:
+                return "indirectAccess";
+            case ADDRESSING_MODE_ABSOLUTE:
+                return "absoluteAddressingMode";
+            case ADDRESSING_MODE_REALTIVE_BP:
+                return "relativeToBP";
+            case ADDRESSING_MODE_REALTIVE_PC:
+                return "relative";
             case EXPRESSION_LIST:
                 return "expressionList";
             case SECTION:
@@ -122,6 +137,8 @@ namespace ANC216
                 return "keyword";
             case INSTRUCTION:
                 return "instruction";
+            case REGISTER:
+                return "register";
             }
             return "";
         }

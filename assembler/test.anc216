@@ -1,5 +1,4 @@
 import module
-
 use lolly as 10
 use asdrubale as 60
 use pippo
@@ -20,6 +19,18 @@ _code:
     store y[2], 50
     load r0, * 10
     load r1, & 10 + lolly * 4 + asdrubale
+    jmp loop
+exit:
+    load r1, & 12
+    load r4, message
+    store & bp + l0, 10
 
-_code:
+loop:
+    load r0, 9
+    add r0, 10
+    cmp r0, 200
+    jls loop
+    jmp exit
+
+message:
     "ciao"

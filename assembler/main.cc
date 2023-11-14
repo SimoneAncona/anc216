@@ -17,7 +17,7 @@
 
 namespace fs = std::filesystem;
 
-void print_error_stack(std::vector<ANC216::Error> &);
+void print_error_stack(std::vector<ANC216::Error>);
 
 int main(int argc, char **argv)
 {
@@ -45,8 +45,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    std::cout << res->to_json() << std::endl;
-
     ANC216::Analyzer analyzer(res);
     analyzer.assemble();
 
@@ -58,7 +56,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void print_error_stack(std::vector<ANC216::Error> &error_stack)
+void print_error_stack(std::vector<ANC216::Error> error_stack)
 {
     size_t i = 1;
     for (auto &error : error_stack)

@@ -331,7 +331,7 @@ namespace ANC216
                 return ast;
             }
 
-            if (tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == STRING_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$")
+            if (tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == STRING_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$")
             {
                 ast->insert(exp_list());
                 ast->insert(prog());
@@ -349,6 +349,7 @@ namespace ANC216
             {
                 ast->insert(instruction());
                 ast->insert(prog());
+                return ast;
             }
 
             if (tokenizer.get_current_token() == "global" || tokenizer.get_current_token() == "local")
@@ -631,7 +632,7 @@ namespace ANC216
                 ast->insert(memory_to_reg());
                 return ast;
             }
-            if (tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$")
+            if (tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$")
             {
                 ast->insert(expression());
                 return ast;
@@ -694,7 +695,30 @@ namespace ANC216
                 tokenizer.next_token();
                 return ast;
             }
-            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+            if (tokenizer.get_current_token().type == IDENTIFIER && tokenizer.get_next_token() == "[")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
+                {
+                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_current_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(expression());
+                if (tokenizer.get_current_token() != "]")
+                {
+                    error_stack.push_back({expected_error_message("']'"), tokenizer.get_current_token()});
+                    skip_line();
+                    return nullptr;
+                }
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                return ast;
+            }
+            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
             {
                 error_stack.push_back({expected_error_message("expression"), tokenizer.get_current_token()});
                 skip_line();
@@ -738,7 +762,7 @@ namespace ANC216
                         skip_line();
                         return nullptr;
                     }
-                    if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                    if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
                     {
                         error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                         skip_line();
@@ -748,7 +772,7 @@ namespace ANC216
                 }
                 return ast;
             }
-            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
             {
                 error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                 skip_line();
@@ -773,7 +797,7 @@ namespace ANC216
                     tokenizer.next_token();
                     return ast;
                 }
-                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
                 {
                     error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                     skip_line();
@@ -795,6 +819,7 @@ namespace ANC216
                 skip_line();
                 return nullptr;
             }
+            tokenizer.next_token();
             ast->insert(expression());
             if (tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-")
             {
@@ -956,7 +981,7 @@ namespace ANC216
             }
             if (brackets)
             {
-                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "reserve" || tokenizer.get_current_token() == "$"))
+                if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
                 {
                     error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
                     skip_line();

@@ -1,0 +1,32 @@
+_code:
+    var x: [10 byte]
+    store x[0], 10
+    store x[l0], 10
+    store x[0], r0
+    load r0, x[0]
+    store & test, 10
+    store & test + l0, 10
+    load l0, & test
+    load l0, & test
+    jmp loop
+    jmp [loop] + l0
+    jmp [loop]
+    store & bp + l0, 10
+    store & bp + 10, 10
+    store & bp - 10, 10
+    store & bp - 10, 10
+    write & loop
+    read & 1234
+    tran r1, r2
+    load l0, 10
+    load r0, 10
+    push 10
+    jmp * 10
+    jmp * loop
+    ret
+
+test:
+    word 10
+
+loop:
+    word 10

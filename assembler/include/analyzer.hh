@@ -1,10 +1,10 @@
-#include "ast.hh"
+#include <ast.hh>
 #include <vector>
 #include <map>
-#include "types.hh"
+#include <types.hh>
 #include <tuple>
 #include <string>
-#include "isa.hh"
+#include <isa.hh>
 
 #pragma once
 
@@ -32,20 +32,14 @@ namespace ANC216
         std::string label;
     };
 
-    struct Operand
-    {
-        bool is_reg;
-        std::string reg;
-        size_t value;
-        size_t size;
-    };
-
     struct Instruction
     {
         AddressingMode addressing_mode;
-        Operand op1;
-        Operand op2;
+        AST *op1;
+        AST *op2;
+        std::pair<char, std::string> indexing;
         std::string instruction;
+        size_t addr_mode_size;
     };
 
     struct Environment
@@ -216,12 +210,18 @@ namespace ANC216
 
         void analyze_instruction(AST *ast)
         {
-            auto addr = get_addressing(ast->get_children()[1]);
-            std::string ins = ast->get_children()[0]->get_token().value;
-            bool found = false;
-            for (auto adr : isa[ins].second)
+            Instruction insr;
+            if (ast->get_children().size() == 1)
+                insr = {IMPLIED_MODE, nullptr, nullptr, {}, ast->get_children()[0]->get_token().value};
+            else
             {
-                if (adr == get_family(addr))
+                insr = get_instruction(ast->get_children()[1]);
+                insr.instruction = ast->get_children()[0]->get_token().value;
+            }
+            bool found = false;
+            for (auto adr : isa[insr.instruction].second)
+            {
+                if (adr == get_family(insr.addressing_mode))
                 {
                     found = true;
                     break;
@@ -229,9 +229,11 @@ namespace ANC216
             }
             if (!found)
             {
-                error_stack.push_back({"'" + ins + "' does not support " + addr_to_string(addr) + " addressing mode", ast->get_children()[0]->get_token()});
+                error_stack.push_back({"'" + insr.instruction + "' does not support " + addr_to_string(insr.addressing_mode) + " addressing mode", ast->get_children()[0]->get_token()});
                 return;
             }
+            env.instructions.push_back(insr);
+            current_address += insr.addr_mode_size + WORD_S;
         }
 
         std::string addr_to_string(AddressingMode addr)
@@ -242,15 +244,106 @@ namespace ANC216
             return "";
         }
 
-        AddressingMode get_addressing(AST *ast)
+        Instruction get_instruction(AST *ast)
         {
             #include <iostream>
             std::cout << ast->to_json() << "\n" << std::endl;
-            return IMMEDIATE_WORD;
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_BP)
+                return get_bp_relative(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_MEMORY)
+                return get_register_to_memory(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_ABSOLUTE)
+                return get_absolute(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == EXPRESSION)
+                return get_immediate(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_INDIRECT)
+                return get_indirect(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_REGISTER)
+                return {REGISTER_TO_REGISTER_MODE, 0};
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_PC)
+                return get_relative(ast->get_children()[0]);
+            return {};
+        }
+
+        Instruction get_relative(AST *ast)
+        {
+            Instruction ins;
+            return ins;
+        }
+
+        Instruction get_indirect(AST *ast)
+        {
+            Instruction ins;
+            ins.addr_mode_size = WORD_S;
+            ins.op1 = ast->get_children()[1];
+            if (ast->get_children().size() == 3)
+            {
+                ins.addressing_mode = MEMORY_INDIRECT;
+                return ins;
+            }
+            ins.addressing_mode = MEMORY_INDIRECT_INDEXED;
+            ins.indexing = {ast->get_children()[3]->get_token().value[0], ast->get_children()[4]->get_token().value};
+            return ins;
+        }
+
+        Instruction get_immediate(AST* ast)
+        {
+            Instruction ins;
+            ins.addr_mode_size = get_expression_size(ast);
+            if (ins.addr_mode_size == WORD_S)
+            {
+                ins.addressing_mode = IMMEDIATE_WORD;
+                return ins;
+            }
+            ins.addressing_mode = IMMEDIATE_BYTE;
+            return ins;
+        }
+
+        Instruction get_absolute(AST* ast)
+        {
+            Instruction ins;
+            ins.op1 = ast->get_children()[1];
+            if (ast->get_children().size() == 2)
+            {
+                ins.addressing_mode = MEMORY_ABSOULTE;
+                ins.addr_mode_size = WORD_S;
+                return ins;
+            }
+            size_t i;
+            if (ast->get_children()[2]->get_token().value == "+" || ast->get_children()[2]->get_token().value == "-")
+            {
+                if (ast->get_children().size() == 4)
+                {
+                    ins.addressing_mode = MEMORY_ABSOULTE_INDEXED;
+                    ins.addr_mode_size = WORD_S;
+                    ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]->get_token().value};
+                    return ins;
+                }
+                i = 3;
+            }
+            return ins;
+        }
+
+        Instruction get_register_to_memory(AST *ast)
+        {
+            Instruction ins;
+            return ins;
+
+        }
+
+        Instruction get_bp_relative(AST *ast)
+        {
+            Instruction ins;
+            return ins;
         }
 
         void analyze_expression_list(AST *ast)
         {
+        }
+
+        char get_expression_size(AST *ast)
+        {
+            return 0;
         }
 
         int eval_expression(AST *ast)

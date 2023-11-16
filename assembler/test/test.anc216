@@ -8,6 +8,7 @@ _code:
     store & test + l0, 10
     load l0, & test
     load l0, & test
+    ; load r0, & test + l1
     jmp loop
     jmp [loop] + l0
     jmp [loop]

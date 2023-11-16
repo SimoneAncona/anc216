@@ -1,1 +1,1 @@
-& .\build\Debug\assembler.exe $args[0] $args[1]
+cd src; & ..\build\Debug\assembler.exe $args[0] $args[1]; cd..

@@ -1,4 +1,4 @@
-#include "ast.hh"
+#include <ast.hh>
 
 namespace ANC216
 {

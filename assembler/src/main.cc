@@ -1,13 +1,14 @@
-#include "console.hh"
-#include "parse.hh"
-#include "analyzer.hh"
+#include <console.hh>
+#include <parser.hh>
+#include <analyzer.hh>
+#include <types.hh>
+
 #include <iostream>
 #include <string>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
 #include <vector>
-#include "types.hh"
 
 #define ASSEMBLER_VERSION_MAJOR 1
 #define ASSEMBLER_VERSION_MINOR 0
@@ -21,7 +22,7 @@ void print_error_stack(std::vector<ANC216::Error>);
 
 int main(int argc, char **argv)
 {
-    std::string filename = "./test.anc216";
+    std::string filename = "../test/test.anc216";
     fs::path p(fs::weakly_canonical(filename));
     filename = p.string();
     fs::current_path(p.parent_path());
@@ -29,14 +30,14 @@ int main(int argc, char **argv)
     std::stringstream ss;
     ss << file.rdbuf();
     std::string file_string = ss.str();
-    if (argc < 2)
-    {
-        std::cout << "Usage:\n"
-                  << "\t" << argv[0] << " <source file> " << YELLOW << "[output file]\n"
-                  << std::endl
-                  << RESET;
-        return 0;
-    }
+    // if (argc < 2)
+    // {
+    //     std::cout << "Usage:\n"
+    //               << "\t" << argv[0] << " <source file> " << YELLOW << "[output file]\n"
+    //               << std::endl
+    //               << RESET;
+    //     return 0;
+    // }
     ANC216::Parser parser(file_string, filename);
     ANC216::AST *res = parser.parse();
     if (parser.get_error_stack().size() != 0)

@@ -6,6 +6,8 @@ _code:
     load r0, x[0]
     store & test, 10
     store & test + l0, 10
+    ; store & test + l0, l1
+    store & test, r1
     load l0, & test
     load l0, & test
     ; load r0, & test + l1

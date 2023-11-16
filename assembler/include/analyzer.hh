@@ -244,10 +244,12 @@ namespace ANC216
             return "";
         }
 
+#include <iostream>
+
         Instruction get_instruction(AST *ast)
         {
-            #include <iostream>
-            std::cout << ast->to_json() << "\n" << std::endl;
+            std::cout << ast->to_json() << "\n"
+                      << std::endl;
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_BP)
                 return get_bp_relative(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_MEMORY)
@@ -268,6 +270,10 @@ namespace ANC216
         Instruction get_relative(AST *ast)
         {
             Instruction ins;
+            ins.addressing_mode = MEMORY_RELATIVE_TO_PC;
+            ins.addr_mode_size = BYTE_S;
+            if (get_expression_size(ast->get_children()[1]) == WORD_S)
+                error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[1]->get_token(), true});
             return ins;
         }
 
@@ -286,7 +292,7 @@ namespace ANC216
             return ins;
         }
 
-        Instruction get_immediate(AST* ast)
+        Instruction get_immediate(AST *ast)
         {
             Instruction ins;
             ins.addr_mode_size = get_expression_size(ast);
@@ -299,7 +305,7 @@ namespace ANC216
             return ins;
         }
 
-        Instruction get_absolute(AST* ast)
+        Instruction get_absolute(AST *ast)
         {
             Instruction ins;
             ins.op1 = ast->get_children()[1];
@@ -309,18 +315,28 @@ namespace ANC216
                 ins.addr_mode_size = WORD_S;
                 return ins;
             }
-            size_t i;
+            size_t i = 3;
+            bool indexed = false;
             if (ast->get_children()[2]->get_token().value == "+" || ast->get_children()[2]->get_token().value == "-")
             {
+                ins.addressing_mode = MEMORY_ABSOULTE_INDEXED;
+                ins.addr_mode_size = WORD_S;
+                ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]->get_token().value};
                 if (ast->get_children().size() == 4)
-                {
-                    ins.addressing_mode = MEMORY_ABSOULTE_INDEXED;
-                    ins.addr_mode_size = WORD_S;
-                    ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]->get_token().value};
                     return ins;
-                }
-                i = 3;
+                i = 5;
+                indexed = true;
             }
+            if (ast->get_children()[i]->get_rule_name() == EXPRESSION)
+            {
+                ins.addressing_mode = indexed ? IMMEDIATE_TO_MEMORY_ABSOLUTE_INDEXED : IMMEDIATE_TO_MEMORY_ABSOLUTE;
+                ins.addr_mode_size = WORD_S + get_expression_size(ast->get_children()[i]);
+                ins.op2 = ast->get_children()[i];
+                return ins;
+            }
+            ins.addressing_mode = MEMORY_ABSOULTE_TO_REGISTER;
+            ins.addr_mode_size = WORD_S;
+            ins.op2 = ast->get_children()[i];
             return ins;
         }
 
@@ -328,7 +344,6 @@ namespace ANC216
         {
             Instruction ins;
             return ins;
-
         }
 
         Instruction get_bp_relative(AST *ast)

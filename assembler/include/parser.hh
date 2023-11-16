@@ -861,6 +861,7 @@ namespace ANC216
                         return nullptr;
                     }
                     ast->insert(new AST(tokenizer.get_current_token()));
+                    tokenizer.next_token();
                     return ast;
                 }
                 if (tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$")

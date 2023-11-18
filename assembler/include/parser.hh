@@ -16,7 +16,7 @@
     X[0] == 'i' || X[0] == 'a' || X[0] == 'o' || X[0] == 'e' ? "An " + std::string(X) + " was expected" : "A " + std::string(X) + " was expected"
 
 #define unexpected_error_message(X) \
-    "Unexpected " + std::string(X) + " token"
+    X == "'\n'" ? "Unexpected the end of the line" : "Unexpected " + std::string(X) + " token"
 
 #define expression_if_guard()
 
@@ -589,6 +589,11 @@ namespace ANC216
                     ast->insert(array_access_like());
                     return ast;
                 }
+                if (tokenizer.get_next_token() == ",")
+                {
+                    ast->insert(reg_to_bp());
+                    return ast;
+                }
             }
             if (tokenizer.get_current_token() == "[")
             {
@@ -621,6 +626,8 @@ namespace ANC216
                 if (tokenizer.get_next_token() == "\n" || tokenizer.get_next_token().type == END)
                 {
                     ast->insert(new AST(tokenizer.get_current_token()));
+                    ast->set_rule_name(ADDRESSING_MODE_REGISTER);
+                    tokenizer.next_token();
                     return ast;
                 }
                 if (tokenizer.get_next_token() != ",")
@@ -641,6 +648,28 @@ namespace ANC216
             return nullptr;
         }
 
+        AST *reg_to_bp()
+        {
+            AST *ast = new AST(ADDRESSING_MODE_REG_TO_BP);
+            ast->insert(new AST(tokenizer.get_current_token()));
+            ast->insert(new AST(tokenizer.next_token()));
+            tokenizer.next_token();
+            if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$" || tokenizer.get_current_token().type == REGISTER))
+            {
+                error_stack.push_back({expected_error_message("expression or register"), tokenizer.get_current_token()});
+                skip_line();
+                return nullptr;
+            }
+            if (tokenizer.get_current_token().type == REGISTER)
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                return ast;
+            }
+            ast->insert(expression());
+            return ast;
+        }
+
         AST *memory_to_reg()
         {
             AST *ast = new AST(ADDRESSING_MODE_REGISTER_TO_MEMORY);
@@ -649,8 +678,10 @@ namespace ANC216
             tokenizer.next_token();
             if (tokenizer.get_current_token() == "&")
             {
+                ast->insert(new AST(tokenizer.get_current_token()));
                 if (tokenizer.get_next_token() == "bp")
                 {
+                    tokenizer.next_token();
                     ast->insert(new AST(tokenizer.get_current_token()));
                     tokenizer.next_token();
                     if (tokenizer.get_current_token() != "+" && tokenizer.get_current_token() != "-")

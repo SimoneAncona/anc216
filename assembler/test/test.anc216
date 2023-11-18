@@ -1,5 +1,7 @@
 _code:
     var x: [10 byte]
+    var cavoletti: byte
+    load cavolamti, 10
     store x[0], 10
     store x[l0], 10
     store x[0], r0
@@ -10,6 +12,11 @@ _code:
     store & test, r1
     load l0, & test
     load l0, & test
+    load r0, & bp + 1
+    load r0, 10
+    load r1, _code
+    load r1, & _code
+    load r1, * 2
     ; load r0, & test + l1
     jmp loop
     jmp [loop] + l0
@@ -23,6 +30,7 @@ _code:
     tran r1, r2
     load l0, 10
     load r0, 10
+    push r0
     push 10
     push & bp + 5
     jmp * 10

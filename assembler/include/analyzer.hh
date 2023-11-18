@@ -30,14 +30,15 @@ namespace ANC216
     {
         size_t bp_relative_address;
         std::string label;
+        AST *assign;
     };
 
     struct Instruction
     {
         AddressingMode addressing_mode;
-        AST *op1;
-        AST *op2;
-        std::pair<char, AST*> indexing;
+        AST *op1 = nullptr;
+        AST *op2 = nullptr;
+        std::pair<char, AST *> indexing;
         std::string instruction;
         size_t addr_mode_size;
     };
@@ -173,17 +174,25 @@ namespace ANC216
                 size *= children[i]->get_token() == "byte" ? BYTE_S : WORD_S;
             }
             i++;
+            if (i >= children.size())
+            {
+                env.variables[name] = {0, current_label, nullptr};
+                return;
+            }
             if (children[i]->get_token() == "]")
                 i++;
-
             if (i >= children.size())
+            {
+                env.variables[name] = {0, current_label, nullptr};
                 return;
+            }
             int res = eval_expression(children[i + 1]);
             if (res >= pow(2, (8 * size)) || res < -pow(2, (8 * size - 1)))
             {
                 error_stack.push_back({"The value exceeds the size of the variable", children[i]->get_token(), true});
                 return;
             }
+            env.variables[name] = {0, current_label, children[i + 1]};
         }
 
         void analyze_label(AST *ast)
@@ -261,9 +270,16 @@ namespace ANC216
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_INDIRECT)
                 return get_indirect(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_REGISTER)
-                return {REGISTER_TO_REGISTER_MODE, 0};
+                return {REGISTER_TO_REGISTER_MODE, ast->get_children()[0]->get_children()[0], ast->get_children()[0]->get_children()[2], {}, "", 0};
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER)
+                return {REGISTER_ACCESS_MODE, ast->get_children()[0], nullptr, {}, "", 0};
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_PC)
                 return get_relative(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REG_TO_BP)
+            {
+                check_local_variables(ast->get_children()[0]->get_children()[0]->get_token());
+                return {REGISTER_TO_MEMORY_RELATIVE_TO_BP, ast->get_children()[0]->get_children()[0], ast->get_children()[0]->get_children()[2], {}, "", 1};
+            }
             return {};
         }
 
@@ -343,7 +359,81 @@ namespace ANC216
         Instruction get_register_to_memory(AST *ast)
         {
             Instruction ins;
+            ins.op1 = ast->get_children()[0];
+            if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
+            {
+                ins.addressing_mode = IMMEDIATE_TO_REGISTER;
+                ins.addr_mode_size = ins.op1->get_token().value[0] == 'l' ? BYTE_S : WORD_S;
+                if (get_expression_size(ast->get_children()[2]) == WORD_S && ins.addr_mode_size == BYTE_S)
+                    error_stack.push_back({"Conversion from word to byte may cause a data loss", ast->get_children()[1]->get_token()});
+                ins.op2 = ast->get_children()[2];
+                return ins;
+            }
+            if (ast->get_children()[2]->get_token().type == IDENTIFIER)
+            {
+                check_local_variables(ast->get_children()[2]->get_token());
+                ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+                if (get_expression_size(ast->get_children()[4]) == WORD_S)
+                    error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
+                ins.indexing = {'+', ast->get_children()[4]};
+                ins.op2 = ast->get_children()[2];
+                return ins;
+            }
+            if (ast->get_children()[2]->get_token() == "&")
+            {
+            }
+            if (ast->get_children()[2]->get_token() == "*")
+            {
+            }
             return ins;
+        }
+
+        void check_local_variables(const Token &token)
+        {
+            for (auto &var : env.variables)
+            {
+                if (var.first == token.value && var.second.label == current_label)
+                    return;
+            }
+            error_stack.push_back({"Undefined variable '" + token.value + "'" + get_similar_var(token.value), token});
+        }
+
+        std::string get_similar_var(const std::string &id)
+        {
+            for (auto &var : env.variables)
+            {
+                if (var.second.label == current_label)
+                {
+                    if (is_similar(var.first, id))
+                        return ". Did you mean '" + var.first + "'?";
+                }
+            }
+            return "";
+        }
+
+        bool is_similar(const std::string &s1, const std::string &s2)
+        {
+            if (!(s1.length() >= s2.length() - 2 && s1.length() <= s2.length() + 2))
+                return false;
+
+            size_t l = s1.length() > s2.length() ? s2.length() : s1.length();
+            size_t sim = 0;
+            for (size_t i = 0, j = 0; i < l; i++)
+            {
+                if (s1[i] == s2[j])
+                {
+                    sim++;
+                    j++;
+                    continue;
+                }
+                if (j != 0)
+                    j++;
+            }
+            if (sim == 0)
+                return false;
+            if ((double)sim / l >= 0.75)
+                return true;
+            return false;
         }
 
         Instruction get_bp_relative(AST *ast)
@@ -373,15 +463,18 @@ namespace ANC216
         Instruction get_array_access(AST *ast)
         {
             Instruction ins;
+
+            check_local_variables(ast->get_children()[0]->get_token());
             std::string id = ast->get_children()[0]->get_token().value;
             bool register_indexed = false;
             if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
             {
                 if (get_expression_size(ast->get_children()[2]) == WORD_S)
-                    error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token()});
-            } 
-            else register_indexed = true;
-            
+                    error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token(), true});
+            }
+            else
+                register_indexed = true;
+
             if (ast->get_children()[4]->get_rule_name() == EXPRESSION)
             {
                 ins.addressing_mode = register_indexed ? IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER : IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;

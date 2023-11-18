@@ -25,6 +25,7 @@ namespace ANC216
         ADDRESSING_MODE_REGISTER_TO_REGISTER,
         ADDRESSING_MODE_REGISTER,
         ADDRESSING_MODE_MEMORY,
+        ADDRESSING_MODE_REG_TO_BP,
         EXPRESSION_LIST,
         SECTION,
         ORIGIN,
@@ -43,6 +44,8 @@ namespace ANC216
         Token token;
         RuleName rule_name;
         std::vector<AST *> children;
+
+#ifdef _DEBUG
         std::string rule_name_to_string(RuleName rule_name)
         {
             switch (rule_name)
@@ -145,6 +148,7 @@ namespace ANC216
             }
             return "";
         }
+#endif
 
     public:
         AST() = default;
@@ -201,6 +205,7 @@ namespace ANC216
             return false;
         }
 
+#ifdef _DEBUG
         std::string to_json()
         {
             if (!final)
@@ -209,5 +214,6 @@ namespace ANC216
                 return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value.substr(1, token.value.length() - 2) + "\"}";
             return "{\"tokenType\": \"" + token_type_to_string(token.type) + "\", \"value\": \"" + token.value + "\"}";
         }
+#endif
     };
 }

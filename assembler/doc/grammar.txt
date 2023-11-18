@@ -86,7 +86,7 @@ Mem ::=
 
 RegMem ::=
     register "," (register | "&" Exp | "&" "bp" ("+" | "-") Exp | Exp | "*" Exp | id "[" Exp "]")    -- memory to register
-    | ("&" Exp | "&" "bp" ("+" | "-") Exp | "*" Exp | id "[" Exp "]") "," register                   -- register to memory
+    | ("&" Exp | "&" "bp" ("+" | "-") Exp | "*" Exp | id "[" Exp "]" | id) "," register                   -- register to memory
     ;
 
 Declaration ::=

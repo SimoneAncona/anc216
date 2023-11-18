@@ -16,6 +16,7 @@ namespace ANC216
         ADDRESSING_MODE,
         ADDRESSING_MODE_IMMEDIATE,
         ADDRESSING_MODE_REALTIVE_BP,
+        ADDRESSING_MODE_RELATIVE_ARRAY,
         ADDRESSING_MODE_REALTIVE_PC,
         ADDRESSING_MODE_ABSOLUTE,
         ADDRESSING_MODE_INDIRECT,
@@ -78,6 +79,8 @@ namespace ANC216
                 return "relativeToBP";
             case ADDRESSING_MODE_REALTIVE_PC:
                 return "relative";
+            case ADDRESSING_MODE_RELATIVE_ARRAY:
+                return "arrayAccess";
             case EXPRESSION_LIST:
                 return "expressionList";
             case SECTION:

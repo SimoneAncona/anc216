@@ -1,4 +1,4 @@
-ANC216.1 STANDARD
+ANC216.2 STANDARD
 
 PreProcessor ::=
     UseAs
@@ -17,7 +17,7 @@ Import ::=
     ;
 
 If ::= 
-    "if" ("!") ? id "then" "\n" Prog ("elif" ("!" | "not") id "then" "\n" Prog)* "endif" End
+    "if" ("!" | "not") ? id "then" "\n" Prog ("elif" ("!" | "not") id "then" "\n" Prog)* "endif" End
     ;
 
 ---------------------------------------------------------
@@ -29,10 +29,17 @@ Prog ::=
     | Instruction Prog
     | Declaration Prog
     | ExpList Prog
+    | Namespace Prog
     | Org Prog
     | "\n" Prog
     | ""
     ;
+
+Namespace ::=
+    "namespace" id "\n" Prog "end"
+
+Task ::=
+    "task" id Args "\n" Prog "end"
 
 Section ::=
     "section" "." id End

@@ -736,7 +736,7 @@ namespace ANC216
 
         AST *array_access_like()
         {
-            AST *ast = new AST(ADDRESSING_MODE_REALTIVE_BP);
+            AST *ast = new AST(ADDRESSING_MODE_RELATIVE_ARRAY);
             ast->insert(new AST(tokenizer.get_current_token()));
             ast->insert(new AST(tokenizer.next_token()));
             tokenizer.next_token();

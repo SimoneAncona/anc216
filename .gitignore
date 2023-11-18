@@ -5,5 +5,7 @@
 !*.test.js
 !*.config.js
 
+/**/*/*.exe
+
 /**/*/build
 .vscode/

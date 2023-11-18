@@ -37,7 +37,7 @@ namespace ANC216
         AddressingMode addressing_mode;
         AST *op1;
         AST *op2;
-        std::pair<char, std::string> indexing;
+        std::pair<char, AST*> indexing;
         std::string instruction;
         size_t addr_mode_size;
     };
@@ -273,7 +273,7 @@ namespace ANC216
             ins.addressing_mode = MEMORY_RELATIVE_TO_PC;
             ins.addr_mode_size = BYTE_S;
             if (get_expression_size(ast->get_children()[1]) == WORD_S)
-                error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[1]->get_token(), true});
+                error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
             return ins;
         }
 
@@ -288,7 +288,7 @@ namespace ANC216
                 return ins;
             }
             ins.addressing_mode = MEMORY_INDIRECT_INDEXED;
-            ins.indexing = {ast->get_children()[3]->get_token().value[0], ast->get_children()[4]->get_token().value};
+            ins.indexing = {ast->get_children()[3]->get_token().value[0], ast->get_children()[4]};
             return ins;
         }
 
@@ -321,7 +321,7 @@ namespace ANC216
             {
                 ins.addressing_mode = MEMORY_ABSOULTE_INDEXED;
                 ins.addr_mode_size = WORD_S;
-                ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]->get_token().value};
+                ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]};
                 if (ast->get_children().size() == 4)
                     return ins;
                 i = 5;
@@ -352,13 +352,103 @@ namespace ANC216
             return ins;
         }
 
+        Instruction get_array_access(AST *ast)
+        {
+            Instruction ins;
+            std::string id = ast->get_children()[0]->get_token().value;
+            bool register_indexed = false;
+            if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
+            {
+                if (get_expression_size(ast->get_children()[2]) == WORD_S)
+                    error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token()});
+            } 
+            else register_indexed = true;
+            
+            if (ast->get_children()[4]->get_rule_name() == EXPRESSION)
+            {
+                ins.addressing_mode = register_indexed ? IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER : IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;
+                ins.addr_mode_size = register_indexed ? get_expression_size(ast->get_children()[4]) : BYTE_S + get_expression_size(ast->get_children()[4]);
+                ins.op1 = ast->get_children()[4];
+                return ins;
+            }
+            ins.addressing_mode = REGISTER_TO_MEMORY_RELATIVE_TO_BP;
+            ins.addr_mode_size = BYTE_S;
+            ins.op1 = ast->get_children()[4];
+            return ins;
+        }
+
         void analyze_expression_list(AST *ast)
         {
         }
 
         char get_expression_size(AST *ast)
         {
-            return 0;
+            auto children = ast->get_children();
+            if (children.size() == 0)
+            {
+                if (ast->get_token().type == IDENTIFIER)
+                    return WORD_S;
+
+                if (ast->get_token() == "$")
+                    return WORD_S;
+
+                if (ast->get_token().type == NUMBER_LITERAL)
+                {
+                    auto value = std::stoi(ast->get_token().value, 0);
+                    if (value > 65'536 || value < -32'768)
+                    {
+                        error_stack.push_back({"The size of the literal number exceeds the bit limit", ast->get_token()});
+                        return WORD_S;
+                    }
+                    if (value > 255 || value < -128)
+                        return WORD_S;
+                    return BYTE_S;
+                }
+            }
+            if (children.size() == 1)
+            {
+                if (ast->get_token() == "byte")
+                {
+                    if (get_expression_size(children[0]) > 255 || get_expression_size(children[0]) < -128)
+                    {
+                        error_stack.push_back({"Byte casting may cause data loss", ast->get_token(), true});
+                    }
+                    return BYTE_S;
+                }
+                if (ast->get_token() == "word")
+                {
+                    get_expression_size(children[0]);
+                    return WORD_S;
+                }
+                if (ast->get_token() == "+" || ast->get_token() == "-")
+                    return get_expression_size(children[0]);
+                return get_expression_size(children[0]);
+            }
+            if (children.size() == 2)
+            {
+                if (children[0]->get_token() == "sizeof")
+                    return WORD_S;
+                return WORD_S;
+            }
+            int v1 = eval_expression(children[0]);
+            int v2 = eval_expression(children[2]);
+            int res;
+            if (children[1]->get_token() == "+")
+                res = v1 + v2;
+            else if (children[1]->get_token() == "-")
+                res = v1 - v2;
+            else if (children[1]->get_token() == "*")
+                res = v1 * v2;
+            else
+                res = v1 / v2;
+            if (res > 65'356 || res < -32'768)
+            {
+                error_stack.push_back({"The size of the literal number exceeds the bit limit", children[1]->get_token()});
+                return WORD_S;
+            }
+            if (res > 255 || res < -128)
+                return WORD_S;
+            return BYTE_S;
         }
 
         int eval_expression(AST *ast)

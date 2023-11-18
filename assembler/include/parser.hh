@@ -912,6 +912,7 @@ namespace ANC216
             }
             if (tokenizer.get_current_token() == ",")
             {
+                ast->insert(new AST(tokenizer.get_current_token()));
                 if (!(tokenizer.get_next_token().type == IDENTIFIER || tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "$" || tokenizer.get_next_token().type == REGISTER))
                 {
                     error_stack.push_back({expected_error_message("expression or register"), tokenizer.get_next_token()});

@@ -349,6 +349,24 @@ namespace ANC216
         Instruction get_bp_relative(AST *ast)
         {
             Instruction ins;
+            ins.indexing = {ast->get_children()[2]->get_token().value[0], ast->get_children()[3]};
+            bool reg_indexed = ast->get_children()[3]->get_rule_name() != EXPRESSION;
+            if (ast->get_children().size() == 4)
+            {
+                ins.addressing_mode = reg_indexed ? MEMORY_RELATIVE_TO_BP_WITH_REGISTER : MEMORY_RELATIVE_TO_BP;
+                ins.addr_mode_size = reg_indexed ? 0 : BYTE_S;
+                return ins;
+            }
+            if (ast->get_children()[5]->get_rule_name() == EXPRESSION)
+            {
+                ins.addressing_mode = reg_indexed ? IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER : IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;
+                ins.addr_mode_size = reg_indexed ? get_expression_size(ast->get_children()[5]) : BYTE_S + get_expression_size(ast->get_children()[5]);
+                ins.op1 = ast->get_children()[5];
+                return ins;
+            }
+            ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+            ins.addr_mode_size = BYTE_S;
+            ins.op1 = ast->get_children()[5];
             return ins;
         }
 

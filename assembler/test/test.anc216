@@ -24,6 +24,7 @@ _code:
     load l0, 10
     load r0, 10
     push 10
+    push & bp + 5
     jmp * 10
     jmp * loop
     ret

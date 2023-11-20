@@ -249,6 +249,62 @@ namespace ANC216
         {
             switch (addr)
             {
+            case IMPLIED_MODE:
+                return "implied";
+            case IMMEDIATE_BYTE:
+                return "immediate single byte";
+            case IMMEDIATE_WORD:
+                return "immediate word";
+            case REGISTER_ACCESS_MODE:
+                return "register access";
+            case REGISTER_TO_REGISTER_MODE:
+                return "register to register";
+            case MEMORY_ABSOULTE:
+                return "memory absolute";
+            case MEMORY_ABSOULTE_INDEXED:
+                return "memory absolute indexed";
+            case MEMORY_INDIRECT:
+                return "memory indirect";
+            case MEMORY_INDIRECT_INDEXED:
+                return "memory indirect indexed";
+            case MEMORY_RELATIVE_TO_PC:
+                return "memory relative to PC";
+            case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
+                return "memory relative to PC with register";
+            case MEMORY_RELATIVE_TO_BP:
+                return "memory relative to BP";
+            case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
+                return "memory relative to BP with register";
+            case IMMEDIATE_TO_MEMORY_ABSOLUTE:
+                return "immediate to absolute memory";
+            case IMMEDIATE_TO_MEMORY_ABSOLUTE_INDEXED:
+                return "immediate to absolute memory indexed";
+            case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP:
+                return "immediate to memory relative to BP";
+            case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
+                return "immediate to memory relative to BP with register";
+            case REGISTER_TO_MEMORY_ABSOULTE:
+                return "register to memory absoulte";
+            case MEMORY_ABSOULTE_TO_REGISTER:
+                return "memory absoulte to register";
+            case IMMEDIATE_TO_REGISTER:
+                return "immediate to register";
+            case REGISTER_TO_MEMORY_RELATIVE_TO_PC:
+                return "register to memory relative to PC";
+            case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
+                return "memory relative to PC to register";
+            case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
+                return "register to memory relative to BP";
+            case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
+                return "memory relative to BP to register";
+            case LOW_REGISTER_TO_MEMORY_ABSOLUTE:
+            case MEMORY_ABSOULTE_TO_LOW_REGISTER:
+            case IMMEDIATE_TO_LOW_REGISTER:
+            case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_PC:
+            case MEMORY_RELATIVE_TO_PC_TO_LOW_REGISTER:
+            case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_BP:
+            case MEMORY_RELATIVE_TO_BP_TO_LOW_REGISTER:
+                return "a";
             }
             return "";
         }
@@ -261,8 +317,8 @@ namespace ANC216
                       << std::endl;
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_BP)
                 return get_bp_relative(ast->get_children()[0]);
-            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_MEMORY)
-                return get_register_to_memory(ast->get_children()[0]);
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_MEMORY_TO_REGISTER)
+                return get_memory_to_reg(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_ABSOLUTE)
                 return get_absolute(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == EXPRESSION)
@@ -271,7 +327,7 @@ namespace ANC216
                 return get_indirect(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_REGISTER)
                 return {REGISTER_TO_REGISTER_MODE, ast->get_children()[0]->get_children()[0], ast->get_children()[0]->get_children()[2], {}, "", 0};
-            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER)
+            if (ast->get_rule_name() == ADDRESSING_MODE_REGISTER)
                 return {REGISTER_ACCESS_MODE, ast->get_children()[0], nullptr, {}, "", 0};
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_PC)
                 return get_relative(ast->get_children()[0]);
@@ -280,6 +336,8 @@ namespace ANC216
                 check_local_variables(ast->get_children()[0]->get_children()[0]->get_token());
                 return {REGISTER_TO_MEMORY_RELATIVE_TO_BP, ast->get_children()[0]->get_children()[0], ast->get_children()[0]->get_children()[2], {}, "", 1};
             }
+            if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_RELATIVE_ARRAY)
+                return get_array_access(ast->get_children()[0]);
             return {};
         }
 
@@ -350,22 +408,34 @@ namespace ANC216
                 ins.op2 = ast->get_children()[i];
                 return ins;
             }
-            ins.addressing_mode = MEMORY_ABSOULTE_TO_REGISTER;
+            ins.addressing_mode = REGISTER_TO_MEMORY_ABSOULTE;
             ins.addr_mode_size = WORD_S;
             ins.op2 = ast->get_children()[i];
             return ins;
         }
 
-        Instruction get_register_to_memory(AST *ast)
+        bool is_var_expression(AST *ast)
+        {
+            if (ast->get_children().size() != 1)
+                return false;
+            if (ast->get_children()[0]->get_token().type == IDENTIFIER)
+                return env.variables.find(ast->get_children()[0]->get_token().value) != env.variables.end();
+            return is_var_expression(ast->get_children()[0]);
+        }
+
+        Instruction get_memory_to_reg(AST *ast)
         {
             Instruction ins;
             ins.op1 = ast->get_children()[0];
             if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
             {
-                ins.addressing_mode = IMMEDIATE_TO_REGISTER;
-                ins.addr_mode_size = ins.op1->get_token().value[0] == 'l' ? BYTE_S : WORD_S;
-                if (get_expression_size(ast->get_children()[2]) == WORD_S && ins.addr_mode_size == BYTE_S)
+                bool is_var = is_var_expression(ast->get_children()[2]);
+                ins.addressing_mode = is_var ? MEMORY_RELATIVE_TO_BP_TO_REGISTER : IMMEDIATE_TO_REGISTER;
+                ins.addr_mode_size = is_var ? BYTE_S : ins.op1->get_token().value[0] == 'l' ? BYTE_S
+                                                                                            : WORD_S;
+                if (!is_var && get_expression_size(ast->get_children()[2]) == WORD_S && ins.addr_mode_size == BYTE_S)
                     error_stack.push_back({"Conversion from word to byte may cause a data loss", ast->get_children()[1]->get_token()});
+                ins.indexing = {'+', nullptr};
                 ins.op2 = ast->get_children()[2];
                 return ins;
             }
@@ -373,6 +443,7 @@ namespace ANC216
             {
                 check_local_variables(ast->get_children()[2]->get_token());
                 ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+                ins.addr_mode_size = BYTE_S;
                 if (get_expression_size(ast->get_children()[4]) == WORD_S)
                     error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
                 ins.indexing = {'+', ast->get_children()[4]};
@@ -381,10 +452,28 @@ namespace ANC216
             }
             if (ast->get_children()[2]->get_token() == "&")
             {
+                if (ast->get_children()[3]->get_token() == "bp")
+                {
+                    ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+                    ins.addr_mode_size = BYTE_S;
+                    ins.indexing = {ast->get_children()[4]->get_token().value[0], ast->get_children()[5]};
+                    return ins;
+                }
+                ins.addressing_mode = MEMORY_ABSOULTE_TO_REGISTER;
+                ins.addr_mode_size = WORD_S;
+                return ins;
             }
             if (ast->get_children()[2]->get_token() == "*")
             {
+                ins.addressing_mode = MEMORY_RELATIVE_TO_PC_TO_REGISTER;
+                ins.addr_mode_size = BYTE_S;
+                if (get_expression_size(ast->get_children()[3]) == WORD_S)
+                    error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
+                ins.op2 = ast->get_children()[3];
+                return ins;
             }
+            ins.addressing_mode = REGISTER_ACCESS_MODE;
+            ins.addr_mode_size = 0;
             return ins;
         }
 

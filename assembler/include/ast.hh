@@ -21,7 +21,7 @@ namespace ANC216
         ADDRESSING_MODE_ABSOLUTE,
         ADDRESSING_MODE_INDIRECT,
         ADDRESSING_MODE_MEMORY_TO_MEMORY,
-        ADDRESSING_MODE_REGISTER_TO_MEMORY,
+        ADDRESSING_MODE_MEMORY_TO_REGISTER,
         ADDRESSING_MODE_REGISTER_TO_REGISTER,
         ADDRESSING_MODE_REGISTER,
         ADDRESSING_MODE_MEMORY,
@@ -66,8 +66,8 @@ namespace ANC216
                 return "addressingModeImmediate";
             case ADDRESSING_MODE_MEMORY_TO_MEMORY:
                 return "memoryToMemory";
-            case ADDRESSING_MODE_REGISTER_TO_MEMORY:
-                return "registerToMemory";
+            case ADDRESSING_MODE_MEMORY_TO_REGISTER:
+                return "memoryToRegister";
             case ADDRESSING_MODE_REGISTER_TO_REGISTER:
                 return "registerToRegister";
             case ADDRESSING_MODE_REGISTER:

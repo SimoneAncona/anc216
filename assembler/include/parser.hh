@@ -672,7 +672,7 @@ namespace ANC216
 
         AST *memory_to_reg()
         {
-            AST *ast = new AST(ADDRESSING_MODE_REGISTER_TO_MEMORY);
+            AST *ast = new AST(ADDRESSING_MODE_MEMORY_TO_REGISTER);
             ast->insert(new AST(tokenizer.get_current_token()));
             ast->insert(new AST(tokenizer.next_token()));
             tokenizer.next_token();
@@ -1221,10 +1221,10 @@ namespace ANC216
 
         inline AST *parse()
         {
-            if (!tokenizer.get_error_stack().empty())
+            if (tokenizer.has_errors())
                 return nullptr;
             preprocessor();
-            if (!error_stack.empty())
+            if (this->has_errors())
                 return nullptr;
             return prog();
         }
@@ -1242,6 +1242,15 @@ namespace ANC216
         inline std::vector<Token> &_get_tokens()
         {
             return tokenizer.get_tokens();
+        }
+
+        inline bool has_errors()
+        {
+            auto errors = get_error_stack();
+            for (auto &error : errors)
+                if (!error.is_warning())
+                    return true;
+            return false;
         }
     };
 }

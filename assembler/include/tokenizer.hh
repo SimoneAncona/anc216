@@ -370,5 +370,15 @@ namespace ANC216
             }
             
         }
+
+        inline bool has_errors()
+        {
+            for (auto &error : error_stack)
+            {
+                if (!error.is_warning())
+                    return true;
+            }
+            return false;
+        }
     };
 }

@@ -41,6 +41,7 @@ namespace ANC216
         std::pair<char, AST *> indexing;
         std::string instruction;
         size_t addr_mode_size;
+        std::string label;
     };
 
     struct Environment
@@ -241,6 +242,7 @@ namespace ANC216
                 error_stack.push_back({"'" + insr.instruction + "' does not support " + addr_to_string(insr.addressing_mode) + " addressing mode", ast->get_children()[0]->get_token()});
                 return;
             }
+            insr.label = current_label;
             env.instructions.push_back(insr);
             current_address += insr.addr_mode_size + WORD_S;
         }
@@ -309,12 +311,8 @@ namespace ANC216
             return "";
         }
 
-#include <iostream>
-
         Instruction get_instruction(AST *ast)
         {
-            std::cout << ast->to_json() << "\n"
-                      << std::endl;
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_BP)
                 return get_bp_relative(ast->get_children()[0]);
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_MEMORY_TO_REGISTER)
@@ -554,31 +552,61 @@ namespace ANC216
             Instruction ins;
 
             check_local_variables(ast->get_children()[0]->get_token());
-            std::string id = ast->get_children()[0]->get_token().value;
+            ins.op1 = ast->get_children()[0];
             bool register_indexed = false;
             if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
             {
                 if (get_expression_size(ast->get_children()[2]) == WORD_S)
                     error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token(), true});
+                ins.indexing = {'+', ast->get_children()[2]};
             }
             else
+            {
                 register_indexed = true;
+                ins.indexing = {'+', ast->get_children()[2]};
+            }
 
-            if (ast->get_children()[4]->get_rule_name() == EXPRESSION)
+            if (ast->get_children()[5]->get_rule_name() == EXPRESSION)
             {
                 ins.addressing_mode = register_indexed ? IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER : IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;
-                ins.addr_mode_size = register_indexed ? get_expression_size(ast->get_children()[4]) : BYTE_S + get_expression_size(ast->get_children()[4]);
-                ins.op1 = ast->get_children()[4];
+                ins.addr_mode_size = register_indexed ? get_expression_size(ast->get_children()[5]) : BYTE_S + get_expression_size(ast->get_children()[5]);
+                ins.op2 = ast->get_children()[5];
                 return ins;
             }
             ins.addressing_mode = REGISTER_TO_MEMORY_RELATIVE_TO_BP;
             ins.addr_mode_size = BYTE_S;
-            ins.op1 = ast->get_children()[4];
+            ins.op2 = ast->get_children()[5];
             return ins;
         }
 
         void analyze_expression_list(AST *ast)
         {
+            Instruction ins;
+            switch (ast->get_children()[0]->get_token().type)
+            {
+            case STRING_LITERAL:
+                ins.instruction = "string";
+                ins.op1 = ast->get_children()[0];
+                ins.addr_mode_size = ast->get_children()[0]->get_token().value.length() - 2;
+                current_address += ins.addr_mode_size;
+                break;
+            case KEYWORD:
+                ins.instruction = "reserve";
+                ins.op1 = ast->get_children()[1];
+                ins.addr_mode_size = eval_expression(ast->get_children()[1]);
+                current_address += ins.addr_mode_size;
+                break;
+            default:
+                ins.instruction = "expression";
+                ins.op1 = ast->get_children()[0];
+                ins.addr_mode_size = get_expression_size(ast->get_children()[0]);
+                current_address += ins.addr_mode_size;
+                break;
+            }
+            ins.label = current_label;
+            env.instructions.push_back(ins);
+            if (ast->get_children()[ast->get_children().size() - 1]->get_rule_name() == EXPRESSION_LIST)
+                analyze_expression_list(ast->get_children()[ast->get_children().size() - 1]);
         }
 
         char get_expression_size(AST *ast)
@@ -729,6 +757,21 @@ namespace ANC216
         inline std::vector<Error> &get_error_stack()
         {
             return error_stack;
+        }
+
+        inline Environment &get_environment()
+        {
+            return env;
+        }
+
+        inline bool has_errors()
+        {
+            for (auto &error : error_stack)
+            {
+                if (!error.is_warning())
+                    return true;
+            }
+            return false;
         }
     };
 }

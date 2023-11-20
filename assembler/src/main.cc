@@ -2,6 +2,7 @@
 #include <parser.hh>
 #include <analyzer.hh>
 #include <types.hh>
+#include <assembler.hh>
 
 #include <iostream>
 #include <string>
@@ -66,8 +67,11 @@ int main(int argc, char **argv)
     if (analyzer.get_error_stack().size() != 0)
     {
         print_error_stack(analyzer.get_error_stack());
-        return -1;
     }
+    if (analyzer.has_errors())
+        return -1;
+
+    ANC216::Assembler assembler(analyzer.get_environment());
     return 0;
 }
 

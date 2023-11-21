@@ -82,6 +82,15 @@ int main(int argc, char **argv)
         print_error_stack(assembler.get_error_stack());
     }
     if (assembler.has_errors()) return -1;
+
+    auto i = 1;
+    for (auto ch : a)
+    {
+        std::cout << std::setw(2) << std::setfill('0') << std::hex << (static_cast<int>(ch) & 0xFF) << " "; 
+        if (i % 8 == 0)
+            std::cout << "\n";
+        i++;
+    }
     return 0;
 }
 

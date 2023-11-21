@@ -107,6 +107,10 @@ namespace ANC216
                 error_stack.push_back({"Cannot set address, the address must be grater than or equal to the current address value", ast->get_children()[0]->get_token()});
                 return;
             }
+            if (value - current_address > 0)
+            {
+                env.instructions.push_back({IMPLIED_MODE, nullptr, nullptr, {}, "reserve", value - current_address, current_label});
+            }
             current_address = value;
         }
 
@@ -400,7 +404,7 @@ namespace ANC216
             ins.op1 = ast->get_children()[1];
             if (ast->get_children().size() > 2)
             {
-                ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+                ins.addressing_mode = MEMORY_RELATIVE_TO_PC_TO_REGISTER;
                 ins.op2 = ast->get_children()[3];
             }
             return ins;
@@ -479,6 +483,13 @@ namespace ANC216
             return is_var_expression(ast->get_children()[0]);
         }
 
+        Token get_var_expression(AST *ast)
+        {
+            if (ast->get_children()[0]->get_token().type == IDENTIFIER)
+                return ast->get_children()[0]->get_token();
+            return get_var_expression(ast->get_children()[0]);
+        }
+
         Instruction get_memory_to_reg(AST *ast)
         {
             Instruction ins;
@@ -489,9 +500,11 @@ namespace ANC216
                 ins.addressing_mode = is_var ? MEMORY_RELATIVE_TO_BP_TO_REGISTER : IMMEDIATE_TO_REGISTER;
                 ins.addr_mode_size = is_var ? BYTE_S : ins.op1->get_token().value[0] == 'l' ? BYTE_S
                                                                                             : WORD_S;
+                if (is_var)
+                    check_local_variables(get_var_expression(ast->get_children()[2]));
                 if (!is_var && get_expression_size(ast->get_children()[2]) == WORD_S && ins.addr_mode_size == BYTE_S)
                     error_stack.push_back({"Conversion from word to byte may cause a data loss", ast->get_children()[1]->get_token()});
-                ins.indexing = {'+', nullptr};
+                ins.indexing = {'+', !is_var ? nullptr : new AST({std::to_string(env.variables[get_var_expression(ast->get_children()[2]).value].bp_relative_address).c_str(), NUMBER_LITERAL})};
                 ins.op2 = ast->get_children()[2];
                 return ins;
             }
@@ -517,6 +530,7 @@ namespace ANC216
                 }
                 ins.addressing_mode = MEMORY_ABSOULTE_TO_REGISTER;
                 ins.addr_mode_size = WORD_S;
+                ins.op2 = ast->get_children()[3];
                 return ins;
             }
             if (ast->get_children()[2]->get_token() == "*")
@@ -599,7 +613,7 @@ namespace ANC216
                 ins.op1 = ast->get_children()[5];
                 return ins;
             }
-            ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+            ins.addressing_mode = REGISTER_TO_MEMORY_RELATIVE_TO_BP;
             ins.addr_mode_size = BYTE_S;
             ins.op1 = ast->get_children()[5];
             return ins;
@@ -641,7 +655,6 @@ namespace ANC216
                 break;
             case KEYWORD:
                 ins.instruction = "reserve";
-                ins.op1 = ast->get_children()[1];
                 ins.addr_mode_size = eval_expression(ast->get_children()[1]);
                 current_address += ins.addr_mode_size;
                 break;

@@ -2,7 +2,7 @@ _code:
     var x: [10 byte]        ; trsp r0; add r0, 10; ldsp r0;
     var cavoletti: word     ; push byte 0
     store x[0], 10
-    store x[l0], 10
+    ; store x[l0], 10
     store x[0], r0
     store & test, 10
     store & test + l0, 10

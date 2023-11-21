@@ -52,6 +52,10 @@ namespace ANC216
                 auto x = dump_instruction(ins);
                 for (auto ch : x)
                     res.push_back(ch);
+                if (ins.instruction != "reserve" && ins.instruction != "string" && ins.instruction != "expression")
+                    current_address += ins.addr_mode_size + WORD_S;
+                else
+                    current_address += ins.addr_mode_size;
             }
             return res;
         }
@@ -123,7 +127,7 @@ namespace ANC216
             }
 
             if (children[0]->get_token() == "word" || children[0]->get_token() == "byte")
-                    return eval_expression(children[1]);
+                return eval_expression(children[1]);
 
             if (children[0]->get_token() == "sizeof")
             {
@@ -182,8 +186,7 @@ namespace ANC216
             if (ins.instruction == "reserve")
             {
                 std::vector<unsigned char> res;
-                auto cnt = eval_expression(ins.op1);
-                for (auto i = 0; i < cnt; i++)
+                for (auto i = 0; i < ins.addr_mode_size; i++)
                     res.push_back(0);
                 return res;
             }
@@ -278,7 +281,7 @@ namespace ANC216
                 return ins.addr_mode_size == WORD_S + BYTE_S ? 0b1011 : 0b11;
             case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
                 return (ins.addr_mode_size == WORD_S ? 0b101 : 0b100) | ((ins.indexing.second->get_token().value[1] - '0') << 3);
-            case REGISTER_TO_MEMORY_ABSOULTE:   
+            case REGISTER_TO_MEMORY_ABSOULTE:
                 return (ins.op2->get_token().value[0] == 'l' ? 0b11'000'100 : 0b11'000'000) | (ins.op2->get_token().value[1] - '0') << 3;
             case MEMORY_ABSOULTE_TO_REGISTER:
                 return (ins.op1->get_token().value[0] == 'l' ? 0b11'000'100 : 0b11'000'000) | (ins.op1->get_token().value[1] - '0') << 3;
@@ -289,7 +292,7 @@ namespace ANC216
             case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
                 return (ins.op1->get_token().value[0] == 'l' ? 0b11'000'110 : 0b11'000'010) | (ins.op1->get_token().value[1] - '0') << 3;
             case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
-                return (ins.op2->get_token().value[0] == 'l' ? 0b11'000'111 : 0b11'000'011) | (ins.op2->get_token().value[1] - '0') << 3;
+                return (ins.op1->get_token().value[0] == 'l' ? 0b11'000'111 : 0b11'000'011) | (ins.op1->get_token().value[1] - '0') << 3;
             case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
                 return (ins.op1->get_token().value[0] == 'l' ? 0b11'000'111 : 0b11'000'011) | (ins.op1->get_token().value[1] - '0') << 3;
             }
@@ -312,15 +315,18 @@ namespace ANC216
             case MEMORY_RELATIVE_TO_BP:
             case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
             case REGISTER_TO_MEMORY_RELATIVE_TO_PC:
-            case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
                 res.push_back(eval_expression(ins.op1));
+                break;
+            case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
+            case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
+                res.push_back(eval_expression(ins.indexing.second) * (ins.indexing.first == '-' ? -1 : 1));
                 break;
             case IMMEDIATE_WORD:
             case MEMORY_ABSOULTE:
             case MEMORY_ABSOULTE_INDEXED:
             case MEMORY_INDIRECT:
             case MEMORY_INDIRECT_INDEXED:
-            case MEMORY_ABSOULTE_TO_REGISTER:
+            case REGISTER_TO_MEMORY_ABSOULTE:
                 a = eval_expression(ins.op1);
                 res.push_back(a >> 8);
                 res.push_back(a & 0xFF);
@@ -340,6 +346,7 @@ namespace ANC216
                     res.push_back(a >> 8);
                     res.push_back(a & 0xFF);
                 }
+                break;
             case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP:
                 res.push_back(static_cast<unsigned char>(eval_expression(ins.indexing.second)) * (ins.indexing.first == '-' ? -1 : 1));
                 if (ins.addr_mode_size == WORD_S)
@@ -363,7 +370,8 @@ namespace ANC216
                     res.push_back(a >> 8);
                     res.push_back(a & 0xFF);
                 }
-            case REGISTER_TO_MEMORY_ABSOULTE:
+                break;
+            case MEMORY_ABSOULTE_TO_REGISTER:
                 a = eval_expression(ins.op2);
                 res.push_back(a >> 8);
                 res.push_back(a & 0xFF);
@@ -379,7 +387,7 @@ namespace ANC216
                     res.push_back(a >> 8);
                     res.push_back(a & 0xFF);
                 }
-            case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
+                break;
             case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
                 res.push_back(eval_expression(ins.op2));
                 break;

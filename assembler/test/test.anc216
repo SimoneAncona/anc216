@@ -37,7 +37,11 @@ _code:
     jmp * loop
     ret
 
+org $ + 10
 test:
+    var x: word = 10
+    var y: word = 20
+    byte offset f
     word 10
 
 loop:

@@ -19,6 +19,7 @@ namespace ANC216
         bool is_local;
         std::string module_name;
         std::string section;
+        size_t size;
     };
 
     struct Structure
@@ -191,7 +192,7 @@ namespace ANC216
                 }
             }
             env.variables[name] = {bp_relative_address, current_label, is_assigned ? children[i + 1] : nullptr};
-            bp_relative_address + size;
+            bp_relative_address += size;
             Instruction ins;
             if (is_assigned)
             {
@@ -250,6 +251,10 @@ namespace ANC216
             {
                 error_stack.push_back({"Redefinition of \"" + name + "\"", ast->get_children()[i]->get_token()});
                 return;
+            }
+            if (current_label != "")
+            {
+                env.labels[current_label].size = current_address - env.labels[current_label].address;
             }
             env.labels[ast->get_children()[i]->get_token().value] = {current_address, is_local, ast->get_children()[i]->get_token().module_name};
             current_label = name;
@@ -722,17 +727,22 @@ namespace ANC216
             auto children = ast->get_children();
             if (ast->get_token() == "sizeof")
             {
-                error_stack.push_back({"Cannot evaluate expression, cannot resolve the size of the label", ast->get_children()[0]->get_token()});
+                error_stack.push_back({"Cannot evaluate expression, cannot resolve the size of the label", ast->get_token()});
                 return -1;
+            }
+            if (ast->get_token() == "offset")
+            {
+                error_stack.push_back({"Cannot evaluate expression, cannot resolve the offset of the variable", ast->get_token()});
+                return -1; 
             }
             if (ast->get_token().type == IDENTIFIER)
             {
-                error_stack.push_back({"Cannot evaluate expression, cannot resolve the address of \"" + ast->get_children()[0]->get_token().value + "\"", ast->get_children()[0]->get_token()});
+                error_stack.push_back({"Cannot evaluate expression, cannot resolve the address of \"" + ast->get_token().value + "\"", ast->get_children()[0]->get_token()});
                 return -1;
             }
             if (ast->get_token().type == TYPE)
             {
-                error_stack.push_back({"Unexpected type in expression", ast->get_children()[0]->get_token()});
+                error_stack.push_back({"Unexpected type in expression", ast->get_token()});
                 return -1;
             }
             if (children.size() == 0)
@@ -783,13 +793,9 @@ namespace ANC216
             current_label = "";
         }
 
-        inline std::vector<char> assemble()
+        inline void analyze()
         {
             analyze_command(this->ast);
-            if (!error_stack.empty())
-                return {};
-
-            return {};
         }
 
         inline std::vector<Error> &get_error_stack()

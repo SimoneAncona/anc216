@@ -122,6 +122,7 @@ namespace ANC216
         case MEMORY_RELATIVE_TO_BP_TO_LOW_REGISTER:
             return MEMORY_TO_REGISTER;
         }
+        return IMPLIED;
     }
 
     std::map<std::string, std::pair<unsigned short, std::vector<AddressingModeFamily>>> isa =

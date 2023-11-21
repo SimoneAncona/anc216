@@ -23,25 +23,18 @@ namespace fs = std::filesystem;
 void print_error_stack(std::vector<ANC216::Error>);
 void print_help(char**);
 void print_version();
+ANC216::AsmFlags get_flags(int, char**);
 
 int main(int argc, char **argv)
 {
-    std::string filename = "../test/test.anc216";
-    fs::path p(fs::weakly_canonical(filename));
-    filename = p.string();
-    fs::current_path(p.parent_path());
-    std::ifstream file = std::ifstream(filename);
-    std::stringstream ss;
-    ss << file.rdbuf();
-    std::string file_string = ss.str();
-    // if (argc < 2)
-    // {
-    //     std::cout << "Usage:\n"
-    //               << "\t" << argv[0] << " <source file> " << YELLOW << "[output file]\n"
-    //               << std::endl
-    //               << RESET;
-    //     return 0;
-    // }
+    if (argc < 2)
+    {
+        std::cout << "Usage:\n"
+                  << "\t" << argv[0] << " <source file> " << YELLOW << "[output file]\n"
+                  << std::endl
+                  << RESET;
+        return 0;
+    }
     if (std::string(argv[1]) == "--help")
     {
         print_help(argv);
@@ -52,6 +45,17 @@ int main(int argc, char **argv)
         print_version();
         return 0;
     }
+    ANC216::AsmFlags flags = get_flags(argc, argv);
+    std::string filename = "../test/test.anc216";
+    fs::path p(fs::weakly_canonical(filename));
+    filename = p.string();
+    fs::current_path(p.parent_path());
+    std::ifstream file = std::ifstream(filename);
+    std::stringstream ss;
+    ss << file.rdbuf();
+    std::string file_string = ss.str();
+    
+    
     ANC216::Parser parser(file_string, filename);
     ANC216::AST *res = parser.parse();
     if (parser.get_error_stack().size() != 0)
@@ -62,7 +66,7 @@ int main(int argc, char **argv)
         return -1;
 
     ANC216::Analyzer analyzer(res);
-    analyzer.assemble();
+    analyzer.analyze();
 
     if (analyzer.get_error_stack().size() != 0)
     {
@@ -72,7 +76,62 @@ int main(int argc, char **argv)
         return -1;
 
     ANC216::Assembler assembler(analyzer.get_environment());
+    auto a = assembler.assemble();
+    if (assembler.get_error_stack().size() != 0)
+    {
+        print_error_stack(assembler.get_error_stack());
+    }
+    if (assembler.has_errors()) return -1;
     return 0;
+}
+
+
+ANC216::AsmFlags get_flags(int argc, char **argv)
+{
+    ANC216::AsmFlags flags;
+    std::string arg;
+    for (int i = 0; i < argc; i++)
+    {   
+        arg = std::string(argv[i]);
+        if (arg.starts_with("-h="))
+        {
+            if (arg != "-h=ualf")
+            {
+                std::cerr << RED << "Unrecognized header: " << RESET << "options are:"
+                << "\n\t" << YELLOW << "ualf" << RESET << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            flags.header = arg.substr(3);
+            continue;
+        }
+        if (arg == "-ud" || arg == "--use-debug")
+        {
+            flags.use_as.push_back({"_DEBUG", ""});
+            continue;
+        }
+        if (arg == "--preview")
+        {
+            std::cout << YELLOW << "Warning:\n\t" << RESET << "You are using the preview assembly standard, this standard is " << RED << "NOT" << RESET << " fully implemented\n" << std::endl;
+            flags.preview = true;
+            continue;
+        }
+        if (arg == "-t")
+        {
+            flags.get_time = true;
+            continue;
+        }
+        if (arg == "-S")
+        {
+            flags.output_size = true;
+            continue;
+        }
+        if (arg == "-s")
+        {
+            flags.get_symbol_table = true;
+            continue;
+        }
+    }
+    return flags;
 }
 
 void print_error_stack(std::vector<ANC216::Error> error_stack)
@@ -97,9 +156,9 @@ void print_help(char **argv)
               << CYAN << "--preview" << RESET << "\t\t" << "Use the new standard preview" << "\n" 
               << CYAN << "-S" << RESET << "\t\t\t" << "Print the size of the output file" << "\n"
               << CYAN << "-s" << RESET << "\t\t\t" << "Generate symbol table constants" << "\n"
-              << CYAN << "--stdlib <path>" << RESET << "\t\t" << "Set standard library path" << "\n"
+              << CYAN << "--stdlib <dir>" << RESET << "\t\t" << "Set standard library path" << "\n"
               << CYAN << "-t" << RESET << "\t\t\t" << "Print completation time" << "\n"
-              << CYAN << "-u <dir> [-a <value>]" << RESET << "\t" << "Use as" << "\n"
+              << CYAN << "-u <const> [-a <value>]" << RESET << "\t" << "Use as" << "\n"
               << CYAN << "-ud" << RESET << "\t\t\t" << "Use _DEBUG" << "\n"
               << CYAN << "--use-debug" << RESET << "\t\t" << "Use _DEBUG" << "\n"
               << CYAN << "-v" << RESET << "\t\t\t" << "Print version information" << "\n"

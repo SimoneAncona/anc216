@@ -1,5 +1,7 @@
 #include <sstream>
 #include <console.hh>
+#include <vector>
+#include <string>
 
 #pragma once
 
@@ -141,7 +143,7 @@ namespace ANC216
         {
             std::stringstream ss;
             ss  << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n" 
-                << (warning ? YELLOW + std::string("warning: ") : RED + std::string("error: ")) << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
+                << (warning ? YELLOW + std::string("Warning: ") : RED + std::string("Error: ")) << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
                 << "\n\t" << message;
             return ss.str();
         }
@@ -150,6 +152,21 @@ namespace ANC216
         {
             return warning;
         }
+    };
+
+    struct AsmFlags
+    {
+        std::string input_file = "";
+        std::string output_file = "";
+        std::string header = "";
+        std::vector<std::string> import_paths = {};
+        unsigned char preview : 1 = 0;
+        unsigned char output_size : 1 = 0;
+        unsigned char get_symbol_table : 1 = 0;
+        std::string path_to_stdlib = "";
+        unsigned char get_time : 1 = 0;
+        std::vector<std::pair<std::string, std::string>> use_as = {};
+        unsigned char suppress_warnings : 1 = 0;
     };
 
 }

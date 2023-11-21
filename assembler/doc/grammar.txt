@@ -69,7 +69,6 @@ ImmMem ::=
     "&" "bp" ("+" | "-") Exp "," Exp            -- relative to base pointer
     | "&" "bp" ("+" | "-") lowRegister "," Exp  -- relative to base pointer with register offset
     | id "[" Exp "]" "," Exp                    -- array access
-    | id "[" lowRegister "]" "," Exp            -- array access indexed
     | "&" Exp "," Exp                           -- absolute reference
     | "&" Exp ("+" | "-") lowRegister "," Exp   -- absolute reference indexed
     ;

@@ -771,44 +771,44 @@ namespace ANC216
             ast->insert(new AST(tokenizer.get_current_token()));
             ast->insert(new AST(tokenizer.next_token()));
             tokenizer.next_token();
-            if (tokenizer.get_current_token().type == REGISTER)
-            {
-                if (tokenizer.get_current_token().value[0] != 'l')
-                {
-                    error_stack.push_back({"The address cannot be indexed with a 16-bit wide register", tokenizer.get_current_token()});
-                    skip_line();
-                    return nullptr;
-                }
-                ast->insert(new AST(tokenizer.get_current_token()));
-                tokenizer.next_token();
-                if (tokenizer.get_current_token() != "]")
-                {
-                    error_stack.push_back({expected_error_message("']'"), tokenizer.get_next_token()});
-                    skip_line();
-                    return nullptr;
-                }
-                ast->insert(new AST(tokenizer.get_current_token()));
-                if (tokenizer.get_next_token() == ",")
-                {
-                    tokenizer.next_token();
-                    ast->insert(new AST(tokenizer.get_current_token()));
-                    tokenizer.next_token();
-                    if (tokenizer.get_current_token().type == REGISTER)
-                    {
-                        error_stack.push_back({"Cannot access to register while using array like with register addressing mode", tokenizer.get_current_token()});
-                        skip_line();
-                        return nullptr;
-                    }
-                    if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "offset" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
-                    {
-                        error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
-                        skip_line();
-                        return nullptr;
-                    }
-                    ast->insert(expression());
-                }
-                return ast;
-            }
+            // if (tokenizer.get_current_token().type == REGISTER)
+            // {
+            //     if (tokenizer.get_current_token().value[0] != 'l')
+            //     {
+            //         error_stack.push_back({"The address cannot be indexed with a 16-bit wide register", tokenizer.get_current_token()});
+            //         skip_line();
+            //         return nullptr;
+            //     }
+            //     ast->insert(new AST(tokenizer.get_current_token()));
+            //     tokenizer.next_token();
+            //     if (tokenizer.get_current_token() != "]")
+            //     {
+            //         error_stack.push_back({expected_error_message("']'"), tokenizer.get_next_token()});
+            //         skip_line();
+            //         return nullptr;
+            //     }
+            //     ast->insert(new AST(tokenizer.get_current_token()));
+            //     if (tokenizer.get_next_token() == ",")
+            //     {
+            //         tokenizer.next_token();
+            //         ast->insert(new AST(tokenizer.get_current_token()));
+            //         tokenizer.next_token();
+            //         if (tokenizer.get_current_token().type == REGISTER)
+            //         {
+            //             error_stack.push_back({"Cannot access to register while using array like with register addressing mode", tokenizer.get_current_token()});
+            //             skip_line();
+            //             return nullptr;
+            //         }
+            //         if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "offset" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
+            //         {
+            //             error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+            //             skip_line();
+            //             return nullptr;
+            //         }
+            //         ast->insert(expression());
+            //     }
+            //     return ast;
+            // }
             if (!(tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "offset" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$"))
             {
                 error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});

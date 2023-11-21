@@ -125,7 +125,7 @@ namespace ANC216
         return IMPLIED;
     }
 
-    std::map<std::string, std::pair<unsigned short, std::vector<AddressingModeFamily>>> isa =
+    std::map<std::string, std::pair<unsigned char, std::vector<AddressingModeFamily>>> isa =
         {
             {"kill", {0x00, {IMPLIED}}},
             {"reset", {0x01, {IMPLIED}}},

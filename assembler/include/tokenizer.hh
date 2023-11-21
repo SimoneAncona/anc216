@@ -165,6 +165,9 @@ namespace ANC216
 
             value += std::string(1, ending);
 
+            if (value.length() == 3 && value[0] == '\'')
+                return {std::to_string((int)value[1]), NUMBER_LITERAL, index, line, column, module_name};
+
             return {value, STRING_LITERAL, index, line, column, module_name};
         }
 

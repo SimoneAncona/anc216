@@ -358,20 +358,28 @@ namespace ANC216
         {
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_BP)
                 return get_bp_relative(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_MEMORY_TO_REGISTER)
                 return get_memory_to_reg(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_ABSOLUTE)
                 return get_absolute(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == EXPRESSION)
                 return get_immediate(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_INDIRECT)
                 return get_indirect(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REGISTER_TO_REGISTER)
                 return {REGISTER_TO_REGISTER_MODE, ast->get_children()[0]->get_children()[0], ast->get_children()[0]->get_children()[2], {}, "", 0};
+
             if (ast->get_rule_name() == ADDRESSING_MODE_REGISTER)
                 return {REGISTER_ACCESS_MODE, ast->get_children()[0], nullptr, {}, "", 0};
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REALTIVE_PC)
                 return get_relative(ast->get_children()[0]);
+
             if (ast->get_children()[0]->get_rule_name() == ADDRESSING_MODE_REG_TO_BP)
             {
                 check_local_variables(ast->get_children()[0]->get_children()[0]->get_token());
@@ -387,8 +395,14 @@ namespace ANC216
             Instruction ins;
             ins.addressing_mode = MEMORY_RELATIVE_TO_PC;
             ins.addr_mode_size = BYTE_S;
-            if (get_expression_size(ast->get_children()[1]) == WORD_S)
-                error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
+            // if (get_expression_size(ast->get_children()[1]) == WORD_S)
+            //     error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
+            ins.op1 = ast->get_children()[1];
+            if (ast->get_children().size() > 2)
+            {
+                ins.addressing_mode = MEMORY_RELATIVE_TO_BP_TO_REGISTER;
+                ins.op2 = ast->get_children()[3];
+            }
             return ins;
         }
 
@@ -411,6 +425,7 @@ namespace ANC216
         {
             Instruction ins;
             ins.addr_mode_size = get_expression_size(ast);
+            ins.op1 = ast;
             if (ins.addr_mode_size == WORD_S)
             {
                 ins.addressing_mode = IMMEDIATE_WORD;
@@ -595,30 +610,21 @@ namespace ANC216
             Instruction ins;
 
             check_local_variables(ast->get_children()[0]->get_token());
-            ins.op1 = ast->get_children()[0];
-            bool register_indexed = false;
-            if (ast->get_children()[2]->get_rule_name() == EXPRESSION)
-            {
-                if (get_expression_size(ast->get_children()[2]) == WORD_S)
-                    error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token(), true});
-                ins.indexing = {'+', ast->get_children()[2]};
-            }
-            else
-            {
-                register_indexed = true;
-                ins.indexing = {'+', ast->get_children()[2]};
-            }
+
+            if (get_expression_size(ast->get_children()[2]) == WORD_S)
+                error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token(), true});
+            ins.indexing = {'+', new AST({std::to_string(env.variables.find(ast->get_children()[0]->get_token().value)->second.bp_relative_address + eval_expression(ast->get_children()[2])).c_str(), NUMBER_LITERAL})};
 
             if (ast->get_children()[5]->get_rule_name() == EXPRESSION)
             {
-                ins.addressing_mode = register_indexed ? IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER : IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;
-                ins.addr_mode_size = register_indexed ? get_expression_size(ast->get_children()[5]) : BYTE_S + get_expression_size(ast->get_children()[5]);
-                ins.op2 = ast->get_children()[5];
+                ins.addressing_mode = IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP;
+                ins.addr_mode_size = BYTE_S + get_expression_size(ast->get_children()[5]);
+                ins.op1 = ast->get_children()[5];
                 return ins;
             }
             ins.addressing_mode = REGISTER_TO_MEMORY_RELATIVE_TO_BP;
             ins.addr_mode_size = BYTE_S;
-            ins.op2 = ast->get_children()[5];
+            ins.op1 = ast->get_children()[5];
             return ins;
         }
 
@@ -733,7 +739,7 @@ namespace ANC216
             if (ast->get_token() == "offset")
             {
                 error_stack.push_back({"Cannot evaluate expression, cannot resolve the offset of the variable", ast->get_token()});
-                return -1; 
+                return -1;
             }
             if (ast->get_token().type == IDENTIFIER)
             {

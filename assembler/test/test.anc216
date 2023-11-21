@@ -41,7 +41,7 @@ org $ + 10
 test:
     var x: word = 10
     var y: word = 20
-    byte offset f
+    byte offset y
     word 10
 
 loop:

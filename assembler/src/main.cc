@@ -31,7 +31,9 @@ int main(int argc, char **argv)
     {
         std::cout << "Usage:\n"
                   << "\t" << argv[0] << " <source file> " << YELLOW << "[output file]\n"
-                  << std::endl
+                  << "\n" << RESET
+                  << "Type '--help' for more information"
+                  << "\n"
                   << RESET;
         return 0;
     }
@@ -180,7 +182,7 @@ void print_help(char **argv)
 
 void print_version()
 {
-    std::cout << "Asembler version:" << "\t\t" << GREEN << ASSEMBLER_VERSION_MAJOR << "." << ASSEMBLER_VERSION_MINOR << "." << ASSEMBLER_VERSION_PATCH << "\n"
+    std::cout << "Assembler version:" << "\t\t" << GREEN << ASSEMBLER_VERSION_MAJOR << "." << ASSEMBLER_VERSION_MINOR << "." << ASSEMBLER_VERSION_PATCH << "\n"
     << RESET << "Assembly standard:" << "\t\t" << GREEN << ASSEMBLY_STANDARD_VERSION << "\n"
     << RESET << "Assembly standard preview:" << "\t" << GREEN << ASSEMBLY_PREVIEW_STANDARD_VERSION << "\n"
     << RESET;

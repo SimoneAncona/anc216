@@ -175,25 +175,63 @@ namespace ANC216
                 size *= children[i]->get_token() == "byte" ? BYTE_S : WORD_S;
             }
             i++;
-            if (i >= children.size())
+            bool is_assigned = false;
+            if (i < children.size())
             {
-                env.variables[name] = {0, current_label, nullptr};
+                if (children[i]->get_token() == "]")
+                    i++;
+                if (i < children.size())
+                {
+                    int res = eval_expression(children[i + 1]);
+                    if (res >= pow(2, (8 * size)) || res < -pow(2, (8 * size - 1)))
+                    {
+                        error_stack.push_back({"The value exceeds the size of the variable", children[i]->get_token(), true});
+                    }
+                    is_assigned = true;
+                }
+            }
+            env.variables[name] = {bp_relative_address, current_label, is_assigned ? children[i + 1] : nullptr};
+            bp_relative_address + size;
+            Instruction ins;
+            if (is_assigned)
+            {
+                ins.addressing_mode = size == WORD_S ? IMMEDIATE_WORD : IMMEDIATE_BYTE;
+                ins.op1 = children[i + 1];
+                ins.addr_mode_size = size;
+                ins.instruction = "push";
+                current_address += size + WORD_S;
+                env.instructions.push_back(ins);
                 return;
             }
-            if (children[i]->get_token() == "]")
-                i++;
-            if (i >= children.size())
+            if (size > WORD_S)
             {
-                env.variables[name] = {0, current_label, nullptr};
+                ins.addressing_mode = REGISTER_ACCESS_MODE;
+                ins.op1 = new AST(Token{"r0", REGISTER});
+                ins.addr_mode_size = 0;
+                ins.instruction = "trsp";
+                current_address += WORD_S;
+                env.instructions.push_back(ins);
+                ins.addressing_mode = IMMEDIATE_TO_REGISTER;
+                ins.op1 = new AST(Token{"r0", REGISTER});
+                ins.op2 = new AST(Token{std::to_string(size).c_str(), NUMBER_LITERAL});
+                ins.addr_mode_size = WORD_S;
+                ins.instruction = "add";
+                current_address += WORD_S * 2;
+                env.instructions.push_back(ins);
+                ins.addressing_mode = REGISTER_ACCESS_MODE;
+                ins.op1 = new AST(Token{"r0", REGISTER});
+                ins.addr_mode_size = 0;
+                ins.instruction = "ldsp";
+                current_address += WORD_S;
+                env.instructions.push_back(ins);
                 return;
             }
-            int res = eval_expression(children[i + 1]);
-            if (res >= pow(2, (8 * size)) || res < -pow(2, (8 * size - 1)))
-            {
-                error_stack.push_back({"The value exceeds the size of the variable", children[i]->get_token(), true});
-                return;
-            }
-            env.variables[name] = {0, current_label, children[i + 1]};
+            ins.addressing_mode = size == WORD_S ? IMMEDIATE_WORD : IMMEDIATE_BYTE;
+            ins.op1 = new AST(Token{"0", NUMBER_LITERAL});
+            ins.addr_mode_size = size;
+            ins.instruction = "push";
+            current_address += size + WORD_S;
+            env.instructions.push_back(ins);
         }
 
         void analyze_label(AST *ast)
@@ -222,7 +260,7 @@ namespace ANC216
         {
             Instruction insr;
             if (ast->get_children().size() == 1)
-                insr = {IMPLIED_MODE, nullptr, nullptr, {}, ast->get_children()[0]->get_token().value};
+                insr = {IMPLIED_MODE, nullptr, nullptr, {}, ast->get_children()[0]->get_token().value, 0};
             else
             {
                 insr = get_instruction(ast->get_children()[1]);

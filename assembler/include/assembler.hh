@@ -22,15 +22,15 @@ namespace ANC216
             size_t current_address = 0;
             for (auto &ins : env.instructions)
             {
-                std::cout << CYAN << std::setw(4) << std::setfill('0') << std::hex << get_label_adddress(ins.label) + current_address << RESET << "\t" << ins.instruction << std::endl;
+                std::cout << CYAN << std::hex << std::setw(4) << std::setfill('0') << current_address << RESET << "\t" << ins.instruction << std::endl;
                 if (ins.instruction != "reserve" && ins.instruction != "string" && ins.instruction != "expression")
-                    current_address += ins.addr_mode_size;
-                else 
                     current_address += ins.addr_mode_size + WORD_S;
+                else 
+                    current_address += ins.addr_mode_size;
             }
         }
 #endif
-        size_t get_label_adddress(const std::string &label)
+        size_t get_label_address(const std::string &label)
         {
             return env.labels[label].address;
         }

@@ -19,7 +19,8 @@ if ($args.Contains("--release")) {
         exit
     }
     Set-Location build
-    cmake ../ --config Release
+    cmake ../
+    cmake --build . --config Release
 } else {
     if ($args.Contains("-t=linux")) {
         & wsl -e sh ./build.sh
@@ -27,8 +28,6 @@ if ($args.Contains("--release")) {
     }
     Set-Location build
     cmake ../
+    cmake --build .
 }
-$vs = (Get-CimInstance MSFT_VSInstance -Namespace root/cimv2/vs).InstallLocation
-$msbuild = "MSBuild\Current\Bin\MSBuild.exe"
-& "$vs\$msbuild" ((Get-Item *.sln).name)
 Set-Location ../

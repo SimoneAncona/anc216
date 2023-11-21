@@ -1,6 +1,10 @@
 #include <ast.hh>
 #include <isa.hh>
 #include <analyzer.hh>
+#ifdef _DEBUG
+#include <iostream>
+#include <iomanip>
+#endif
 
 namespace ANC216
 {
@@ -11,13 +15,12 @@ namespace ANC216
         std::vector<Error> error_stack;
 
 #ifdef _DEBUG
-#include <iostream>
-#include <iomanip>
         void print_env()
         {
             for (auto &label : env.labels)
             {
-                std::cout << YELLOW << label.first << "\t" << " " << CYAN << std::setw(4) << std::setfill('0') << std::hex << label.second.address << std::endl;
+                std::cout << YELLOW << label.first << "\t"
+                          << " " << CYAN << std::setw(4) << std::setfill('0') << std::hex << label.second.address << std::endl;
             }
             size_t current_address = 0;
             for (auto &ins : env.instructions)
@@ -25,7 +28,7 @@ namespace ANC216
                 std::cout << CYAN << std::hex << std::setw(4) << std::setfill('0') << current_address << RESET << "\t" << ins.instruction << std::endl;
                 if (ins.instruction != "reserve" && ins.instruction != "string" && ins.instruction != "expression")
                     current_address += ins.addr_mode_size + WORD_S;
-                else 
+                else
                     current_address += ins.addr_mode_size;
             }
         }
@@ -34,16 +37,18 @@ namespace ANC216
         {
             return env.labels[label].address;
         }
+
     public:
         Assembler(Environment &env)
             : env(env)
         {
+#ifdef _DEBUG
             print_env();
+#endif
         }
 
         inline std::vector<char> assemble()
         {
-            
         }
     };
 }

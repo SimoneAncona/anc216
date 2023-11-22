@@ -1,3 +1,5 @@
+use porta as 5
+
 _code:
     var x: [10 byte]        ; trsp r0; add r0, 10; ldsp r0;
     var cavoletti: word     ; push byte 0
@@ -47,3 +49,4 @@ test:
 loop:
     word 10
     "madonna santa"
+    CICCIO

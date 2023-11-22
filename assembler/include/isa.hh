@@ -52,7 +52,7 @@ namespace ANC216
         REGISTER_TO_MEMORY,
         MEMORY_TO_REGISTER,
         REGISTER_TO_REGISTER,
-        MTU,
+        INDIRECT,
     };
 
     AddressingModeFamily get_family(AddressingMode mode)
@@ -74,9 +74,9 @@ namespace ANC216
         case MEMORY_ABSOULTE_INDEXED:
             return MEMORY_RELATED;
         case MEMORY_INDIRECT:
-            return MEMORY_RELATED;
+            return INDIRECT;
         case MEMORY_INDIRECT_INDEXED:
-            return MEMORY_RELATED;
+            return INDIRECT;
         case MEMORY_RELATIVE_TO_PC:
             return MEMORY_RELATED;
         case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
@@ -161,19 +161,19 @@ namespace ANC216
             {"pareq", {0x1F, {IMPLIED}}},
             {"cmp", {0x20, {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
             {"careq", {0x21, {IMPLIED}}},
-            {"jmp", {0x22, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jeq", {0x23, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jz", {0x23, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jne", {0x24, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jnz", {0x24, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jge", {0x25, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jgr", {0x26, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jle", {0x27, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jls", {0x28, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jo", {0x29, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jno", {0x2A, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jn", {0x2B, {MEMORY_RELATED, IMMEDIATE}}},
-            {"jnn", {0x2C, {MEMORY_RELATED, IMMEDIATE}}},
+            {"jmp", {0x22, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jeq", {0x23, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jz", {0x23, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jne", {0x24, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jnz", {0x24, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jge", {0x25, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jgr", {0x26, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jle", {0x27, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jls", {0x28, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jo", {0x29, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jno", {0x2A, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jn", {0x2B, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
+            {"jnn", {0x2C, {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
             {"inc", {0x2D, {REGISTER_ACCESS}}},
             {"dec", {0x2E, {REGISTER_ACCESS}}},
             {"add", {0x2F, {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
@@ -200,19 +200,19 @@ namespace ANC216
             {"trsr", {0x44, {REGISTER_ACCESS}}},
             {"trsp", {0x45, {REGISTER_ACCESS}}},
             {"trbp", {0x46, {REGISTER_ACCESS}}},
-            {"sili", {0x50, {MTU}}},
-            {"sihi", {0x51, {MTU}}},
-            {"seli", {0x52, {MTU}}},
-            {"sehi", {0x53, {MTU}}},
-            {"sbp", {0x54, {MTU}}},
-            {"stp", {0x55, {MTU}}},
+            {"sili", {0x50, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
+            {"sihi", {0x51, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
+            {"seli", {0x52, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
+            {"sehi", {0x53, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
+            {"sbp", {0x54, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
+            {"stp", {0x55, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
             {"tili", {0x56, {REGISTER_ACCESS}}},
             {"tihi", {0x57, {REGISTER_ACCESS}}},
             {"teli", {0x58, {REGISTER_ACCESS}}},
             {"tehi", {0x59, {REGISTER_ACCESS}}},
             {"tbp", {0x5A, {REGISTER_ACCESS}}},
             {"ttp", {0x5B, {REGISTER_ACCESS}}},
-            {"lcpid", {0x5C, {MTU}}},
+            {"lcpid", {0x5C, {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
             {"tcpid", {0x5D, {REGISTER_ACCESS}}},
             {"time", {0x60, {MEMORY_RELATED, REGISTER_ACCESS}}},
             {"tstart", {0x61, {IMPLIED}}},

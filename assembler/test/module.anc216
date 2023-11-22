@@ -1,0 +1,4 @@
+x:
+    load r0, 10
+    var f : byte
+    lolly

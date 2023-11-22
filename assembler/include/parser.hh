@@ -38,6 +38,7 @@ namespace ANC216
         std::vector<Error> error_stack;
         std::string filename;
         std::vector<std::string> modules;
+        const AsmFlags &asm_flags;
 
         void skip_line()
         {
@@ -114,6 +115,11 @@ namespace ANC216
                 skip_line();
                 return;
             }
+            auto prev = defines.find(id);
+            if (prev != defines.end() && prev->second.value != sub.value)
+            {
+                error_stack.push_back({"Discrepancy between definitions, '" + id + "' was previously defined as " + (prev->second.value == "" ? "null" : "'" + prev->second.value + "'"), sub});
+            }
             defines.insert({id, sub});
         }
 
@@ -129,33 +135,54 @@ namespace ANC216
             }
             filename = tokenizer.get_current_token().value;
             if (tokenizer.get_current_token().type == STRING_LITERAL)
-                filename = filename.substr(1, filename.length() - 1);
+                filename = filename.substr(1, filename.length() - 2);
             else
                 filename += ".anc216";
 
-            filename = fs::weakly_canonical("./" + filename).string();
+            std::string long_filename = fs::weakly_canonical("./" + filename).string();
 
-            if (!fs::exists(filename))
+            bool found = false;
+            if (!fs::exists(long_filename))
             {
-                error_stack.push_back({"Cannot find or open '" + filename + "'", tokenizer.get_current_token()});
-                skip_line();
-                return;
-            }
-
-            for (const auto &md : modules)
-            {
-                if (filename == md)
+                for (auto &path : asm_flags.import_paths)
                 {
+                    if (fs::is_directory(fs::path(path)) && fs::exists(path + "/" + filename))
+                    {
+                        long_filename = path + "/" + filename;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    error_stack.push_back({"Cannot find or open '" + long_filename + "'", tokenizer.get_current_token()});
+                    skip_line();
                     return;
                 }
             }
 
-            std::ifstream file = std::ifstream(filename);
+            for (const auto &md : modules)
+            {
+                if (long_filename == md)
+                {
+                    tokenizer.remove_current_token();
+                    if (tokenizer.get_current_token() != "\n")
+                    {
+                        error_stack.push_back({"Expected the end of the line after an import", tokenizer.get_next_token()});
+                        skip_line();
+                        return;
+                    }
+                    tokenizer.remove_current_token();
+                    return;
+                }
+            }
+
+            std::ifstream file = std::ifstream(long_filename);
             std::stringstream ss;
             ss << file.rdbuf();
             std::string file_string = ss.str();
-            modules.push_back(filename);
-            Parser parser(file_string, filename, modules);
+            modules.push_back(long_filename);
+            Parser parser(file_string, long_filename, asm_flags, modules);
             parser.preprocessor();
             tokenizer.unshift_tokens(parser._get_tokens());
             auto errors = parser.get_error_stack();
@@ -1226,8 +1253,9 @@ namespace ANC216
         }
 
     public:
-        Parser(const std::string &str, const std::string &filename, const std::vector<std::string> &modules = {})
-            : tokenizer(str, filename)
+        Parser(std::string &str, const std::string &filename, const AsmFlags &flags, const std::vector<std::string> &modules = {})
+            : tokenizer(str, flags, filename),
+              asm_flags(flags)
         {
             this->modules = modules;
         }

@@ -4,8 +4,11 @@
 #include <cstring>
 #include <stack>
 #include <vector>
+#include <filesystem>
 
 #pragma once
+
+namespace fs = std::filesystem;
 
 namespace ANC216
 {
@@ -60,10 +63,10 @@ namespace ANC216
             if (program[index] == '$')
                 return {"$", CURRENT_ADDRESS, index, line, column, module_name};
 
-            if (std::isalpha(program[index]) || program[index] == '_')
+            if (iswalpha(program[index]) || program[index] == '_')
                 return eat_id_or_keyword(index, line, column);
 
-            if (std::isdigit(program[index]))
+            if (iswdigit(program[index]))
                 return eat_number(index, line, column);
 
             if (program[index] == '"' || program[index] == '\'')
@@ -80,7 +83,7 @@ namespace ANC216
             {
                 for (size_t i = index; i < program.size(); i++)
                 {
-                    if (std::isalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
+                    if (iswalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
                     {
                         error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
@@ -101,7 +104,7 @@ namespace ANC216
                         error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
                     }
-                    if (program[i] < '0' || program[i] > '9' && !std::isalpha(program[i]))
+                    if (program[i] < '0' || program[i] > '9' && !iswalpha(program[i]))
                         break;
                     value += program[i];
                 }
@@ -110,7 +113,7 @@ namespace ANC216
 
             for (size_t i = index; i < program.size(); i++)
             {
-                if (isalpha(program[i]))
+                if (iswalpha(program[i]))
                 {
                     error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                     return nil(index, line, column);
@@ -141,12 +144,16 @@ namespace ANC216
                     {
                     case 'n':
                         value += '\n';
+                        break;
                     case 't':
                         value += '\t';
+                        break;
                     case '0':
                         value += '\0';
+                        break;
                     case '\\':
                         value += '\\';
+                        break;
                     default:
                         value += '\\';
                         value += program[i];
@@ -176,7 +183,7 @@ namespace ANC216
             std::string value = "";
             std::string lower;
 
-            for (size_t i = index; i < program.size() && (std::isalnum(program[i]) || program[i] == '_'); i++)
+            for (size_t i = index; i < program.size() && (iswalnum(program[i]) || program[i] == '_'); i++)
                 value += program[i];
 
             for (char c : value)
@@ -242,11 +249,11 @@ namespace ANC216
             program = no_comments;
         }
 
-        void tokenize()
+        void tokenize(size_t line)
         {
-            Token token = eat(0, 1, 1);
+            Token token = eat(0, line, 1);
             size_t index = token.get_last_index();
-            size_t line = token.get_last_line();
+            line = token.get_last_line();
             size_t column = token.get_last_column();
             tokens.push_back(token);
             while (token.type != END)
@@ -260,12 +267,31 @@ namespace ANC216
         }
 
     public:
-        Tokenizer(const std::string &str, std::string module_name = "_main")
+        Tokenizer(std::string &str, const AsmFlags &flags, std::string module_name = "_main")
         {
-            program = str;
+            size_t line = 1;
+            for (auto &e : flags.use_as)
+            {
+                str = "use " + e.first + (e.second != "" ? " as " + e.second + "\n" : "\n") + str;
+                line--;
+            }
+            for (auto &e : flags.import_paths)
+            {
+                if (!fs::is_directory(e))
+                {
+                    std::string temp = "";
+                    for (auto ch : e)
+                        if (ch == '\\')
+                            temp += "/";
+                        else temp += ch;
+                    str = "import \"" + temp + "\"\n" + str;
+                    line--;
+                }
+            }
             this->module_name = module_name;
+            program = str;
             remove_comments();
-            tokenize();
+            tokenize(line);
             i = 0;
             current = tokens[0];
             if (tokens.size() > 1)
@@ -342,8 +368,10 @@ namespace ANC216
         {
             if (i < tokens.size())
             {
-                current = token;
-                tokens[i] = token;
+                current.value = token.value;
+                current.type = token.type;
+                tokens[i].value = token.value;
+                tokens[i].type = token.type;
             }
         }
 
@@ -371,7 +399,6 @@ namespace ANC216
                 i++;
                 tokens.insert(tokens.begin() + index, token_vector[index]);
             }
-            
         }
 
         inline bool has_errors()

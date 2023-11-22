@@ -63,11 +63,13 @@ namespace ANC216
         Label current_label()
         {
             Label label;
+            size_t current = 0;
             for (auto &lb : env.labels)
             {
-                if (current_address >= lb.second.address)
+                if (current_address >= lb.second.address && lb.second.address > current)
                 {
                     label = lb.second;
+                    current = lb.second.address;
                 }
             }
             return label;
@@ -76,11 +78,13 @@ namespace ANC216
         std::string current_label_name()
         {
             std::string label;
+            size_t current = 0;
             for (auto &lb : env.labels)
             {
-                if (current_address >= lb.second.address)
+                if (current_address >= lb.second.address && lb.second.address > current)
                 {
                     label = lb.first;
+                    current = lb.second.address;
                 }
             }
             return label;

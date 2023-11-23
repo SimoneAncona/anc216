@@ -8,5 +8,6 @@
 /**/*/*.exe
 /**/*/*.out
 
+/**/*/out
 /**/*/build
 .vscode/

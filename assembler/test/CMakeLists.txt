@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+set(CMAKE_CXX_STANDARD 20)
 project(assembler_test)
 include_directories(../include)
-add_executable(assembler_test main.test.cc)
+add_executable(assembler_test src/main.test.cc)

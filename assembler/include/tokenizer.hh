@@ -79,9 +79,9 @@ namespace ANC216
         Token eat_number(size_t index, size_t line, size_t column)
         {
             std::string value = "";
-            if (program[index] == '0' && index < program.size() && program[index + 1] == 'b')
+            if (program[index] == '0' && index < program.size() && program[index + 1] == 'b' && index + 1 < program.size())
             {
-                for (size_t i = index; i < program.size(); i++)
+                for (size_t i = index + 2; i < program.size(); i++)
                 {
                     if (iswalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
                     {
@@ -92,12 +92,12 @@ namespace ANC216
                         break;
                     value += program[i];
                 }
-                return {value, NUMBER_LITERAL, index, line, column, module_name};
+                return {"0b" + value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
-            if (program[index] == '0' && index < program.size() && program[index + 1] == 'x')
+            if (program[index] == '0' && index < program.size() && program[index + 1] == 'x' && index + 1 < program.size())
             {
-                for (size_t i = index; i < program.size(); i++)
+                for (size_t i = index + 2; i < program.size(); i++)
                 {
                     if ((program[i] > 'f' && program[i] < 'z') || (program[i] > 'F' && program[i] < 'Z'))
                     {
@@ -108,7 +108,7 @@ namespace ANC216
                         break;
                     value += program[i];
                 }
-                return {value, NUMBER_LITERAL, index, line, column, module_name};
+                return {"0x" + value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
             for (size_t i = index; i < program.size(); i++)

@@ -1,0 +1,36 @@
+; Hello World test
+
+use PRINT_SYSCALL   as 0x05
+use EXIT_SYSCALL    as 0x00
+
+use STDOUT          as 0x00
+
+use EXIT_SUCCESS    as 0x00
+use EXIT_FAILURE    as 0x01
+
+section .data
+message:        "Hello, world!"
+message_len:    $ - message
+
+section .text
+global _code:
+
+    ; preparing print syscall
+    load l0, PRINT_SYSCALL
+    load r1, message
+    load r2, & message_len
+    load r3, STDOUT
+
+    syscall
+
+    ; check if there are errors
+    cmp r7, 0
+    jeq * no_error  ; jump to errors if r7 is not 0x00 (means there was an error)
+if_error:
+    load r1, EXIT_FAILURE
+    jmp * exit
+no_error:
+    load r1, EXIT_SUCCESS
+exit:
+    load r0, EXIT_SYSCALL
+    syscall

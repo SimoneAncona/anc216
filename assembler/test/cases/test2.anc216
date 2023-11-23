@@ -1,0 +1,94 @@
+; All instructions test
+
+section .text
+_code:
+    ; all instructions in opcode order
+    kill
+    reset
+    cpuid
+    syscall
+    call test
+    ret
+    push r0
+    pop r1
+    phpc
+    popc
+    phsr
+    posr
+    phsp
+    posp
+    phbp
+    pobp
+    seti
+    sett
+    sets
+    clri
+    clrt
+    clri
+    clrs
+    clrn
+    clro
+    clrc
+    ireq & 0x1234
+    req & 0x4321
+    write & 0xF0F0, r0
+    hreq & 0x0F0F
+    hwrite & 01234, r1
+    read & 0x4321
+    pareq
+    cmp r7, bp + 1
+    careq
+    jmp * test
+    jeq [test] + l0
+    jne & test  ; same as jne test
+    jge test
+    jgr 0x1234
+    jle [test]
+    jo 0xFFFF
+    jno 0x02020
+    jn 0b1111000011110000
+    jnn 42
+    inc r6
+    dec r3
+    add r5, 10
+    sub r1, & 0xFF00
+    neg r4
+    and r1, 0x00FF
+    or l1, 0xF0
+    xor l6, 0b10100101
+    not r0
+    sign l1
+    shl r0
+    shr r7
+    par l1
+    load l0, 69
+    store & 0x1234, r7
+    tran r1, r4
+    swap r2, r5
+    ldsr l0     ; should check for only 8 bits registers
+    ldsp 20
+    ldbp 40
+    stsr & 0xFF00
+    stsp & 0x00FF
+    stbp & bp + 1
+    trsr l1     ; should check for only 8 bits registers
+    trsp r6
+    trbp r2
+    sili 20
+    sihi 30
+    seli & bp + l0
+    sehi & bp + 10
+    sbp 10
+    stp & 0x1234
+    tili r0
+    teli r1
+    tehi r5
+    tbp r5
+    ttp r4
+    time 0x1234
+    tstart
+    tstop
+    trt r1
+
+test:
+    "Nothing"

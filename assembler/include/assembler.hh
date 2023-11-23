@@ -108,12 +108,12 @@ namespace ANC216
                     if (label == env.labels.end())
                     {
                         error_stack.push_back({"Undefined reference to '" + ast->get_token().value + "'", ast->get_token()});
-                        return 0;
+                        return static_cast<int>(current_address);
                     }
                     if ((*label).second.is_local && current_label().module_name != (*label).second.module_name)
                     {
                         error_stack.push_back({"Cannot access to '" + ast->get_token().value + "'", ast->get_token()});
-                        return 0;
+                        return static_cast<int>(current_address);
                     }
                     return static_cast<int>((*label).second.address);
                 }
@@ -210,7 +210,8 @@ namespace ANC216
             if (ins.instruction == "string")
             {
                 std::vector<unsigned char> res;
-                for (auto &ch : ins.op1->get_token().value)
+                std::string value = ins.op1->get_token().value.substr(1, ins.op1->get_token().value.size() - 2);
+                for (char ch : value)
                     res.push_back(ch);
                 return res;
             }
@@ -224,7 +225,13 @@ namespace ANC216
                 {
                     auto adr = eval_expression(ins.op1);
                     if (is_id(ins.op1))
-                        ins.op1 = new AST(Token{std::to_string(adr - current_address).c_str(), NUMBER_LITERAL});
+                    {
+                        
+                        if (adr - static_cast<int>(current_address) > 127 || adr - static_cast<int>(current_address) < -128)
+                            error_stack.push_back({"The size of the argument exceeds the limit of signed byte, use absolute addressing mode", get_id(ins.op1), true});
+                        
+                        ins.op1 = new AST(Token{std::to_string(static_cast<unsigned char>(adr - current_address)).c_str(), NUMBER_LITERAL});
+                    }
                 }
             }
             unsigned char addr = build_addressing_mode(ins);
@@ -245,6 +252,15 @@ namespace ANC216
             if (ast->get_children().size() != 1)
                 return false;
             return is_id(ast->get_children()[0]);
+        }
+
+        Token get_id(AST *ast)
+        {
+            if (ast->get_token().type == IDENTIFIER)
+                return ast->get_token();
+            if (ast->get_children().size() != 1)
+                return {};
+            return get_id(ast->get_children()[0]);
         }
 
         unsigned char build_addressing_mode(const Instruction &ins)

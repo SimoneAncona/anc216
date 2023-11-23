@@ -57,6 +57,8 @@ int main(int argc, char **argv)
     ss << file.rdbuf();
     std::string file_string = ss.str();
 
+    const auto start{std::chrono::steady_clock::now()};
+
     ANC216::Parser parser(file_string, flags.input_file, flags);
     ANC216::AST *res = parser.parse();
     if (parser.get_error_stack().size() != 0)
@@ -84,6 +86,26 @@ int main(int argc, char **argv)
     }
     if (assembler.has_errors())
         return -1;
+
+    const auto end{std::chrono::steady_clock::now()};
+    const std::chrono::duration<float> elapsed_seconds{end - start};
+
+    std::ofstream out_file(flags.output_file, std::ios::binary | std::ios::trunc);
+    std::ostream_iterator<char> out_file_it(out_file);
+    std::copy(a.begin(), a.end(), out_file_it); 
+
+    out_file.close();
+
+    if (flags.output_size)
+    {
+        std::cout << CYAN << "Info: " << RESET << "the size of the output is " << a.size() << " bytes\n"
+        << std::endl;
+    }
+    if (flags.get_time)
+    {
+        std::cout << CYAN << "Info: " << RESET << "elapsed time is " << elapsed_seconds << "\n"
+        << std::endl;
+    }
 
     return 0;
 }

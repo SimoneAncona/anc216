@@ -671,6 +671,33 @@ namespace ANC216
                 analyze_expression_list(ast->get_children()[ast->get_children().size() - 1]);
         }
 
+        bool is_evaluable(AST *ast)
+        {
+            auto children = ast->get_children();
+            if (ast->get_token() == "sizeof" || ast->get_token() == "offset" || ast->get_token().type == IDENTIFIER || ast->get_token().type == TYPE)
+            {
+                return false;
+            }
+
+            if (children.size() == 0)
+            {
+                return true;
+            }
+
+            if (children.size() == 1)
+            {
+                if (ast->get_token() == "+")
+                    return is_evaluable(ast->get_children()[1]);
+
+                if (ast->get_token() == "-")
+                    return is_evaluable(ast->get_children()[1]);
+
+                return is_evaluable(children[0]);
+            }
+
+            return is_evaluable(children[0]) && is_evaluable(children[2]);
+        }
+
         char get_expression_size(AST *ast)
         {
             auto children = ast->get_children();
@@ -720,8 +747,8 @@ namespace ANC216
                     return WORD_S;
                 return WORD_S;
             }
-            int v1 = eval_expression(children[0]);
-            int v2 = eval_expression(children[2]);
+            int v1 = is_evaluable(children[0]) ? eval_expression(children[0]) : 0xFF;
+            int v2 = is_evaluable(children[2]) ? eval_expression(children[2]) : 0xFF;
             int res;
             if (children[1]->get_token() == "+")
                 res = v1 + v2;
@@ -756,7 +783,7 @@ namespace ANC216
             }
             if (ast->get_token().type == IDENTIFIER)
             {
-                error_stack.push_back({"Cannot evaluate expression, cannot resolve the address of \"" + ast->get_token().value + "\"", ast->get_children()[0]->get_token()});
+                error_stack.push_back({"Cannot evaluate expression, cannot resolve the address of \"" + ast->get_token().value + "\"", ast->get_token()});
                 return -1;
             }
             if (ast->get_token().type == TYPE)

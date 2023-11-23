@@ -46,7 +46,12 @@ test:
     byte offset y
     word 10
 
+message:
+    "Hello, world!"
+
+len:
+    message - $
+
 loop:
-    word 10
-    "madonna santa"
-    CICCIO
+    load l0, 10
+    jmp _code

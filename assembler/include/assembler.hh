@@ -44,9 +44,9 @@ namespace ANC216
             return (*label).second.address;
         }
 
-        std::vector<char> dump_instructions()
+        std::vector<unsigned char> dump_instructions()
         {
-            std::vector<char> res;
+            std::vector<unsigned char> res;
             for (auto &ins : env.instructions)
             {
                 auto x = dump_instruction(ins);
@@ -202,9 +202,9 @@ namespace ANC216
                     res.push_back(eval_expression(ins.op1));
                     return res;
                 }
-                auto val = eval_expression(ins.op1);
-                res.push_back(val & 0xFF00 >> 8);
-                res.push_back(val);
+                short val = eval_expression(ins.op1);
+                res.push_back((val & 0xFF00) >> 8);
+                res.push_back((val & 0x00FF));
                 return res;
             }
             if (ins.instruction == "string")
@@ -227,10 +227,10 @@ namespace ANC216
                     if (is_id(ins.op1))
                     {
                         
-                        if (adr - static_cast<int>(current_address) > 127 || adr - static_cast<int>(current_address) < -128)
+                        if (adr - static_cast<int>(current_address) - 3 > 127 || adr - static_cast<int>(current_address) - 3 < -128)
                             error_stack.push_back({"The size of the argument exceeds the limit of signed byte, use absolute addressing mode", get_id(ins.op1), true});
                         
-                        ins.op1 = new AST(Token{std::to_string(static_cast<unsigned char>(adr - current_address)).c_str(), NUMBER_LITERAL});
+                        ins.op1 = new AST(Token{std::to_string(static_cast<unsigned char>((adr - current_address) - 3)).c_str(), NUMBER_LITERAL});
                     }
                 }
             }
@@ -419,12 +419,12 @@ namespace ANC216
         Assembler(Environment &env)
             : env(env)
         {
-#ifdef _DEBUG
-            print_env();
-#endif
+// #ifdef _DEBUG
+//             print_env();
+// #endif
         }
 
-        inline std::vector<char> assemble()
+        inline std::vector<unsigned char> assemble()
         {
             return dump_instructions();
         }

@@ -4,7 +4,7 @@
 
 struct Test
 {
-    std::ifstream &test1, &test2, &test3, &test4, &test5;
+    std::string test1, test2, test3, test4, test5;
 };
 
 #define TEST_1 "Hello, world!"

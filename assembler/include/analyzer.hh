@@ -5,6 +5,7 @@
 #include <tuple>
 #include <string>
 #include <isa.hh>
+#include <cmath>
 
 #pragma once
 

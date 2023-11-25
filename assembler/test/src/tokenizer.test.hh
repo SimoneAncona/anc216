@@ -4,7 +4,10 @@
 #include <vector>
 #include "common.hh"
 #include <tuple>
+#include <cstdio>
 #include <iostream>
+
+#define _UNICODE
 
 #define TK_TEST_NAME(x, n) std::string("Tokenizer test ") + std::to_string(x) + ": " + n
 
@@ -21,7 +24,7 @@
             "use", "EXIT_FAILURE", "as", "0x01", "\n",     \
             "\n",                                          \
             "section", ".", "data", "\n",                  \
-            "message", ":", "\"Hello, world!\"", "\n",     \
+            "message", ":", "\"Hello, World!\"", "\n",     \
             "message_len", ":", "$", "-", "message", "\n", \
             "\n",                                          \
             "section", ".", "text", "\n",                  \
@@ -55,38 +58,33 @@
             "exit",                                        \
             ":", "\n",                                     \
             "load",                                        \
-            "r0", ",", "EXIT_SYSCALL", "\n",               \
+            "l0", ",", "EXIT_SYSCALL", "\n",               \
             "syscall",                                     \
             "\n"                                           \
     }
 
 using namespace ANC216;
 
-void test_tokenizer1(std::filebuf *);
+void test_tokenizer1(std::string &);
 std::pair<std::string, std::string> assert_equal_tk(Tokenizer &, const std::vector<std::string>);
 void print_tokens(Tokenizer &);
 
 void test_tokenizer(Test &tests)
 {
-    test_tokenizer1(tests.test1.rdbuf());
+    test_tokenizer1(tests.test1);
 }
 
-void test_tokenizer1(std::filebuf *buf)
+void test_tokenizer1(std::string &str)
 {
     const std::string test = TK_TEST_NAME(1, TEST_1);
 
-    std::stringstream ss;
-    ss << buf;
     AsmFlags flags;
-    std::string str = ss.str();
     try
     {
         Tokenizer tokenizer(str, flags);
         auto result = assert_equal_tk(tokenizer, TK_TEST1_EXPECTED);
         if (result.first == "" && result.second == "")
         {
-            std::cout << GREEN;
-            std::wcout << "✓";
             std::cout << OK(test);
             return;
         }

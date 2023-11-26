@@ -3,6 +3,7 @@
 #include <fstream>
 
 #include <console.hh>
+#include <disassembler.hh>
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 0
@@ -93,11 +94,21 @@ int main(int argc, char **argv)
     }
     if (!fs::exists(in_filename))
     {
-        std::cerr << RED << "File not found: " << RESET << "cannot find '" + in_filename + '"';
+        std::cerr << RED << "File not found: " << RESET << "cannot find '" + in_filename + '"' << std::endl;
         exit(EXIT_FAILURE);
     }
 
+    fs::path p(fs::weakly_canonical(in_filename));
+    in_filename = p.string();
+    fs::current_path(p.parent_path());
+    if (out_filename.empty())
+        out_filename = "a.anc216";
+
     std::ifstream in(in_filename, std::ios::binary);
+    ANC216::Disassembler dis(in, flags.header);
+    std::ofstream out(out_filename, std::ios::binary);
+    out << dis.disassemble();
+    out.close();
     return 0;
 }
 

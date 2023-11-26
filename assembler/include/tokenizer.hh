@@ -81,46 +81,46 @@ namespace ANC216
             std::string value = "";
             if (program[index] == '0' && index < program.size() && program[index + 1] == 'b' && index + 1 < program.size())
             {
-                for (size_t i = index + 2; i < program.size(); i++)
+                for (size_t j = index + 2; j < program.size(); j++)
                 {
-                    if (iswalpha(program[i]) || (program[i] > '1' && program[i] <= '9'))
+                    if (iswalpha(program[j]) || (program[j] > '1' && program[j] <= '9'))
                     {
-                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[j]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
                     }
-                    if (program[i] != '0' && program[i] != '1')
+                    if (program[j] != '0' && program[j] != '1')
                         break;
-                    value += program[i];
+                    value += program[j];
                 }
                 return {"0b" + value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
             if (program[index] == '0' && index < program.size() && program[index + 1] == 'x' && index + 1 < program.size())
             {
-                for (size_t i = index + 2; i < program.size(); i++)
+                for (size_t j = index + 2; j < program.size(); j++)
                 {
-                    if ((program[i] > 'f' && program[i] < 'z') || (program[i] > 'F' && program[i] < 'Z'))
+                    if ((program[j] > 'f' && program[j] < 'z') || (program[j] > 'F' && program[j] < 'Z'))
                     {
-                        error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
+                        error_stack.push_back({"Unexpected character '" + std::string(1, program[j]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                         return nil(index, line, column);
                     }
-                    if (program[i] < '0' || program[i] > '9' && !iswalpha(program[i]))
+                    if (program[j] < '0' || program[j] > '9' && !iswalpha(program[j]))
                         break;
-                    value += program[i];
+                    value += program[j];
                 }
                 return {"0x" + value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
-            for (size_t i = index; i < program.size(); i++)
+            for (size_t j = index; j < program.size(); j++)
             {
-                if (iswalpha(program[i]))
+                if (iswalpha(program[j]))
                 {
-                    error_stack.push_back({"Unexpected character '" + std::string(1, program[i]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
+                    error_stack.push_back({"Unexpected character '" + std::string(1, program[j]) + "' while parsing literal number", {value, NUMBER_LITERAL, index, line, column, module_name}});
                     return nil(index, line, column);
                 }
-                if (program[i] < '0' || program[i] > '9')
+                if (program[j] < '0' || program[j] > '9')
                     break;
-                value += program[i];
+                value += program[j];
             }
             return {value, NUMBER_LITERAL, index, line, column, module_name};
         }

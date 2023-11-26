@@ -9,22 +9,23 @@ using namespace ANC216;
 
 #define AS_TEST_NAME(x, n) std::string("Assembler test ") + std::to_string(x) + ": " + n
 
-#define AS_TEST1_EXPECTED                                                    \
-    std::vector<unsigned char>                                               \
-    {                                                                        \
-        'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', 0x00, 13, \
-            0b11000101, 0x3a, 0x05,                                          \
-            0b11001001, 0x3a, 0x00, 0x00,                                    \
-            0b11010000, 0x3a, 0x00, 13,                                      \
-            0b11011001, 0x3a, 0x00, 0x00,                                    \
-            0b00000000, 0x03,                                                \
-            0b11111001, 0x20, 0x00, 0x00,                                    \
-            0b10000100, 0x23, 7,                                             \
-            0b11001001, 0x3a, 0x00, 0x01,                                    \
-            0b10000100, 0x22, 4,                                             \
-            0b11001001, 0x3a, 0x00, 0x00,                                    \
-            0b11000101, 0x3a, 0x00,                                          \
-            0b00000000, 0x03                                                 \
+#define AS_TEST1_EXPECTED                           \
+    std::vector<unsigned char>                      \
+    {                                               \
+        'H', 'e', 'l', 'l', 'o', ',', ' ',          \
+            'W', 'o', 'r', 'l', 'd', '!', 0x00, 13, \
+            0b11000101, 0x3a, 0x05,                 \
+            0b11001001, 0x3a, 0x00, 0x00,           \
+            0b11010000, 0x3a, 0x00, 13,             \
+            0b11011001, 0x3a, 0x00, 0x00,           \
+            0b00000000, 0x03,                       \
+            0b11111001, 0x20, 0x00, 0x00,           \
+            0b10000100, 0x23, 7,                    \
+            0b11001001, 0x3a, 0x00, 0x01,           \
+            0b10000100, 0x22, 4,                    \
+            0b11001001, 0x3a, 0x00, 0x00,           \
+            0b11000101, 0x3a, 0x00,                 \
+            0b00000000, 0x03                        \
     }
 
 void assembler_test1(std::string &str);

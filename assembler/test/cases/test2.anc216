@@ -36,9 +36,9 @@ _code:
     hwrite & 01234, r1
     read & 0x4321
     pareq
-    cmp r7, bp + 1
+    cmp r7, & bp + 1
     careq
-    jmp * test
+    jmp & test
     jeq [test] + l0
     jne & test  ; same as jne test
     jge test
@@ -58,8 +58,8 @@ _code:
     xor l6, 0b10100101
     not r0
     sign l1
-    shl r0
-    shr r7
+    shl r0, 1
+    shr r7, 2
     par l1
     load l0, 69
     store & 0x1234, r7

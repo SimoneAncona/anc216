@@ -215,11 +215,16 @@ namespace ANC216
                     res.push_back(ch);
                 return res;
             }
-            if (ins.instruction.starts_with("j"))
+            if (ins.instruction.starts_with("j") || ins.instruction == "call")
             {
                 if (ins.addressing_mode == IMMEDIATE_BYTE || ins.addressing_mode == IMMEDIATE_WORD)
                 {
                     ins.addressing_mode = MEMORY_ABSOULTE;
+                }
+                else if (ins.addressing_mode == MEMORY_ABSOULTE_INDEXED)
+                {
+                    error_stack.push_back({"'" + ins.instruction + "' does not support memory absolute indexed mode", {}});
+                    return {};
                 }
                 else if (ins.addressing_mode == MEMORY_RELATIVE_TO_PC)
                 {
@@ -327,16 +332,16 @@ namespace ANC216
             {
             case IMPLIED_MODE:
             case REGISTER_ACCESS_MODE:
+            case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
+            case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
             case REGISTER_TO_REGISTER_MODE:
                 break;
             case IMMEDIATE_BYTE:
             case MEMORY_RELATIVE_TO_PC:
-            case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
-            case MEMORY_RELATIVE_TO_BP:
-            case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
             case REGISTER_TO_MEMORY_RELATIVE_TO_PC:
                 res.push_back(eval_expression(ins.op1));
                 break;
+            case MEMORY_RELATIVE_TO_BP:
             case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
             case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
                 res.push_back(eval_expression(ins.indexing.second) * (ins.indexing.first == '-' ? -1 : 1));

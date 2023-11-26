@@ -10,4 +10,5 @@
 
 /**/*/out
 /**/*/build
+/**/*/node_modules
 .vscode/

@@ -1,0 +1,118 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "ANC216",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#labels"
+		},
+		{
+			"include": "#id"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.anc216",
+					"match": "\\b(use|as|if|section|elif|else|endif|import|org|struct|structure|namespace|task|endif|var|global|local)\\b"
+				},
+				{
+					"name": "keyword.operator.anc216",
+					"match": "\\b(sizeof|reserve|offset)\\b"
+				},
+				{
+					"name": "keyword.other.anc216",
+					"match": "\\b(r[0-7]|l[0-7])"
+				},
+				{
+					"name": "keyword.other.anc216",
+					"match": "\\b(kill|reset|cpuid|syscall|call|ret|push|pop|phpc|popc|phsr|posr|phsp|posp|phbp|pobp|seti|sett|sets|clri|clrt|clrs|clrn|clro|clrc|ireq|req|write|hreq|hwrite|read|pareq|cmp|careq|jmp|jeq|jz|jne|jnz|jge|jgr|jle|jls|jo|jno|jn|jnn|inc|dec|add|sub|neg|and|or|xor|not|sign|shl|shr|par|load|store|tran|swap|ldsr|ldsp|ldbp|stsr|stsp|stbp|trsr|trsp|trbp|sili|sihi|seli|sehi|sbp|stp|tili|tihi|teli|tehi|tbp|ttp|lcpid|tcpid|time|tstart|tstop|trt)\\b"
+				},
+				{
+					"name": "entity.name.type",
+					"match": "\\b(byte|word)\\b"
+				},
+				{
+					"name": "keyword.operator.anc216",
+					"match": "-|\\+|\\/|\\*|\\$"
+				}
+			]
+		},
+		"labels": {
+			"patterns": [
+				{
+					"name": "entity.name.function",
+					"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*:"
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric",
+					"match": "\\b0x[0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "constant.numeric",
+					"match": "\\b0b[0-1]+\\b"
+				},
+				{
+					"name": "constant.numeric",
+					"match": "\\b[0-9]+\\b"
+				}
+			]
+		},
+		"id": {
+			"patterns": [
+				{
+					"name": "entity.name.section.anc216",
+					"match": "\\.[a-z_][a-z0-9_]*"
+				},
+				{
+					"name": "entity.name.type.anc216",
+					"match": "_?[A-Z][a-z0-9_]*"
+				},
+				{
+					"name": "constant.anc216",
+					"match": "[A-Z_][A-Z0-9_]*"
+				},
+				{
+					"name": "variable.name",
+					"match": "[a-z_][a-z0-9_]*"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.anc216",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.anc216",
+					"match": "\\\\."
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment",
+					"match": ";.*"
+				}
+			]
+		}
+	},
+	"scopeName": "source.anc216"
+}

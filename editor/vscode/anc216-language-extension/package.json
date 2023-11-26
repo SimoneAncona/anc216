@@ -1,0 +1,25 @@
+{
+  "name": "anc216-language-extension",
+  "displayName": "ANC216 Language Extension",
+  "description": "Language support for ANC216 assembly",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "anc216",
+      "aliases": ["ANC216", "anc216"],
+      "extensions": [".anc216",".a216",".anc16",".a16"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "anc216",
+      "scopeName": "source.anc216",
+      "path": "./syntaxes/anc216.tmLanguage.json"
+    }]
+  }
+}

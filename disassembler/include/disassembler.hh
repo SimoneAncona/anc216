@@ -20,14 +20,16 @@ namespace ANC216
         std::ifstream &in;
         Header header;
 
-        void analyze(std::string &out)
+        bool analyze(std::string &out)
         {
             int current = in.get();
-            if (current == EOF) return;
+            if (current == EOF)
+                return false;
             int next = in.get();
             if (analyze_instruction(current, next, out))
-                return;
+                return true;
             analyze_exp(current, next, out);
+            return true;
         }
 
         bool analyze_instruction(int current_i, int next_i, std::string &out)
@@ -43,6 +45,8 @@ namespace ANC216
 
             auto adr = adrsize.first;
             auto size = adrsize.second;
+
+            bool reverse = isa[next].first == "write" || isa[next].first == "store" || isa[next].first == "hwrite";
 
             switch (adr)
             {
@@ -78,19 +82,39 @@ namespace ANC216
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("* ") + signed_to_hex_string(add1) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case MEMORY_RELATIVE_TO_BP:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("bp ") + signed_to_hex_string(add1) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("& bp ") + signed_to_hex_string(add1) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "* " + signed_to_hex_string(add1) + std::string(", r") + X1_GET_REG(current) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                    return true;
+                }
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", * " + signed_to_hex_string(add1) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", bp " + signed_to_hex_string(add1) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "& bp " + signed_to_hex_string(add1) + std::string(", r") + X1_GET_REG(current) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                    return true;
+                }
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", & bp " + signed_to_hex_string(add1) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case MEMORY_RELATIVE_TO_PC_TO_LOW_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", * " + signed_to_hex_string(add1) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "* " + signed_to_hex_string(add1) + std::string(", l") + X1_GET_REG(current) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                    return true;
+                }
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", * " + signed_to_hex_string(add1) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case MEMORY_RELATIVE_TO_BP_TO_LOW_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", bp " + signed_to_hex_string(add1) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "& bp " + signed_to_hex_string(add1) + std::string(", l") + X1_GET_REG(current) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
+                    return true;
+                }
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", & bp " + signed_to_hex_string(add1) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
                 return true;
             case IMMEDIATE_TO_LOW_REGISTER:
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", " + to_hex_string(add1) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + "\n";
@@ -105,7 +129,7 @@ namespace ANC216
             switch (adr)
             {
             case MEMORY_ABSOULTE:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + (isa[next].first.starts_with("j") ? "" : "&") + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + (isa[next].first.starts_with("j") || isa[next].first == "call" ? "" : "& ") + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case MEMORY_INDIRECT:
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "[" + to_hex_string((unsigned short)(add1 << 8 | add2)) + "]" + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
@@ -114,19 +138,29 @@ namespace ANC216
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", " + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case MEMORY_ABSOULTE_INDEXED:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "&" + to_hex_string((unsigned short)(add1 << 8 | add2)) + " + l" + X1_GET_REG(current) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "& " + to_hex_string((unsigned short)(add1 << 8 | add2)) + " + l" + X1_GET_REG(current) + "\t\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case MEMORY_INDIRECT_INDEXED:
                 out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "[" + to_hex_string((unsigned short)(add1 << 8 | add2)) + "] + l" + X1_GET_REG(current) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case MEMORY_ABSOULTE_TO_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", &" + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "& " + to_hex_string((unsigned short)(add1 << 8 | add2)) + std::string(", r") + X1_GET_REG(current) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                    return true;
+                }
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("r") + X1_GET_REG(current) + ", & " + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case MEMORY_ABSOULTE_TO_LOW_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", &" + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                if (reverse)
+                {
+                    out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + "& " + to_hex_string((unsigned short)(add1 << 8 | add2)) + std::string(", l") + X1_GET_REG(current) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
+                    return true;
+                }
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("l") + X1_GET_REG(current) + ", & " + to_hex_string((unsigned short)(add1 << 8 | add2)) + "\t\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + " " + to_hex_string(add2) + "\n";
                 return true;
             case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
-                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("bp + l") + X1_GET_REG(current) + ", " + (add2 == EOF ? to_hex_string(add1) : to_hex_string((unsigned short)(add1 << 8 | add2))) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + (add2 == EOF ? "\n" : to_hex_string(add2) + "\n");
+                out += "\t" + isa[next].first + assign_ins_space(isa[next].first) + std::string("& bp + l") + X1_GET_REG(current) + ", " + (add2 == EOF ? to_hex_string(add1) : to_hex_string((unsigned short)(add1 << 8 | add2))) + "\t; " + to_hex_string(current) + " " + to_hex_string(next) + " " + to_hex_string(add1) + (add2 == EOF ? "\n" : to_hex_string(add2) + "\n");
                 return true;
             }
             return false;
@@ -350,11 +384,11 @@ namespace ANC216
         void analyze_exp(int current, int next, std::string &out)
         {
             out += "\t";
-            unsigned char add1 = in.get();
+            int add1 = in.get();
             if (iswalnum((char)current) && iswalnum((char)next) && iswalnum((char)add1))
             {
                 out += std::string("\"") + (char)current + (char)next + (char)add1;
-                while (isalnum(add1 = in.get()) || (char)add1 == '!' || (char)add1 == ' ' || (char)add1 == '_' || (char)add1 == ',' || (char)add1 == '?')
+                while (add1 != EOF && (iswalnum(add1 = in.get()) || (char)add1 == '!' || (char)add1 == ' ' || (char)add1 == '_' || (char)add1 == ',' || (char)add1 == '?'))
                 {
                     out += std::string(1, (char)add1);
                 }
@@ -385,10 +419,8 @@ namespace ANC216
         std::string disassemble()
         {
             std::string str;
-            while (!in.eof())
-            {
-                analyze(str);
-            }
+            while (analyze(str))
+                ;
             return str;
         }
     };

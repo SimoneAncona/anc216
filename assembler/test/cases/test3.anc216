@@ -1,1 +1,16 @@
 ; All addressing modes test
+
+section .text
+_code:
+    syscall
+    push word 10
+    push byte 10
+    push r1
+    load r0, 10
+    load l0, 10
+    load r0, & 0xFFFF
+    load l0, & 0xFFFF
+    load r0, & bp + 1
+    load l0, & bp - 1
+    
+    

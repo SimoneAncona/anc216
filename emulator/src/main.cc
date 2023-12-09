@@ -2,6 +2,7 @@
 
 #include <emu.hh>
 #include <console.hh>
+#include <thread>
 
 enum Flag
 {
@@ -23,10 +24,19 @@ enum Flag
 
 void print_help(char **);
 void print_help_for_flag(Flag);
+void debug_console(ANC216::Emu&, ANC216::EmemMapper&);
 
 int main(int argc, char **argv)
 {
     print_help(argv);
+    ANC216::EmuFlags emu_flags;
+    ANC216::EmemMapper mapper(emu_flags);
+    ANC216::Emu emu(mapper, emu_flags);
+    if (emu_flags.debug_mode)
+    {
+        std::thread dbg_console_thread(debug_console, std::ref(emu), std::ref(mapper));
+        dbg_console_thread.join();
+    }
     return 0;
 }
 
@@ -138,5 +148,16 @@ void print_help_for_flag(Flag flag)
                   << CYAN << "\t--ext <address> <file>" << RESET << "\n"
                   << "This flag allows you to load custom extensions for the emulator. The <address> specify where the device will be mapped in memory, the <file> specify the script of the device extension (.js or .py files)" << std::endl;
         return;
+    }
+}
+
+void debug_console(ANC216::Emu &emu, ANC216::EmemMapper &mapper)
+{
+    std::cout << "The emulator is currently stopped, type 'start' to start.\nType 'help' for more information about the debug console." << std::endl;
+    std::string command;
+    while (true)
+    {
+        std::cout << CYAN << "> " << RESET;
+        std::cin >> command;
     }
 }

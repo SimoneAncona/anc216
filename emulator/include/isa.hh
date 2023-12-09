@@ -56,145 +56,98 @@ namespace ANC216
         INDIRECT,
     };
 
-    AddressingModeFamily get_family(AddressingMode mode)
+    enum Instruction
     {
-        switch (mode)
-        {
-        case IMPLIED_MODE:
-            return IMPLIED;
-        case IMMEDIATE_BYTE:
-        case IMMEDIATE_WORD:
-            return IMMEDIATE;
-        case REGISTER_ACCESS_MODE:
-            return REGISTER_ACCESS;
-        case REGISTER_TO_REGISTER_MODE:
-            return REGISTER_TO_REGISTER;
-        case MEMORY_ABSOULTE:
-        case MEMORY_ABSOULTE_INDEXED:
-        case MEMORY_RELATIVE_TO_PC:
-        case MEMORY_RELATIVE_TO_PC_WITH_REGISTER:
-        case MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
-        case MEMORY_RELATIVE_TO_BP:
-            return MEMORY_RELATED;
-        case MEMORY_INDIRECT:
-        case MEMORY_INDIRECT_INDEXED:
-            return INDIRECT;
-        case IMMEDIATE_TO_MEMORY_ABSOLUTE:
-        case IMMEDIATE_TO_MEMORY_ABSOLUTE_INDEXED:
-        case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP:
-        case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
-            return IMMEDIATE_TO_MEMORY;
-        case REGISTER_TO_MEMORY_ABSOULTE:
-        case MEMORY_ABSOULTE_TO_REGISTER:
-        case IMMEDIATE_TO_REGISTER:
-        case REGISTER_TO_MEMORY_RELATIVE_TO_PC:
-        case MEMORY_RELATIVE_TO_PC_TO_REGISTER:
-        case REGISTER_TO_MEMORY_RELATIVE_TO_BP:
-        case MEMORY_RELATIVE_TO_BP_TO_REGISTER:
-        case LOW_REGISTER_TO_MEMORY_ABSOLUTE:
-        case MEMORY_ABSOULTE_TO_LOW_REGISTER:
-        case IMMEDIATE_TO_LOW_REGISTER:
-        case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_PC:
-        case MEMORY_RELATIVE_TO_PC_TO_LOW_REGISTER:
-        case LOW_REGISTER_TO_MEMORY_RELATIVE_TO_BP:
-        case MEMORY_RELATIVE_TO_BP_TO_LOW_REGISTER:
-            return MEMORY_TO_REGISTER;
-        }
-        return IMPLIED;
-    }
-
-    std::map<unsigned char, std::pair<std::string, std::vector<AddressingModeFamily>>> isa =
-        {
-            {0x00, {"kill",    {IMPLIED}}},
-            {0x01, {"reset",   {IMPLIED}}},
-            {0x02, {"cpuid",   {IMPLIED}}},
-            {0x03, {"syscall", {IMPLIED}}},
-            {0x04, {"call",    {MEMORY_RELATED}}},
-            {0x05, {"ret",     {IMPLIED}}},
-            {0x06, {"push",    {REGISTER_ACCESS, IMMEDIATE}}},
-            {0x07, {"pop",     {REGISTER_ACCESS}}},
-            {0x08, {"phpc",    {IMPLIED}}},
-            {0x09, {"popc",    {IMPLIED}}},
-            {0x0A, {"phsr",    {IMPLIED}}},
-            {0x0B, {"posr",    {IMPLIED}}},
-            {0x0C, {"phsp",    {IMPLIED}}},
-            {0x0D, {"posp",    {IMPLIED}}},
-            {0x0E, {"phbp",    {IMPLIED}}},
-            {0x0F, {"pobp",    {IMPLIED}}},
-            {0x10, {"seti",    {IMPLIED}}},
-            {0x11, {"sett",    {IMPLIED}}},
-            {0x12, {"sets",    {IMPLIED}}},
-            {0x13, {"clri",    {IMPLIED}}},
-            {0x14, {"clrt",    {IMPLIED}}},
-            {0x15, {"clrs",    {IMPLIED}}},
-            {0x16, {"clrn",    {IMPLIED}}},
-            {0x17, {"clro",    {IMPLIED}}},
-            {0x18, {"clrc",    {IMPLIED}}},
-            {0x19, {"ireq",    {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x1A, {"req",     {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x1B, {"write",   {MEMORY_TO_REGISTER, IMMEDIATE_TO_MEMORY}}},
-            {0x1C, {"hreq",    {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x1D, {"hwrite",  {MEMORY_TO_REGISTER, IMMEDIATE_TO_MEMORY}}},
-            {0x1E, {"read",    {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x1F, {"pareq",   {IMPLIED}}},
-            {0x20, {"cmp",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x21, {"careq",   {IMPLIED}}},
-            {0x22, {"jmp",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x23, {"jeq",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x23, {"jz",      {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x24, {"jne",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x24, {"jnz",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x25, {"jge",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x26, {"jgr",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x27, {"jle",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x28, {"jls",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x29, {"jo",      {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x2A, {"jno",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x2B, {"jn",      {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x2C, {"jnn",     {MEMORY_RELATED, IMMEDIATE, INDIRECT}}},
-            {0x2D, {"inc",     {REGISTER_ACCESS}}},
-            {0x2E, {"dec",     {REGISTER_ACCESS}}},
-            {0x2F, {"add",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x30, {"sub",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x31, {"neg",     {REGISTER_ACCESS}}},
-            {0x32, {"and",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x33, {"or",      {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x34, {"xor",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x35, {"not",     {REGISTER_ACCESS}}},
-            {0x36, {"sign",    {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x37, {"shl",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x38, {"shr",     {REGISTER_TO_REGISTER, MEMORY_TO_REGISTER}}},
-            {0x39, {"par",     {REGISTER_ACCESS, MEMORY_RELATED}}},
-            {0x3A, {"load",    {MEMORY_TO_REGISTER}}},
-            {0x3B, {"store",   {MEMORY_TO_REGISTER, IMMEDIATE_TO_MEMORY}}},
-            {0x3C, {"tran",    {REGISTER_TO_REGISTER}}},
-            {0x3D, {"swap",    {REGISTER_TO_REGISTER}}},
-            {0x3E, {"ldsr",    {REGISTER_ACCESS, MEMORY_RELATED, IMMEDIATE}}},
-            {0x3F, {"ldsp",    {REGISTER_ACCESS, MEMORY_RELATED, IMMEDIATE}}},
-            {0x40, {"ldbp",    {REGISTER_ACCESS, MEMORY_RELATED, IMMEDIATE}}},
-            {0x41, {"stsr",    {MEMORY_RELATED}}},
-            {0x42, {"stsp",    {MEMORY_RELATED}}},
-            {0x43, {"stbp",    {MEMORY_RELATED}}},
-            {0x44, {"trsr",    {REGISTER_ACCESS}}},
-            {0x45, {"trsp",    {REGISTER_ACCESS}}},
-            {0x46, {"trbp",    {REGISTER_ACCESS}}},
-            {0x50, {"sili",    {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x51, {"sihi",    {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x52, {"seli",    {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x53, {"sehi",    {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x54, {"sbp",     {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x55, {"stp",     {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x56, {"tili",    {REGISTER_ACCESS}}},
-            {0x57, {"tihi",    {REGISTER_ACCESS}}},
-            {0x58, {"teli",    {REGISTER_ACCESS}}},
-            {0x59, {"tehi",    {REGISTER_ACCESS}}},
-            {0x5A, {"tbp",     {REGISTER_ACCESS}}},
-            {0x5B, {"ttp",     {REGISTER_ACCESS}}},
-            {0x5C, {"lcpid",   {REGISTER_ACCESS, IMMEDIATE, MEMORY_RELATED}}},
-            {0x5D, {"tcpid",   {REGISTER_ACCESS}}},
-            {0x60, {"time",    {MEMORY_RELATED, REGISTER_ACCESS, IMMEDIATE}}},
-            {0x61, {"tstart",  {IMPLIED}}},
-            {0x62, {"tstop",   {IMPLIED}}},
-            {0x63, {"trt",     {REGISTER_ACCESS}}},
-        };
+        KILL = 0x00,
+        RESET = 0x01,
+        CPUID = 0x02,
+        SYSCALL = 0x03,
+        CALL = 0x04,
+        RET = 0x05,
+        PUSH = 0x06,
+        POP = 0x07,
+        PHPC = 0x08,
+        POPC = 0x09,
+        PHSR = 0x0A,
+        POSR = 0x0B,
+        PHSP = 0x0C,
+        POSP = 0x0D,
+        PHBP = 0x0E,
+        POBP = 0x0F,
+        SETI = 0x10,
+        SETT = 0x11,
+        SETS = 0x12,
+        CLRI = 0x13,
+        CLRT = 0x14,
+        CLRS = 0x15,
+        CLRN = 0x16,
+        CLRO = 0x17,
+        CLRC = 0x18,
+        IREQ = 0x19,
+        REQ = 0x1A,
+        WRITE = 0x1B,
+        HREQ = 0x1C,
+        HWRITE = 0x1D,
+        READ = 0x1E,
+        PAREQ = 0x1F,
+        CMP = 0x20,
+        CAREQ = 0x21,
+        JMP = 0x22,
+        JEQ = 0x23,
+        JZ = 0x23,
+        JNE = 0x24,
+        JNZ = 0x24,
+        JGE = 0x25,
+        JGR = 0x26,
+        JLE = 0x27,
+        JLS = 0x28,
+        JO = 0x29,
+        JNO = 0x2A,
+        JN = 0x2B,
+        JNN = 0x2C,
+        INC = 0x2D,
+        DEC = 0x2E,
+        ADD = 0x2F,
+        SUB = 0x30,
+        NEG = 0x31,
+        AND = 0x32,
+        OR = 0x33,
+        XOR = 0x34,
+        NOT = 0x35,
+        SIGN = 0x36,
+        SHL = 0x37,
+        SHR = 0x38,
+        PAR = 0x39,
+        LOAD = 0x3A,
+        STORE = 0x3B,
+        TRAN = 0x3C,
+        SWAP = 0x3D,
+        LDSR = 0x3E,
+        LDSP = 0x3F,
+        LDBP = 0x40,
+        STSR = 0x41,
+        STSP = 0x42,
+        STBP = 0x43,
+        TRSR = 0x44,
+        TRSP = 0x45,
+        TRBP = 0x46,
+        SILI = 0x50,
+        SIHI = 0x51,
+        SELI = 0x52,
+        SEHI = 0x53,
+        SBP = 0x54,
+        STP = 0x55,
+        TILI = 0x56,
+        TIHI = 0x57,
+        TELI = 0x58,
+        TEHI = 0x59,
+        TBP = 0x5A,
+        TTP = 0x5B,
+        LCPID = 0x5C,
+        TCPID = 0x5D,
+        TIME = 0x60,
+        TSTART = 0x61,
+        TSTOP = 0x62,
+        TRT = 0x63,
+    };
 }

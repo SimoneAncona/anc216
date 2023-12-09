@@ -59,7 +59,7 @@ namespace ANC216
     enum Instruction
     {
         KILL = 0x00,
-        RESET = 0x01,
+        RESETI = 0x01,
         CPUID = 0x02,
         SYSCALL = 0x03,
         CALL = 0x04,

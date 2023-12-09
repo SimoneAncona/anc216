@@ -20,7 +20,7 @@
 
 namespace ANC216
 {
-    class Emu
+    class CPU
     {
     private:
         int16_t reg[8] = {0};
@@ -36,11 +36,9 @@ namespace ANC216
         uint8_t argsize;
 
         uint8_t imem[MAX_MEM] = {0};
-        EmemMapper &emem;
+        EmemMapper *emem;
 
         bool killed = false;
-
-        std::thread *thread;
         bool running;
 
         inline int8_t get_lower(int16_t val)
@@ -192,9 +190,6 @@ namespace ANC216
 
         inline void store_data()
         {
-            switch (current_addressing_mode)
-            {
-            }
         }
 
         inline uint16_t fetch_data()
@@ -261,25 +256,13 @@ namespace ANC216
             }
         }
 
-        inline void async_cycle(Emu *emu)
-        {
-            while (!killed)
-            {
-                if (emu->running)
-                {
-                    emu->fetch_instruction();
-                    emu->execute();
-                }
-            }
-        }
-
         inline void execute()
         {
             uint8_t ins = current_instruction & 0xFF;
             switch (ins)
             {
             case KILL:
-            case RESET:
+            case RESETI:
             case CPUID:
             case SYSCALL:
             case CALL:
@@ -367,19 +350,22 @@ namespace ANC216
             case TSTART:
             case TSTOP:
             case TRT:
+                return;
             }
         }
 
     public:
-        Emu(EmemMapper &mapper, const EmuFlags &flags) : emem(mapper)
+        CPU(EmemMapper *mapper, const EmuFlags &flags)
         {
+            this->emem = mapper;
             if (flags.debug_mode)
                 running = false;
             else
                 running = true;
             pc = ROM_ADDR;
-            this->thread = new std::thread(async_cycle, this);
-            this->thread->join();
+            std::thread thread([this]
+                               { this->_cycle(); });
+            thread.join();
         }
 
         inline void start()
@@ -405,6 +391,23 @@ namespace ANC216
         inline int16_t *get_registers()
         {
             return reg;
+        }
+
+        inline void _cycle()
+        {
+            while (!killed)
+            {
+                if (running)
+                {
+                    fetch_instruction();
+                    execute();
+                }
+            }
+        }
+
+        inline void einr()
+        {
+            
         }
     };
 }

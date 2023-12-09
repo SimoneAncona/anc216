@@ -23,20 +23,41 @@ enum Flag
 };
 
 void print_help(char **);
-void print_help_for_flag(Flag);
-void debug_console(ANC216::Emu&, ANC216::EmemMapper&);
+void print_help_for_flag(const std::string &);
+void debug_console(ANC216::CPU &, ANC216::EmemMapper &);
 
 int main(int argc, char **argv)
 {
-    print_help(argv);
+    if (argc > 1)
+    {
+        if (strcmp(argv[1], "--help") == 0)
+        {
+            if (argc == 2)
+            {
+                print_help(argv);
+                exit(EXIT_SUCCESS);
+            }
+            if (argc == 3)
+            {
+                auto flag = std::string(argv[2]);
+                print_help_for_flag(flag);
+                exit(EXIT_SUCCESS);
+            }
+            std::cerr << RED << "cli::error" << RESET << " --help takes 0 or 1 arguments" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
     ANC216::EmuFlags emu_flags;
     ANC216::EmemMapper mapper(emu_flags);
-    ANC216::Emu emu(mapper, emu_flags);
+    ANC216::CPU cpu(&mapper, emu_flags);
+    mapper.set_cpu(&cpu);
+    
     if (emu_flags.debug_mode)
     {
-        std::thread dbg_console_thread(debug_console, std::ref(emu), std::ref(mapper));
+        std::thread dbg_console_thread(debug_console, std::ref(cpu), std::ref(mapper));
         dbg_console_thread.join();
     }
+    exit(EXIT_SUCCESS);
     return 0;
 }
 
@@ -75,7 +96,7 @@ void print_help(char **argv)
               << "specify the emulated GPU to use"
               << "\n"
               << YELLOW << "     =default" << RESET << "\t\t\t\t"
-              << "use the default API"
+              << "use the default AVC64 video card"
               << "\n"
               << YELLOW << "     =<file>" << RESET << "\t\t\t\t"
               << "use the specified GPU capable extension"
@@ -120,38 +141,62 @@ void print_help(char **argv)
               << "for example --help --fast-mode";
 }
 
-void print_help_for_flag(Flag flag)
+void print_help_for_flag(const std::string &flag)
 {
-    switch (flag)
+    if (flag == "-b" || flag == "--boot")
     {
-    case BOOT:
         std::cout << "Usage:\n"
                   << CYAN << "\t--boot <file>" << RESET << "\n"
                   << "Aliases:\n"
                   << CYAN << "\t-b" << RESET << "\n"
                   << "The boot flag is used to specify a binary file that contains the software that will be executed first" << std::endl;
         return;
-    case DEBUG:
+    }
+    if (flag == "-d" || flag == "--debug")
+    {
         std::cout << "Usage:\n"
                   << CYAN << "\t--debug" << RESET << "\n"
                   << "Aliases:\n"
                   << CYAN << "\t-d" << RESET << "\n"
                   << "The emulator will start in debug mode. In this mode the user can stop the execution of the machine to see every little detail like RAM, registers and more.\nIn debug mode it is possible to debug the machine via commands given to the terminal.\nTo see the commands available in debug mode, run the emulator with this flag and then type help" << std::endl;
         return;
-    case DEFAULT_CHARMAP:
+    }
+    if (flag == "--default-charmap")
+    {
         std::cout << "Usage:\n"
                   << CYAN << "\t--default-charmap" << RESET << "\n"
                   << "This flag can be set only if --gpu=default is set. With this flag set, the GPU will load the default charmap which consists of the set of textures for ascii characters" << std::endl;
         return;
-    case EXT:
+    }
+    if (flag == "--ext")
+    {
         std::cout << "Usage:\n"
                   << CYAN << "\t--ext <address> <file>" << RESET << "\n"
                   << "This flag allows you to load custom extensions for the emulator. The <address> specify where the device will be mapped in memory, the <file> specify the script of the device extension (.js or .py files)" << std::endl;
         return;
     }
+    if (flag == "-f" || flag == "--fast-mode")
+    {
+        std::cout << "Usage:\n"
+                  << CYAN << "\t--fast-mode" << RESET << "\n"
+                  << "Aliases:\n"
+                  << CYAN << "\t-f" << RESET << "\n"
+                  << "The emulator will start in fast mode.\nIn this mode audio and video are disabled, the emulated BIOS stdout will be redirected to the host stdout, same for the stdin.\nUse this mode only to test CLI programs and with standard ANC BIOS and OS.\nYou can use this mode in combination with debug mode" << std::endl;
+        return;
+    }
+    if (flag == "--gpu" || flag.starts_with("--gpu="))
+    {
+        std::cout << "Usage:\n"
+                  << CYAN << "\t--gpu=<val>" << RESET << "\n"
+                  << YELLOW << "     =default" << RESET << "\n"
+                  << "This flag allows you specify wich GPU to emulate.\nThe default value is AVC64" << std::endl;
+        return;
+    }
+    std::cerr << RED << "cli:error" << RESET << " unrecognized flag " << flag << std::endl;
+    exit(EXIT_FAILURE);
 }
 
-void debug_console(ANC216::Emu &emu, ANC216::EmemMapper &mapper)
+void debug_console(ANC216::CPU &emu, ANC216::EmemMapper &mapper)
 {
     std::cout << "The emulator is currently stopped, type 'start' to start.\nType 'help' for more information about the debug console." << std::endl;
     std::string command;

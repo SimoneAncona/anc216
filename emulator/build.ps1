@@ -19,7 +19,7 @@ if ($args.Contains("--release")) {
         exit
     }
     Set-Location build
-    cmake ../
+    cmake -DCMAKE_BUILD_TYPE=Release ../
     cmake --build . --config Release
 } else {
     if ($args.Contains("-t=linux")) {
@@ -27,7 +27,7 @@ if ($args.Contains("--release")) {
         exit
     }
     Set-Location build
-    cmake ../
-    cmake --build .
+    cmake  -DCMAKE_BUILD_TYPE=Debug ../
+    cmake --build . --config Debug
 }
 Set-Location ../

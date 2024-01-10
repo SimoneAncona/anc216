@@ -1,9 +1,10 @@
+#pragma once
+
 #include <map>
 #include <string>
 #include <vector>
 #include <tuple>
 
-#pragma once
 
 namespace ANC216
 {

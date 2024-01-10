@@ -1,41 +1,20 @@
-#include <emem.hh>
-
 #pragma once
 
-namespace ANC216
+#include <common.hh>
+
+class ANC216::Device
 {
-    enum DeviceID
-    {
-        ROM = 0,
-        MPME_CARD = 0x0102,
-        VIDEO_CARD = 0x0201,
-        AUDIO_CARD = 0x0200
-    };
+protected:
+    DeviceID id;
+    EmemMapper *emem;
 
-    class Device
-    {
-    protected:
-        DeviceID id;
-        EmemMapper *emem;
+    inline uint16_t get_addr() const;
 
-        uint16_t get_addr()
-        {
-            return emem->where_am_i(this);
-        }
+public:
+    Device(EmemMapper *emem);
 
-    public:
+    virtual void cpu_write(uint16_t value, bool additional_flag) = 0;
+    virtual uint16_t cpu_read(uint16_t value, bool additional_flag) = 0;
 
-        Device(EmemMapper *emem)
-        {
-            this->emem = emem;
-        }
-
-        virtual void cpu_write(uint16_t value, bool additional_flag) = 0;
-        virtual uint16_t cpu_read(uint16_t value, bool additional_flag) = 0;
-        
-        inline DeviceID cpu_info_req()
-        {
-            return this->id;
-        }
-    };
-}
+    inline DeviceID cpu_info_req();
+};

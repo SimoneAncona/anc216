@@ -20,5 +20,6 @@ namespace ANC216
         std::vector<std::pair<uint16_t, std::string>> cards;
         std::string charmap;
         float speed = 1;
+        std::string bootfile = "";
     };
 }

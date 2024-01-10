@@ -19,7 +19,7 @@ private:
     uint8_t argsize;
     uint16_t arg;
 
-    uint8_t imem[MAX_MEM] = {0};
+    uint8_t *imem = new uint8_t[MAX_MEM];
     EmemMapper *emem;
 
     bool killed = false;
@@ -36,6 +36,7 @@ private:
 
 public:
     CPU(EmemMapper*, const EmuFlags&);
+    ~CPU();
     inline void load_init_state();
     inline void start();
     inline void stop();

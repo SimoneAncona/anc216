@@ -1,5 +1,5 @@
 #include <emem.hh>
-#include <gpu.hh>
+#include <avc64.hh>
 #include <iostream>
 
 ANC216::EmemMapper::EmemMapper(const EmuFlags &flags)
@@ -12,16 +12,22 @@ ANC216::EmemMapper::EmemMapper(const EmuFlags &flags)
     }
     if (flags.gpu == "default" || flags.gpu == "AVC64")
     {
-        emem[DEFAULT_VIDEO_CARD_ADDR].second = new AVC64(this);
+        emem[DEFAULT_VIDEO_CARD_ADDR].second = new AVC64(this, 100, 100);
     }
 }
 
-inline void ANC216::EmemMapper::set_cpu(CPU *cpu)
+
+ANC216::EmemMapper::~EmemMapper()
+{
+    delete this->emem;
+}
+
+void ANC216::EmemMapper::set_cpu(ANC216::CPU *cpu)
 {
     this->cpu = cpu;
 }
 
-uint16_t ANC216::EmemMapper::where_am_i(const Device *device)
+uint16_t ANC216::EmemMapper::where_am_i(const ANC216::Device *device)
 {
     for (uint16_t i = 0; i < MAX_MEM; i++)
         if (emem[i].second == device)

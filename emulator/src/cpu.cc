@@ -290,6 +290,10 @@ inline void ANC216::CPU::execute()
     case CALL:
 
     case RET:
+        sr = imem[sp - 1];
+        pc = imem[sp - 2] << 8 | imem[sp - 3];
+        sp = bp;
+        break;
     case PUSH:
         if (data.first == BYTE_S)
         {
@@ -467,6 +471,11 @@ ANC216::CPU::CPU(EmemMapper *mapper, const EmuFlags &flags)
     std::thread thread([this]
                        { this->_cycle(); });
     thread.join();
+}
+
+ANC216::CPU::~CPU()
+{
+    delete this->imem;
 }
 
 inline void ANC216::CPU::load_init_state()

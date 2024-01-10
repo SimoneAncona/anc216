@@ -1,11 +1,15 @@
 #pragma once
 
 #include <common.hh>
+#include <video.hh>
 
-class ANC216::AVC64 : public ANC216::Device
+class ANC216::VideoCard : public ANC216::Device
 {
+protected:
+    ANC216::Video::Window window;
 public:
-    AVC64(ANC216::EmemMapper *emem);
-    void cpu_write(uint16_t value, bool additional_flag);
-    uint16_t cpu_read(uint16_t value, bool additional_flag);
+    VideoCard(ANC216::EmemMapper *emem, const int w_resolution, const int h_resolution) 
+        : Device(emem), window(w_resolution, h_resolution)
+    {
+    }
 };

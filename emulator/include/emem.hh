@@ -5,12 +5,13 @@
 class ANC216::EmemMapper
 {
 private:
-    std::pair<uint8_t, Device *> emem[MAX_MEM] = {{0, nullptr}};
+    std::pair<uint8_t, Device *> *emem = new std::pair<uint8_t, Device *>[MAX_MEM];
     CPU *cpu;
 
 public:
     EmemMapper(const EmuFlags &);
-    inline void set_cpu(CPU *);
+    ~EmemMapper();
+    void set_cpu(CPU *);
     uint16_t where_am_i(const Device *);
     void write(uint16_t, uint16_t);
     void read(uint16_t, uint16_t);

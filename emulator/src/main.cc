@@ -1,8 +1,17 @@
 #include <iostream>
-
+#include <filesystem>
 #include <anc216.hh>
 #include <console.hh>
 #include <thread>
+
+namespace fs = std::filesystem;
+
+#define CHECK_NEXT_ARG(i, args)\
+    if (i >= args.size())\
+    {\
+        std::cerr << RED << "cli::error" << RESET << " unexpected the end" << std::endl;\
+        exit(EXIT_FAILURE);\
+    }\
 
 enum Flag
 {
@@ -25,6 +34,7 @@ enum Flag
 void print_help(char **);
 void print_help_for_flag(const std::string &);
 void debug_console(ANC216::CPU &, ANC216::EmemMapper &);
+ANC216::EmuFlags get_flags(int argc, char ** argv);
 
 int main(int argc, char **argv)
 {
@@ -59,6 +69,23 @@ int main(int argc, char **argv)
     }
     exit(EXIT_SUCCESS);
     return 0;
+}
+
+
+ANC216::EmuFlags get_flags(int argc, char ** argv)
+{
+    std::vector<std::string> args;
+    ANC216::EmuFlags flags;
+    for (int i = 1; i < argc; i++)
+        args.push_back(argv[i]);
+
+    for (int i = 1; i < argc; i++)
+    {
+        if (args[i] == "-b" || args[i] == "--boot")
+        {
+            CHECK_NEXT_ARG(i, args);
+        }
+    }
 }
 
 void print_help(char **argv)

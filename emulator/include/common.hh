@@ -23,6 +23,7 @@ namespace ANC216
     class Device;
     class EmemMapper;
     class CPU;
+    class VideoCard;
     class AVC64;
 }
 

@@ -36,3 +36,7 @@ void ANC216::EmemMapper::write(uint16_t value, uint16_t address)
 void ANC216::EmemMapper::read(uint16_t value, uint16_t address)
 {
 }
+
+void ANC216::EmemMapper::info_req(uint16_t address)
+{
+}

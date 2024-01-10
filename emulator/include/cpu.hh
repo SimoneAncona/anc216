@@ -17,6 +17,7 @@ private:
 
     AddressingMode current_addressing_mode;
     uint8_t argsize;
+    uint16_t arg;
 
     uint8_t imem[MAX_MEM] = {0};
     EmemMapper *emem;
@@ -24,15 +25,18 @@ private:
     bool killed = false;
     bool running;
 
-    inline int8_t get_lower(int16_t val);
+    inline int8_t get_lower(int16_t);
     inline void fetch_instruction();
     inline void get_addressing_mode();
     inline void store_data();
-    inline uint16_t fetch_data();
+    inline void load_reg(uint16_t);
+    inline std::pair<uint8_t, uint16_t> fetch_data();
     inline void execute();
+    inline void nmi();
 
 public:
-    CPU(EmemMapper *mapper, const EmuFlags &flags);
+    CPU(EmemMapper*, const EmuFlags&);
+    inline void load_init_state();
     inline void start();
     inline void stop();
     inline uint16_t get_pc();

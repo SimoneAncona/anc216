@@ -9,9 +9,10 @@ private:
     CPU *cpu;
 
 public:
-    EmemMapper(const EmuFlags &flags);
-    inline void set_cpu(CPU *cpu);
-    uint16_t where_am_i(const Device *device);
-    void write(uint16_t value, uint16_t address);
-    void read(uint16_t value, uint16_t address);
+    EmemMapper(const EmuFlags &);
+    inline void set_cpu(CPU *);
+    uint16_t where_am_i(const Device *);
+    void write(uint16_t, uint16_t);
+    void read(uint16_t, uint16_t);
+    void info_req(uint16_t);
 };

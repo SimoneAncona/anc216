@@ -57,8 +57,10 @@ int main(int argc, char **argv)
             exit(EXIT_FAILURE);
         }
     }
+
+    ANC216::Video::Window window;
     ANC216::EmuFlags emu_flags;
-    ANC216::EmemMapper mapper(emu_flags);
+    ANC216::EmemMapper mapper(emu_flags, &window);
     ANC216::CPU cpu(&mapper, emu_flags);
     mapper.set_cpu(&cpu);
     
@@ -84,8 +86,15 @@ ANC216::EmuFlags get_flags(int argc, char ** argv)
         if (args[i] == "-b" || args[i] == "--boot")
         {
             CHECK_NEXT_ARG(i, args);
+            i++;
+            flags.bootfile = args[i];
+        }
+        if (args[i] == "--gpu=default")
+        {
+            flags.gpu = "default";
         }
     }
+    return flags;
 }
 
 void print_help(char **argv)

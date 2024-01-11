@@ -283,7 +283,7 @@ inline void ANC216::CPU::execute()
         load_init_state();
         break;
     case CPUID:
-        reg[0] = 0x8000;
+        reg[0] = (int16_t)0x8000;
         break;
     case SYSCALL:
 
@@ -297,13 +297,13 @@ inline void ANC216::CPU::execute()
     case PUSH:
         if (data.first == BYTE_S)
         {
-            imem[sp] = data.second;
+            imem[sp] = static_cast<uint8_t>(data.second);
             sp++;
         }
         else
         {
             imem[sp] = data.second >> 8;
-            imem[sp + (uint16_t)1] = data.second;
+            imem[sp + (uint16_t)1] = static_cast<uint8_t>(data.second);
             sp += 2;
         }
     case POP:
@@ -320,7 +320,7 @@ inline void ANC216::CPU::execute()
         break;
     case PHPC:
         imem[sp] = pc >> 8;
-        imem[sp + (uint16_t)1] = pc;
+        imem[sp + (uint16_t)1] = static_cast<uint8_t>(pc);
         sp += 2;
         break;
     case POPC:
@@ -337,7 +337,7 @@ inline void ANC216::CPU::execute()
         break;
     case PHSP:
         imem[sp] = sp >> 8;
-        imem[sp + (uint16_t)1] = sp;
+        imem[sp + (uint16_t)1] = static_cast<uint8_t>(sp);
         sp += 2;
         break;
     case POSP:
@@ -345,7 +345,7 @@ inline void ANC216::CPU::execute()
         break;
     case PHBP:
         imem[sp] = bp >> 8;
-        imem[sp + (uint16_t)1] = bp;
+        imem[sp + (uint16_t)1] = static_cast<uint8_t>(bp);
         sp += 2;
         break;
     case POBP:

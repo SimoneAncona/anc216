@@ -14,7 +14,8 @@ namespace ANC216
         char noaudio : 1 = 0;
         char novideo : 1 = 0;
         char nokeyboard : 1 = 0;
-        std::string gpu;
+        char fullscreen : 1 = 0;
+        std::string gpu = "default";
         std::vector<std::pair<uint16_t, std::string>> extensions;
         std::vector<std::pair<uint16_t, std::string>> inserts;
         std::vector<std::pair<uint16_t, std::string>> cards;

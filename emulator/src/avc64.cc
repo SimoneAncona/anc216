@@ -1,10 +1,13 @@
 #include <avc64.hh>
 #include <video.hh>
 
-ANC216::AVC64::AVC64(EmemMapper *emem, const int w_res, const int h_res) : ANC216::VideoCard(emem, w_res, h_res)
+#define W_AVC64_RES 256
+#define H_AVC64_RES 254
+
+ANC216::AVC64::AVC64(EmemMapper *emem, EmuFlags flags, Video::Window *win) : ANC216::VideoCard(emem, W_AVC64_RES * 2, H_AVC64_RES * 2, flags, win)
 {
     this->id = ANC216::AVC64_VIDEO_CARD;
-    
+    this->window->change_logical_res(W_AVC64_RES, H_AVC64_RES);
 }
 
 void ANC216::AVC64::cpu_write(uint16_t value, bool additional_flag)

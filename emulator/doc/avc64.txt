@@ -1,0 +1,49 @@
+The video card is used to handle a display. This emulator emulates an AVC64 Video Card.
+The AVC64 Video Card can handle a 224 * 256 px display with 256 colors.
+This card has 2 drawing modes:
+- single pixel  (0x00)
+- texture       (0x01)
+
+The registers are:
+X: 8 bit used to store X coordinate
+Y: 8 bit used to store Y coordinate
+D1: 8 bit used to store data such as colors or texture id
+
+
+The bus are
+
+8 bit data bus      
+    - in single pixel mode is used for passing the color
+    - in clear mode is used to pass the color
+    
+1 bit mode bus
+    - 0 R (read) used to read a color of a certain pixel in single pixel mode
+    - 1 W (write)
+4 bit operation bus
+    - SP (0x00) Single Pixel (R to read a color of a pixel, W to write a pixel, coordinates are stored in X and Y, color is in D1)
+    - TX (0x01) TeXture (mode bus must be W, the texture ID high is stored in D1 and low in D2. For 2 colors mode only, FG color is stored in D3 and BG color in D4, coordinates are stored in X and Y)
+    - CL (0x02) CLear the screen with the color specified in D1 register (mode bus must be W)
+    - CX (0x03) Used to write or read the X coordinate register
+    - CY (0x04) Used to write or read the Y coordinate register
+    - D1 (0x05) Used to write or read the D1 register
+    - D2 (0x06) Used to write or read the D2 register
+    - D3 (0x07) Used to write or read the D3 register
+    - D4 (0x08) Used to write or read the D4 register
+    - NOP (0x09) No Operations
+
+Video card internal mapping:
+  from <included> to <included> <size B> <info>
+- from 0x0000     to 0x1FFF     8'192    Texture and font map
+- from 0x2000     to 0xFFFF     57'344   Video memory (256 * 224 resolution 256 colors)
+
+Texture and font file header:
+    0       1       2       3       4    5  5       6       7   (bytes)
+0   |ID             |WIDTH  |HEIGHT |0000|CL|  ...DATA...
+
+Where CL can be:
+- 2 colors mode            (1 bit size)
+- 2 colors 1 alpha mode    (2 bit size)
+- 16 colors mode           (4 bit size)
+- 16 colors 16 alpha mode  (8 bit size)
+- 256 colors mode          (8 bit size)
+- 256 colors 16 alpha mode (12 bit size)

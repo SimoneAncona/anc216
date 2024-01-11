@@ -1,6 +1,6 @@
 #include <iostream>
 #include <filesystem>
-#include <anc216.hh>
+#include <common.hh>
 #include <console.hh>
 #include <thread>
 
@@ -58,9 +58,9 @@ int main(int argc, char **argv)
         }
     }
 
-    ANC216::Video::Window window;
+    // ANC216::Video::Window window;
     ANC216::EmuFlags emu_flags;
-    ANC216::EmemMapper mapper(emu_flags, &window);
+    ANC216::EmemMapper mapper(emu_flags);
     ANC216::CPU cpu(&mapper, emu_flags);
     mapper.set_cpu(&cpu);
     
@@ -242,3 +242,4 @@ void debug_console(ANC216::CPU &emu, ANC216::EmemMapper &mapper)
         std::cin >> command;
     }
 }
+

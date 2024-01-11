@@ -2,7 +2,7 @@
 #include <avc64.hh>
 #include <iostream>
 
-ANC216::EmemMapper::EmemMapper(const EmuFlags &flags, Video::Window *window)
+ANC216::EmemMapper::EmemMapper(const EmuFlags &flags)
 {
     this->cpu = cpu;
     if (!flags.novideo && flags.gpu == "")
@@ -12,7 +12,7 @@ ANC216::EmemMapper::EmemMapper(const EmuFlags &flags, Video::Window *window)
     }
     if (flags.gpu == "default" || flags.gpu == "AVC64")
     {
-        emem[DEFAULT_VIDEO_CARD_ADDR].second = new AVC64(this, flags, window);
+        emem[DEFAULT_VIDEO_CARD_ADDR].second = new AVC64(this, flags);
     }
 }
 

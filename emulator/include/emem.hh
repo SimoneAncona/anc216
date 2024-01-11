@@ -1,7 +1,6 @@
 #pragma once
 
 #include <common.hh>
-#include <video.hh>
 
 class ANC216::EmemMapper
 {
@@ -10,7 +9,7 @@ private:
     CPU *cpu;
 
 public:
-    EmemMapper(const EmuFlags &, Video::Window*);
+    EmemMapper(const EmuFlags &);
     ~EmemMapper();
     void set_cpu(CPU *);
     uint16_t where_am_i(const Device *);

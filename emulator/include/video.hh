@@ -2,7 +2,7 @@
 
 #include <SDL.h>
 #include <stdexcept>
-#include <thread>
+#include <future>
 
 namespace ANC216::Video
 {
@@ -11,13 +11,13 @@ namespace ANC216::Video
     private:
         SDL_Window *window;
         SDL_Renderer *renderer;
-        int r_width, r_height;
+        int r_width = 100, r_height = 100;
 
-        void init()
+        void _init()
         {
             if (SDL_Init(SDL_INIT_VIDEO) != 0)
                 throw std::runtime_error("Cannot initialize video");
-            window = SDL_CreateWindow("Emulated GPU video", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, r_width, r_height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+            window = SDL_CreateWindow("Emulated GPU video", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, r_width, r_height, SDL_WINDOW_RESIZABLE);
             if (window == NULL)
                 throw std::runtime_error("Cannot create window");
             auto run = true;
@@ -39,15 +39,22 @@ namespace ANC216::Video
         }
 
     public:
-        Window()
+        Window() = default;
+
+        void init()
         {
-            std::thread thread([this]() { this->init(); });
-            thread.join();
+            //std::async loop([this]() { this->init(); });
+            
         }
 
         void change_logical_res(const int width, const int height)
         {
             SDL_RenderSetLogicalSize(renderer, width, height);
+        }
+
+        void change_window_res(const int width, const int height)
+        {
+            SDL_SetWindowSize(window, width, height);
         }
 
         void set_fullscreen()

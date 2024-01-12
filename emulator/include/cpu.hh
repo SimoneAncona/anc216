@@ -2,6 +2,7 @@
 
 #include <common.hh>
 #include <isa.hh>
+#include <thread>
 
 class ANC216::CPU
 {
@@ -21,6 +22,7 @@ private:
 
     uint8_t *imem = new uint8_t[MAX_MEM];
     EmemMapper *emem;
+    std::thread *thread;
 
     bool killed = false;
     bool running;
@@ -45,4 +47,5 @@ public:
     inline int16_t *get_registers();
     inline void _cycle();
     inline void einr();
+    void wait();
 };

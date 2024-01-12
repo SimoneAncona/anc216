@@ -3,6 +3,7 @@
 #include <common.hh>
 #include <console.hh>
 #include <thread>
+#include <video.hh>
 
 namespace fs = std::filesystem;
 
@@ -58,9 +59,9 @@ int main(int argc, char **argv)
         }
     }
 
-    // ANC216::Video::Window window;
+    ANC216::Video::Window window;
     ANC216::EmuFlags emu_flags;
-    ANC216::EmemMapper mapper(emu_flags);
+    ANC216::EmemMapper mapper(emu_flags, &window);
     ANC216::CPU cpu(&mapper, emu_flags);
     mapper.set_cpu(&cpu);
     
@@ -69,6 +70,9 @@ int main(int argc, char **argv)
         std::thread dbg_console_thread(debug_console, std::ref(cpu), std::ref(mapper));
         dbg_console_thread.join();
     }
+
+    window.wait();
+    cpu.wait();
     exit(EXIT_SUCCESS);
     return 0;
 }

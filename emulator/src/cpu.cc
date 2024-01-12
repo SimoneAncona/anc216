@@ -468,9 +468,8 @@ ANC216::CPU::CPU(EmemMapper *mapper, const EmuFlags &flags)
     else
         running = true;
     load_init_state();
-    std::thread thread([this]
+    thread = new std::thread([this]
                        { this->_cycle(); });
-    thread.join();
 }
 
 ANC216::CPU::~CPU()
@@ -482,6 +481,12 @@ inline void ANC216::CPU::load_init_state()
 {
     pc = ROM_ADDR;
     sr = 0b00111100;
+}
+
+void ANC216::CPU::wait()
+{
+    if (thread != nullptr)
+        thread->join();
 }
 
 inline void ANC216::CPU::start()

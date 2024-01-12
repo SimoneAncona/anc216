@@ -18,10 +18,12 @@ elseif (WIN32)
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         # 64 bits
         file(COPY lib/bin/x64/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/${CONF})
+        target_link_libraries(anc216emu ${CONF}/SDL2main)
         target_link_libraries(anc216emu ${CONF}/SDL2)
     elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
         # 32 bits
         file(COPY lib/bin/x86/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/${CONF})
+        target_link_libraries(anc216emu ${CONF}/SDL2main)
         target_link_libraries(anc216emu ${CONF}/SDL2)
     endif()
 endif()

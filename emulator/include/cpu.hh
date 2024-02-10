@@ -3,6 +3,19 @@
 #include <common.hh>
 #include <isa.hh>
 #include <thread>
+#include <chrono>
+
+struct ANC216::CPUInfo
+{
+    int16_t *reg;
+
+    uint8_t sr;
+    uint16_t sp;
+    uint16_t bp;
+
+    uint16_t pc;
+    uint16_t current_instruction;
+};
 
 class ANC216::CPU
 {
@@ -26,6 +39,7 @@ private:
 
     bool killed = false;
     bool running;
+    const EmuFlags &flags;
 
     inline int8_t get_lower(int16_t);
     inline void fetch_instruction();
@@ -36,16 +50,19 @@ private:
     inline void execute();
     inline void nmi();
 
+
 public:
     CPU(EmemMapper*, const EmuFlags&);
     ~CPU();
     inline void load_init_state();
-    inline void start();
-    inline void stop();
-    inline uint16_t get_pc();
-    inline uint16_t get_current_instruction();
-    inline int16_t *get_registers();
+    void start();
+    void stop();
+    uint16_t get_pc();
+    uint16_t get_current_instruction();
+    int16_t *get_registers();
     inline void _cycle();
     inline void einr();
     void wait();
+    CPUInfo get_info();
+    void step();
 };

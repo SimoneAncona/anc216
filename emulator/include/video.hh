@@ -14,6 +14,7 @@ namespace ANC216::Video
         SDL_Renderer *renderer = NULL;
         std::thread *thread;
         int r_width = 400, r_height = 400;
+        char last_key = '\0';
 
         void _init()
         {
@@ -41,6 +42,9 @@ namespace ANC216::Video
                     SDL_Quit();
                     exit(0);
                     break;
+                case SDL_KEYDOWN:
+                    last_key = event.key.keysym.sym;
+                
                 }
             }
         }
@@ -66,6 +70,11 @@ namespace ANC216::Video
         {
             if (thread != nullptr)
                 thread->join();
+        }
+
+        char key_pressed()
+        {
+            return last_key;
         }
 
         inline void change_logical_res(const int width, const int height)

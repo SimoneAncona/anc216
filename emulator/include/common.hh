@@ -25,6 +25,7 @@ namespace ANC216
     class CPU;
     class VideoCard;
     class AVC64;
+    struct CPUInfo;
 }
 
 #include <emem.hh>

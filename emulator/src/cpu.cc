@@ -460,7 +460,7 @@ inline void ANC216::CPU::execute()
     }
 }
 
-ANC216::CPU::CPU(EmemMapper *mapper, const EmuFlags &flags)
+ANC216::CPU::CPU(EmemMapper *mapper, const EmuFlags &flags) : flags(flags)
 {
     this->emem = mapper;
     if (flags.debug_mode)
@@ -489,27 +489,27 @@ void ANC216::CPU::wait()
         thread->join();
 }
 
-inline void ANC216::CPU::start()
+void ANC216::CPU::start()
 {
     running = true;
 }
 
-inline void ANC216::CPU::stop()
+void ANC216::CPU::stop()
 {
     running = false;
 }
 
-inline uint16_t ANC216::CPU::get_pc()
+uint16_t ANC216::CPU::get_pc()
 {
     return pc;
 }
 
-inline uint16_t ANC216::CPU::get_current_instruction()
+uint16_t ANC216::CPU::get_current_instruction()
 {
     return current_instruction;
 }
 
-inline int16_t *ANC216::CPU::get_registers()
+int16_t *ANC216::CPU::get_registers()
 {
     return reg;
 }
@@ -522,10 +522,30 @@ inline void ANC216::CPU::_cycle()
         {
             fetch_instruction();
             execute();
+            std::this_thread::sleep_for(std::chrono::milliseconds((long long)(10 / this->flags.speed)));
         }
     }
 }
 
 inline void ANC216::CPU::einr()
 {
+}
+
+ANC216::CPUInfo ANC216::CPU::get_info()
+{
+    return CPUInfo{
+        this->reg,
+        this->sr,
+        this->sp,
+        this->bp,
+        this->pc,
+        this->current_instruction
+    };
+}
+
+void ANC216::CPU::step()
+{
+    running = false;
+    fetch_instruction();
+    execute();
 }

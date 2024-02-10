@@ -4,6 +4,8 @@
 #include <console.hh>
 #include <thread>
 #include <video.hh>
+#include <cpu.hh>
+#include <debug.hh>
 
 namespace fs = std::filesystem;
 
@@ -34,7 +36,6 @@ enum Flag
 
 void print_help(char **);
 void print_help_for_flag(const std::string &);
-void debug_console(ANC216::CPU &, ANC216::EmemMapper &);
 ANC216::EmuFlags get_flags(int argc, char ** argv);
 
 int main(int argc, char **argv)
@@ -59,15 +60,16 @@ int main(int argc, char **argv)
         }
     }
 
+    
     ANC216::Video::Window window;
-    ANC216::EmuFlags emu_flags;
+    ANC216::EmuFlags emu_flags = get_flags(argc, argv);
     ANC216::EmemMapper mapper(emu_flags, &window);
     ANC216::CPU cpu(&mapper, emu_flags);
     mapper.set_cpu(&cpu);
     
     if (emu_flags.debug_mode)
     {
-        std::thread dbg_console_thread(debug_console, std::ref(cpu), std::ref(mapper));
+        std::thread dbg_console_thread(debug_console, std::ref(cpu), std::ref(mapper), std::ref(window));
         dbg_console_thread.join();
     }
 
@@ -85,17 +87,53 @@ ANC216::EmuFlags get_flags(int argc, char ** argv)
     for (int i = 1; i < argc; i++)
         args.push_back(argv[i]);
 
-    for (int i = 1; i < argc; i++)
+    for (int i = 0; i < argc - 1; i++)
     {
         if (args[i] == "-b" || args[i] == "--boot")
         {
             CHECK_NEXT_ARG(i, args);
-            i++;
             flags.bootfile = args[i];
         }
-        if (args[i] == "--gpu=default")
+        else if (args[i].starts_with("--gpu="))
         {
-            flags.gpu = "default";
+            auto gpu = args[i].substr(5);
+            if (gpu != "default")
+            {
+                PRINT_CLI_ERROR("Only default GPU is supported");
+                exit(EXIT_FAILURE);
+            }
+            flags.gpu = args[i].substr(5);
+        }
+        else if (args[i] == "-d" || args[i] == "--debug")
+        {
+            flags.debug_mode = true;
+        }
+        else if (args[i] == "--default-charmap" || args[i] == "--ext")
+        {
+            PRINT_CLI_ERROR(args[i] + " not implemented yet");
+            exit(EXIT_FAILURE);
+        }
+        else if (args[i] == "--nokeyboard")
+        {
+            flags.nokeyboard = true;
+        }
+        else if (args[i] == "--novideo")
+        {
+            flags.novideo = true;
+        }
+        else if (args[i] == "--noaudio")
+        {
+            flags.noaudio;
+        }
+        else if (args[i].starts_with("--speed="))
+        {
+            auto speed = args[i].substr(7);
+            if (speed != "0.1" || speed != "0.5" || speed != "1" || speed != "2" || speed != "5")
+            {
+                PRINT_CLI_ERROR("Invalid speed");
+                exit(EXIT_FAILURE);
+            }
+            flags.speed = std::stof(speed);
         }
     }
     return flags;
@@ -235,15 +273,3 @@ void print_help_for_flag(const std::string &flag)
     std::cerr << RED << "cli:error" << RESET << " unrecognized flag " << flag << std::endl;
     exit(EXIT_FAILURE);
 }
-
-void debug_console(ANC216::CPU &emu, ANC216::EmemMapper &mapper)
-{
-    std::cout << "The emulator is currently stopped, type 'start' to start.\nType 'help' for more information about the debug console." << std::endl;
-    std::string command;
-    while (true)
-    {
-        std::cout << CYAN << "> " << RESET;
-        std::cin >> command;
-    }
-}
-

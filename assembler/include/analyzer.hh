@@ -696,7 +696,12 @@ namespace ANC216
                 break;
             case KEYWORD:
                 ins.instruction = "reserve";
-                ins.addr_mode_size = eval_expression(ast->get_children()[0]);
+                ins.addr_mode_size = eval_expression(ast->get_children()[1]);
+                if (ins.addr_mode_size < 0 || ins.addr_mode_size > 65536 || current_address + ins.addr_mode_size > 65536)
+                {
+                    error_stack.push_back({"Reserve exceeds the address space", ast->get_children()[0]->get_token()});
+                    ins.addr_mode_size = 0;
+                }
                 current_address += ins.addr_mode_size;
                 break;
             default:

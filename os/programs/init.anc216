@@ -1,0 +1,187 @@
+; User program: real SYSCALLs exercise the kernel, two MPME volumes and AFS chains.
+; Absolute addresses are logical offsets from user IMEM; no privileged IO here.
+_code:
+    ; Reject a pointer outside logical user IMEM without trapping the kernel.
+    load r0, 5
+    load r1, 0xffff
+    load r2, 4
+    load r3, 0
+    syscall
+    cmp r7, 1
+    jne fail
+    load r0, 0xff
+    syscall
+    cmp r7, 8
+    jne fail
+    load r0, 5
+    load r1, greeting
+    load r2, sizeof greeting
+    load r3, 0
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 1
+    syscall
+    cmp r7, 0
+    jne fail
+    load r0, 1
+    load r1, path
+    load r2, sizeof path
+    load r3, fd
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 2
+    syscall
+    cmp r7, 0
+    jne fail
+    load r0, 0x13
+    load r1, 1
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 3
+    syscall
+    cmp r6, 650
+    jne fail
+    load r0, 3
+    load r1, 1
+    load r2, 255
+    load r3, 0x1000
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 4
+    syscall
+    cmp r7, 0
+    jne fail
+    cmp r6, 255
+    jne fail
+    load l4, & 0x1000
+    cmp l4, 65
+    jeq initial_byte_ok
+    cmp l4, 90
+    jne fail
+initial_byte_ok:
+    ; The second read crosses the 300-byte head into a continuation.
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 5
+    syscall
+    cmp r6, 255
+    jne fail
+    load l4, & 0x10fe
+    cmp l4, 66
+    jne fail
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 6
+    syscall
+    cmp r6, 140
+    jne fail
+    load l4, & 0x108b
+    cmp l4, 67
+    jne fail
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 7
+    syscall
+    cmp r6, 0
+    jne fail
+    load r0, 0x12
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 8
+    syscall
+    cmp r7, 0
+    jne fail
+    ; Overwrite one byte, then rewind and verify it through the guest reader.
+    store & 0x1000, byte 90
+    load r0, 4
+    load r2, 0x8001
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 9
+    syscall
+    cmp r7, 0
+    jne fail
+    cmp r6, 1
+    jne fail
+    load r0, 0x12
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 10
+    syscall
+    load r0, 3
+    load r2, 1
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 11
+    syscall
+    load l4, & 0x1000
+    cmp l4, 90
+    jne fail
+    load r0, 2
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 12
+    syscall
+    ; A bad executable must return an error without replacing this process.
+    load r0, 0x11
+    load r1, bad_path
+    load r2, sizeof bad_path
+    syscall
+    cmp r7, 7
+    jne fail
+    ; Switch volumes rather than treating several chips as one huge raw image.
+    load r0, 0x10
+    load r1, 0x0201
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 13
+    syscall
+    cmp r7, 0
+    jne fail
+    load r0, 1
+    load r1, other_path
+    load r2, sizeof other_path
+    load r3, fd
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 14
+    syscall
+    cmp r7, 0
+    jne fail
+    load r0, 3
+    load r1, 1
+    load r2, 255
+    load r3, 0x1000
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 15
+    syscall
+    cmp r7, 0
+    jne fail
+    cmp r6, 23
+    jne fail
+    load r0, 5
+    load r1, 0x1000
+    tran r2, r6
+    load r3, 0
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    store & 0x2000, word 16
+    syscall
+    cmp r7, 0
+    jne fail
+    load r0, 0x10
+    load r1, 0x0200
+    syscall
+    cmp r7, 0
+    jne fail
+    ; Replace this process with another UALf through exec (not a host loader).
+    load r0, 0x11
+    load r1, echo_path
+    load r2, sizeof echo_path
+    syscall
+    ; A successful exec cannot return here.
+    jmp fail
+fail:
+    store & 0x2002, r7
+    store & 0x2004, r6
+    load r0, 0
+    load r1, 1
+    ; Progress marker for boot/debug tests (logical scratch offset 2000).
+    syscall
+greeting:
+    "USER UALF STARTED", 10
+path:
+    "/data/message.txt"
+other_path:
+    "/other.txt"
+bad_path:
+    "/bin/bad"
+echo_path:
+    "/bin/echo"
+fd:
+    byte 0

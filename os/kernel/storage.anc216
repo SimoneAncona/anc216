@@ -1,0 +1,44 @@
+; MPME216 bus primitives. fs_device contains an arbitrary EMEM chip address.
+; These routines preserve R0 and BP, return data in R1, and leave A cleared.
+; A=0 selects the chip byte address; A=1 writes at the selected address.
+; All helpers preserve other registers, so callers can keep traversal state.
+
+; disk_word: R1 = chip byte offset -> R1 = big-endian word.
+disk_word:
+    push r0
+    phbp
+    load r0, & fs_device
+    ldbp r0
+    careq
+    read & bp + 0
+    pobp
+    pop r0
+    ret
+
+; disk_byte: R1 = offset -> R1 = unsigned byte. READ is a word operation;
+; the first byte is the high byte, including the final byte at offset ffff.
+disk_byte:
+    phbp
+    call disk_word
+    pobp
+    shr r1, 8
+    ret
+
+; disk_write_byte: R1 = chip offset, L0 = new byte. Byte width matters: a
+; word write would corrupt the following byte. Volumes must be writable MPME.
+disk_write_byte:
+    push r2
+    phbp
+    load r2, & fs_device
+    ldbp r2
+    careq
+    write & bp + 0, r1
+    pareq
+    write & bp + 0, l0
+    careq
+    pobp
+    pop r2
+    ret
+
+fs_device:
+    word 0

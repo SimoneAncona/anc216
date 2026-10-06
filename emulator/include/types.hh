@@ -11,6 +11,7 @@ namespace ANC216
     {
         char debug_mode : 1 = 0;
         char fast_mode : 1 = 0;
+        bool uncapped = false;
         char noaudio : 1 = 0;
         char novideo : 1 = 0;
         char nokeyboard : 1 = 0;
@@ -20,6 +21,7 @@ namespace ANC216
         std::vector<std::pair<uint16_t, std::string>> inserts;
         std::vector<std::pair<uint16_t, std::string>> cards;
         std::string charmap;
+        unsigned zoom = 5;
         float speed = 100;
         std::string bootfile = "";
     };

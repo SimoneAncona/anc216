@@ -2,6 +2,8 @@
 #include <emem.hh>
 #include <video.hh>
 #include <debug.hh>
+#include <host_input.hh>
+#include <pacing.hh>
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -15,11 +17,15 @@ static void help(const char *name)
                                       "  -b, --boot <file>             Load up to 256 bytes at 0xff00\n"
                                       "  -d, --debug                   Interactive debugger\n"
                                       "  --novideo --noaudio --nokeyboard\n"
+                                      "  --zoom=<1..16>                Window scale (default 5: 1280x1120)\n"
+                                      "  --uncapped                    Maximum CPU speed, keeping video enabled\n"
                                       "  --speed=<positive number>     Instruction rate multiplier\n"
                                       "  -i, --insert <address> <file> Attach a raw ROM device\n"
                                       "  --insert-card <address> <file> Attach a writable MPME device\n"
                                       "  --insert-charmap <file>        Load AVC64 character/texture map\n"
                                       "  --gpu=default                 AVC64 (SDL build only)\n"
+                                      "  Terminal: Ctrl+C requests the guest shutdown pin\n"
+                                      "  SDL: Ctrl+D soft reset; Ctrl+C or close window requests shutdown\n"
                                       "  --max-cycles=<number>         Stop after this many instructions\n";
 }
 int main(int argc, char **argv)
@@ -65,11 +71,20 @@ int main(int argc, char **argv)
                 flags.noaudio = true;
             else if (arg == "--nokeyboard")
                 flags.nokeyboard = true;
+            else if (arg == "--uncapped")
+                flags.uncapped = true;
             else if (arg == "-f" || arg == "--fast-mode")
             {
                 flags.fast_mode = true;
                 flags.novideo = true;
                 flags.noaudio = true;
+            }
+            else if (arg == "--zoom" || arg.starts_with("--zoom="))
+            {
+                auto value = number(arg == "--zoom" ? next(i) : arg.substr(7));
+                if (value < 1 || value > 16)
+                    throw std::runtime_error("Zoom must be an integer from 1 to 16");
+                flags.zoom = value;
             }
             else if (arg.starts_with("--speed="))
             {
@@ -106,25 +121,54 @@ int main(int argc, char **argv)
         ANC216::Video::Window window;
         ANC216::EmemMapper mapper(flags, &window);
         ANC216::CPU cpu(&mapper, flags);
+        window.set_input_handlers([&](uint16_t key)
+                                  {
+                                      mapper.keyboard_input(key);
+                                  },
+                                  [&](bool shutdown)
+                                  {
+                                      if (shutdown)
+                                          cpu.request_shutdown();
+                                      else
+                                          cpu.request_soft_reset();
+                                      if (flags.debug_mode)
+                                          cpu.start();
+                                  });
+        std::signal(SIGINT, ANC216::handle_host_interrupt);
         if (flags.debug_mode)
             debug_console(cpu, mapper, window);
         else
         {
-            // The main thread owns SDL event/render calls. Headless runs use the same deterministic stepping path.
+            // SDL stays on the main thread, but updates at display cadence rather
+            // than once per emulated instruction.
+            ANC216::ExecutionPacer pacer(flags);
             uint64_t cycles = 0;
-            while (!cpu.halted() && window.poll())
+            auto next_frame = std::chrono::steady_clock::now();
+            while (!cpu.halted())
             {
-                cpu.step();
-                mapper.present();
-                if (limit && ++cycles >= limit && !cpu.halted())
+                ANC216::poll_host_interrupt(cpu);
+                const auto now = std::chrono::steady_clock::now();
+                if (now >= next_frame)
                 {
-                    std::cerr << "Instruction limit reached\n";
-                    cpu.shutdown();
-                    return 2;
+                    if (!window.poll())
+                        break;
+                    mapper.present();
+                    next_frame = now + std::chrono::milliseconds(16);
                 }
-                if (!flags.fast_mode)
-                    std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(10.0 / flags.speed));
+                for (unsigned i = 0; i < pacer.batch && !cpu.halted(); ++i)
+                {
+                    cpu.step();
+                    if (limit && ++cycles >= limit && !cpu.halted())
+                    {
+                        std::cerr << "Instruction limit reached\n";
+                        cpu.shutdown();
+                        return 2;
+                    }
+                }
+                if (!pacer.uncapped() && !cpu.halted())
+                    std::this_thread::sleep_until(pacer.deadline());
             }
+            mapper.present();
             cpu.shutdown();
         }
         if (!cpu.error().empty())

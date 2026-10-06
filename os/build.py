@@ -28,6 +28,7 @@ def charmap():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assembler', type=Path, default=ROOT.parent / 'build/assembler/assembler')
+    parser.add_argument('--cardreader', type=Path, default=ROOT.parent / 'build/cardreader/cardreader')
     parser.add_argument('--output', type=Path, default=ROOT / 'build')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -47,6 +48,36 @@ def main():
         raise ValueError('Boot or kernel exceeds its memory region')
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
+    # The demo runs as a user application with console and filesystem grants.
+    for name in ('init', 'echo'):
+        application = args.output / f'{name}.ual'
+        subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),
+                        str(application.resolve()), '-h=ualf', '-s'], check=True)
+        data = bytearray(application.read_bytes())
+        data[7] = 0xa0 if name == 'init' else 0x80
+        application.write_bytes(data)
+    cardreader = str(args.cardreader.resolve())
+    def card(*arguments):
+        subprocess.run([cardreader, *map(str, arguments)], check=True,
+                       stdout=subprocess.DEVNULL)
+    # These are reproducible build artifacts, never a user's attached card.
+    for name in ('disk0.afs', 'disk1.afs'):
+        (args.output / name).unlink(missing_ok=True)
+        card('--format', args.output / name)
+    disk0, disk1 = args.output / 'disk0.afs', args.output / 'disk1.afs'
+    card(disk0, 'mkdir', '/bin')
+    card(disk0, 'mkdir', '/data')
+    bad = args.output / 'bad.ual'
+    bad.write_bytes(b'NOT UALf')
+    card(disk0, 'put', '/bin/bad', bad)
+    card(disk0, 'put', '/bin/init', args.output / 'init.ual')
+    card(disk0, 'put', '/bin/echo', args.output / 'echo.ual')
+    content = args.output / 'message.txt'
+    content.write_bytes(b'A' * 300 + b'B' * 320 + b'C' * 30)
+    card(disk0, 'put', '/data/message.txt', content)
+    content = args.output / 'other.txt'
+    content.write_bytes(b'SECOND MPME VOLUME OK!\n')
+    card(disk1, 'put', '/other.txt', content)
     font = charmap()
     (args.output / 'charmap.bin').write_bytes(font)
     print(f'Boot: {len(boot)} bytes; kernel: {len(kernel)} bytes; font: {len(font)} bytes')

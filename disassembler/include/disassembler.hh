@@ -5,7 +5,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
-#include <header.hh>
+#include <utility>
+#include "header.hh"
 #include "../../common/encoding.hh"
 
 namespace ANC216
@@ -26,6 +27,9 @@ namespace ANC216
         }
 
     public:
+        explicit Disassembler(std::vector<uint8_t> data) : bytes(std::move(data))
+        {
+        }
         Disassembler(std::ifstream &in, const std::string &header_name)
         {
             if (!header_name.empty())

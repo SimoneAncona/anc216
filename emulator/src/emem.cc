@@ -1,6 +1,7 @@
 #include <emem.hh>
 #include <cpu.hh>
 #include <avc64.hh>
+#include <keyboard.hh>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
@@ -64,6 +65,8 @@ EmemMapper::EmemMapper(const EmuFlags &flags, Video::Window *window)
     if (!flags.novideo)
         throw std::runtime_error("Video requires a build configured with -DANC216_WITH_SDL=ON; use --novideo");
 #endif
+    if (!flags.nokeyboard)
+        attach(DEFAULT_KEYBOARD_ADDR, std::make_unique<Keyboard>(this, flags));
     for (const auto &[address, file] : flags.inserts)
         attach(address, std::make_unique<MemoryDevice>(this, flags, file, true));
     for (const auto &[address, file] : flags.cards)
@@ -78,6 +81,8 @@ void EmemMapper::attach(uint16_t address, std::unique_ptr<Device> device)
 {
     if (devices[address])
         throw std::runtime_error("Two devices mapped to the same EMEM address");
+    if (auto *display = dynamic_cast<AVC64 *>(device.get()))
+        displays.push_back(display);
     devices[address] = std::move(device);
 }
 uint16_t EmemMapper::where_am_i(const Device *device) const
@@ -117,7 +122,20 @@ void EmemMapper::request(uint16_t address, uint16_t value, bool additional, bool
 
 void EmemMapper::present()
 {
-    for (auto &device : devices)
-        if (auto *gpu = dynamic_cast<AVC64 *>(device.get()))
-            gpu->present();
+    for (auto *display : displays)
+        display->present();
+}
+
+void EmemMapper::keyboard_input(uint16_t value)
+{
+    if (auto *keyboard = dynamic_cast<Keyboard *>(devices[DEFAULT_KEYBOARD_ADDR].get()))
+        keyboard->input(value);
+}
+void EmemMapper::pump_keyboard()
+{
+    // Called under CPU's recursive lock, before executing an instruction.
+    // Queue writers only take the keyboard lock; never hold it while entering CPU.
+    if (auto *keyboard = dynamic_cast<Keyboard *>(devices[DEFAULT_KEYBOARD_ADDR].get()))
+        if (auto value = keyboard->pending(); value && cpu && (cpu->peek(2) || cpu->peek(3)) && cpu->einr(DEFAULT_KEYBOARD_ADDR, value, 1))
+            keyboard->consume();
 }

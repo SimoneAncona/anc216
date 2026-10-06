@@ -13,12 +13,15 @@ namespace ANC216
     {
         std::array<std::unique_ptr<Device>, MAX_MEM> devices{};
         CPU *cpu = nullptr;
+        std::vector<AVC64 *> displays;
 
     public:
         EmemMapper(const EmuFlags &, Video::Window * = nullptr);
         ~EmemMapper();
         void set_cpu(CPU *);
         void present();
+        void keyboard_input(uint16_t);
+        void pump_keyboard();
         void attach(uint16_t, std::unique_ptr<Device>);
         uint16_t where_am_i(const Device *) const;
         void write(uint16_t value, uint16_t address, bool additional = false, unsigned width = 2, bool high_priority = false);

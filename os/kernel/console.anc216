@@ -1,0 +1,58 @@
+; AVC64 console. All addresses are system physical addresses.
+; CALL sites save BP with phbp/call/pobp; puts saves its frame in R7.
+; puts: R2 = physical zero-terminated string. Preserves BP via call convention.
+; Clobbers R0/R2/R3/R7; R5/R6 are console pixel cursor coordinates.
+puts:
+    trbp r7
+puts_next:
+    ldbp r2
+    load l0, & bp + 0
+    cmp l0, 0
+    jeq puts_done
+    phbp
+    call putc
+    pobp
+    inc r2
+    jmp puts_next
+puts_done:
+    ldbp r7
+    ret
+
+; putc: L0 = ASCII character; wraps at 32 columns and clears at 28 rows.
+putc:
+    load r5, & console_x
+    load r6, & console_y
+    cmp l0, 10
+    jeq newline
+    load r5, & console_x
+    load r6, & console_y
+    tran r3, r5
+    or r3, 0x0300
+    write & 0xfffd, r3
+    tran r3, r6
+    or r3, 0x0400
+    write & 0xfffd, r3
+    and r0, 0x00ff
+    or r0, 0x0600
+    write & 0xfffd, r0
+    write & 0xfffd, word 0x0100
+    add r5, 8
+    cmp r5, 256
+    jne putc_done
+newline:
+    load r5, 0
+    add r6, 8
+    cmp r6, 224
+    jne putc_done
+    write & 0xfffd, word 0x0200
+    load r6, 0
+putc_done:
+    store & console_x, r5
+    store & console_y, r6
+    ret
+
+; Console coordinates live in kernel memory, never in user-owned registers.
+console_x:
+    word 0
+console_y:
+    word 0

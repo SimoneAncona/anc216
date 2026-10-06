@@ -1,0 +1,37 @@
+; A nonzero UALf entry offset verifies that the loader honors the entry field.
+prompt:
+    "TYPE A LINE AND PRESS ENTER", 10
+_code:
+    ; This executable has console permission only; FS requests are denied.
+    load r0, 0x10
+    load r1, 0x0200
+    syscall
+    cmp r7, 9
+    jne failed
+    load r0, 5
+    load r1, prompt
+    load r2, sizeof prompt
+    load r3, 0
+    syscall
+    cmp r7, 0
+    jne failed
+    load r0, 6
+    load r1, 64
+    load r2, 0x1000
+    syscall
+    cmp r7, 0
+    jne failed
+    tran r2, r6
+    load r0, 5
+    load r1, 0x1000
+    load r3, 0
+    syscall
+    cmp r7, 0
+    jne failed
+    load r0, 0
+    load r1, 0
+    syscall
+failed:
+    load r0, 0
+    load r1, 2
+    syscall

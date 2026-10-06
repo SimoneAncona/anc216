@@ -1,0 +1,426 @@
+; SYSCALL ABI: L0 selects the service; R1/R2/R3 carry arguments.
+; R0..R5 preserved; R6 byte count/value, R7 status. Zero means success.
+; CPU saves user SP/BP in 31fe/31fc and pushes PC/SR at the configured interrupt stack (3100).
+; Return is POSR/POPC, never RET (which is only for CALL frames).
+; Interrupts remain masked: argument slots and FS operations are nonreentrant.
+syscall_handler:
+    store & arg0, r0
+    store & arg1, r1
+    store & arg2, r2
+    store & arg3, r3
+    store & arg4, r4
+    store & arg5, r5
+    ; Interrupt SP can differ from kernel CALL SP. Capture its frame before
+    ; helpers use BP, rather than assuming that all handlers start at 3000.
+    trsp r4
+    sub r4, 3
+    ldbp r4
+    load r5, & bp + 0
+    store & syscall_pc, r5
+    load r5, 0
+    load l5, & bp + 2
+    store & syscall_sr, r5
+    ldbp 0x3000
+    load r6, 0
+    load r7, 0
+    load r0, & process_active
+    cmp r0, 0
+    jeq panic
+    ; Three free bytes above saved SP are needed for the return frame.
+    ; User code can modify SP, so bounds must be checked in system mode.
+    load r0, & 0x31fe
+    cmp r0, 0x7800
+    jls syscall_bad_stack
+    cmp r0, 0x7ffd
+    jgr syscall_bad_stack
+    load r0, & arg0
+    and r0, 0xff
+    cmp r0, 0
+    jeq syscall_exit
+    cmp r0, 5
+    jeq syscall_print
+    cmp r0, 6
+    jeq syscall_getl
+    cmp r0, 6
+    jls syscall_fs_permission
+    cmp r0, 0x10
+    jls syscall_unsupported
+    cmp r0, 0x13
+    jgr syscall_unsupported
+syscall_fs_permission:
+    load r1, & process_flags
+    and r1, 0x20
+    jeq syscall_denied
+    cmp r0, 1
+    jeq syscall_open
+    cmp r0, 2
+    jeq syscall_close
+    cmp r0, 3
+    jeq syscall_read
+    cmp r0, 4
+    jeq syscall_write
+    cmp r0, 0x10
+    jeq syscall_mount
+    cmp r0, 0x11
+    jeq syscall_exec
+    cmp r0, 0x12
+    jeq syscall_rewind
+    cmp r0, 0x13
+    jeq syscall_size
+syscall_unsupported:
+    load r7, 8
+    jmp syscall_return
+syscall_exit:
+    load r1, & arg1
+    store & 0x00f2, r1
+    store & 0x00f0, word 0x2161
+    jmp process_finish
+syscall_bad_stack:
+    store & 0x00f4, word 4
+    store & 0x00f0, word 0x2162
+    jmp process_finish
+syscall_denied:
+    load r7, 9
+    jmp syscall_return
+syscall_invalid:
+    load r7, 1
+    jmp syscall_return
+
+; R1 logical pointer, R2 length -> R1 physical pointer or R7=1.
+; User buffers stay below 7ff0, reserving the mode-switch stub at 7ff0.
+user_buffer:
+    cmp r1, 0
+    jls user_buffer_bad
+    cmp r1, 0x3ff0
+    jge user_buffer_bad
+    cmp r2, 0
+    jls user_buffer_bad
+    cmp r2, 255
+    jgr user_buffer_bad
+    tran r0, r1
+    add r0, r2
+    cmp r0, 0x3ff0
+    jgr user_buffer_bad
+    add r1, 0x4000
+    load r7, 0
+    ret
+user_buffer_bad:
+    load r7, 1
+    ret
+
+; print(05): R1 buffer, L2 count, R3 stream 0/1. Requires console flag 80.
+; Length is authoritative, so this service never scans an unbounded string.
+syscall_print:
+    load r0, & process_flags
+    and r0, 0x80
+    jeq syscall_denied
+    load r0, & arg3
+    cmp r0, 0
+    jls syscall_invalid
+    cmp r0, 1
+    jgr syscall_invalid
+    load r1, & arg1
+    load r2, & arg2
+    and r2, 0xff
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    store & print_pointer, r1
+    store & print_count, r2
+syscall_print_loop:
+    load r0, & print_count
+    cmp r0, 0
+    jeq syscall_print_done
+    load r2, & print_pointer
+    phbp
+    ldbp r2
+    load l0, & bp + 0
+    phbp
+    call putc
+    pobp
+    pobp
+    load r0, & print_pointer
+    inc r0
+    store & print_pointer, r0
+    load r0, & print_count
+    dec r0
+    store & print_count, r0
+    jmp syscall_print_loop
+syscall_print_done:
+    load r6, & arg2
+    and r6, 0xff
+    load r7, 0
+    jmp syscall_return
+
+; fopen(01): R1 absolute path, L2 size, R3 descriptor-byte pointer.
+; Successful open writes descriptor 1. There is only one open file per process.
+syscall_open:
+    load r1, & arg3
+    load r2, 1
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    store & fd_pointer, r1
+    load r1, & arg1
+    load r2, & arg2
+    and r2, 0xff
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    phbp
+    call fs_open
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    load r1, & fd_pointer
+    phbp
+    ldbp r1
+    store & bp + 0, byte 1
+    pobp
+    load r6, 1
+    jmp syscall_return
+syscall_close:
+    phbp
+    call syscall_check_fd
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    store & fs_head, word 0
+    jmp syscall_return
+syscall_check_fd:
+    load r0, & arg1
+    cmp r0, 1
+    jne syscall_no_fd
+    load r0, & fs_head
+    cmp r0, 0
+    jeq syscall_no_fd
+    load r7, 0
+    ret
+syscall_no_fd:
+    load r7, 4
+    ret
+
+; fread(03): R1 descriptor, L2 count, R3 destination.
+; fwrite(04): R1 descriptor, R2=8000|count, R3 source.
+; The high byte is the PDF's write mode; the low byte is its byte count.
+syscall_read:
+    store & transfer_mode, word 0
+    jmp syscall_transfer
+syscall_write:
+    load r0, & arg2
+    and r0, 0xff00
+    cmp r0, 0x8000
+    jne syscall_invalid
+    store & transfer_mode, word 1
+syscall_transfer:
+    phbp
+    call syscall_check_fd
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    load r1, & arg3
+    load r2, & arg2
+    and r2, 0xff
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    tran r3, r2
+    tran r2, r1
+    load r4, & transfer_mode
+    phbp
+    call fs_transfer
+    pobp
+    jmp syscall_return
+
+; Extensions: mount(10) R1 chip address; exec(11) R1 path/L2 size;
+; rewind(12) and size(13) R1 descriptor. Successful exec replaces the process.
+syscall_mount:
+    load r1, & arg1
+    phbp
+    call fs_mount
+    pobp
+    jmp syscall_return
+syscall_exec:
+    load r1, & arg1
+    load r2, & arg2
+    and r2, 0xff
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    phbp
+    call fs_open
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    phbp
+    call exec_open_file
+    pobp
+    jmp syscall_return
+syscall_rewind:
+    phbp
+    call syscall_check_fd
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    phbp
+    call fs_rewind
+    pobp
+    jmp syscall_return
+syscall_size:
+    phbp
+    call syscall_check_fd
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    load r6, & fs_size
+    jmp syscall_return
+
+; getl(06): R1 capacity (1..255), R2 logical destination.
+; Requires console permission. Poll keyboard while I is masked, so SDL capture
+; can continue without nesting interrupts into the system-call stack.
+; R6 is the length excluding newline/NUL; capacity includes the NUL terminator.
+; Enter finishes, backspace erases one buffered byte; unknown keys are ignored.
+syscall_getl:
+    ireq & 0xfffc
+    cmp r0, 0x0301
+    jeq syscall_getl_present
+    load r7, 2
+    jmp syscall_return
+syscall_getl_present:
+    load r0, & process_flags
+    and r0, 0x80
+    jeq syscall_denied
+    load r2, & arg1
+    cmp r2, 1
+    jls syscall_invalid
+    load r1, & arg2
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    store & input_start, r1
+    store & input_pointer, r1
+    dec r2
+    store & input_capacity, r2
+    store & input_length, word 0
+syscall_getl_loop:
+    load r1, 0
+    read & 0xfffc
+    cmp r1, 0
+    jeq syscall_getl_loop
+    cmp r1, 10
+    jeq syscall_getl_done
+    cmp r1, 8
+    jeq syscall_getl_backspace
+    cmp r1, 32
+    jls syscall_getl_loop
+    cmp r1, 126
+    jgr syscall_getl_loop
+    load r0, & input_length
+    cmp r0, & input_capacity
+    jge syscall_getl_loop
+    phbp
+    load r2, & input_pointer
+    ldbp r2
+    store & bp + 0, l1
+    pobp
+    inc r2
+    store & input_pointer, r2
+    inc r0
+    store & input_length, r0
+    tran r0, r1
+    phbp
+    call putc
+    pobp
+    jmp syscall_getl_loop
+syscall_getl_backspace:
+    load r0, & input_length
+    cmp r0, 0
+    jeq syscall_getl_loop
+    dec r0
+    store & input_length, r0
+    load r0, & input_pointer
+    dec r0
+    store & input_pointer, r0
+    ; Backspace updates the input buffer. Screen erasure is deferred.
+    jmp syscall_getl_loop
+syscall_getl_done:
+    phbp
+    load r2, & input_pointer
+    ldbp r2
+    store & bp + 0, byte 0
+    pobp
+    load r0, 10
+    phbp
+    call putc
+    pobp
+    load r6, & input_length
+    load r7, 0
+    jmp syscall_return
+
+syscall_return:
+    ; Copy the original interrupt PC/SR, restore physical user SP/BP,
+    ; push a return frame there, restore inputs, then switch back to user mode.
+    load r5, & syscall_pc
+    load r4, & syscall_sr
+    ldsp & 0x31fe
+    ldbp & 0x31fc
+    push r5
+    push l4
+    load r0, & arg0
+    load r1, & arg1
+    load r2, & arg2
+    load r3, & arg3
+    load r4, & arg4
+    load r5, & arg5
+    ; Execute the mode switch inside user IMEM: after POSR the next fetch
+    ; must already be inside the MTU range. Reinstall before each transition.
+    store & 0x7ff0, word 0x000b
+    store & 0x7ff2, word 0x0009
+    jmp 0x7ff0
+
+arg0:
+    word 0
+arg1:
+    word 0
+arg2:
+    word 0
+arg3:
+    word 0
+arg4:
+    word 0
+arg5:
+    word 0
+print_pointer:
+    word 0
+print_count:
+    word 0
+fd_pointer:
+    word 0
+transfer_mode:
+    word 0
+
+input_start:
+    word 0
+input_pointer:
+    word 0
+input_capacity:
+    word 0
+input_length:
+    word 0
+
+syscall_pc:
+    word 0
+syscall_sr:
+    word 0

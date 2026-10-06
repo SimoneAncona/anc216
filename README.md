@@ -35,9 +35,9 @@ build/emulator/anc216emu --boot boot.bin --novideo --fast-mode --max-cycles=100
 build/emulator/anc216emu --boot boot.bin --novideo --debug
 ```
 
-In the debugger, `ni` steps an instruction, `sh info` shows registers, and `imem watch 0x3000 16` shows memory. `start`, `stop`, `reset`, and `exit` control execution. The example leaves R1=`0x000f`.
+In the debugger, `b 0xff00` sets a breakpoint, `c` continues, `s` steps, and `n` steps over calls. `r` shows registers and MTU bounds; `u pc` disassembles and `x sp-16 32` inspects memory. See the [debugger guide](doc/DEBUGGER.md) for editing, history and machine controls. The example leaves R1=`0x000f`.
 
-Boot images are raw code at `0xff00`, at most 256 bytes. PC-relative labels work in the ROM example. Absolute ROM labels must include `0xff00` because the assembler's raw origin defaults to zero. Guest firmware must load larger programs and supply its own BIOS/OS services. The initial OS in [os/](os/README.md) includes a ROM loader and an AVC64 text console. Its generated kernel image, `build/os/system.rom`, uses a two-byte length header followed by the kernel; see [the OS ROM format and memory mapping](os/README.md#what-is-systemrom).
+Boot images are raw code at `0xff00`, at most 256 bytes. PC-relative labels work in the ROM example. Absolute ROM labels must include `0xff00` because the assembler's raw origin defaults to zero. Guest firmware must load larger programs and supply its own BIOS/OS services. The OS in [os/](os/README.md) includes modular kernel code, MPME/AFS access, user syscalls, a UALf loader and an AVC64 text console. Its generated kernel image, `build/os/system.rom`, uses a two-byte length header followed by the kernel; see [the OS ROM format and memory mapping](os/README.md#what-is-systemrom).
 
 UALf output: `assembler program.anc216 program.ualf -h=ualf -s`; it requires an `_code` label and `-s` optionally includes public symbols. Disassemble its payload with `-h=ualf`.
 
@@ -56,4 +56,18 @@ The interactive shell supports `mkdir`, `cd`, `ls`, `touch`, `set`, `put`, `get`
 
 Attach a card to the emulator with `--insert-card 0x0100 card.bin`, or a read-only raw ROM device with `--insert 0x0100 file.bin`. MPME writes affect emulated memory and are not automatically persisted to the host file. The supplied old card fixture has orphan clusters; create a fresh card for new experiments.
 
-The emulator is functional rather than cycle accurate. Audio, host keyboard interrupts, script extensions and bus contention are not implemented; their protocols are not fully specified in the supplied documents. AVC64's pixel/texture model is implemented and tested; its optional SDL window requires a display environment.
+The emulator is functional rather than cycle accurate. Audio, script extensions and bus contention are not implemented; their protocols are not fully specified in the supplied documents. AVC64's pixel/texture model is implemented and tested; its optional SDL window requires a display environment.
+
+## Keyboard and window
+
+The SDL window defaults to 1280×1120 (5× AVC64 pixels). Use `--zoom=2` for 512×448, or any integer 1–16.
+
+SDL captures printable ASCII and control/special keys. The keyboard device is EMEM `0xfffc`; queued events can be polled with READ or delivered through EINR. Ctrl+D requests a guest soft reset; Ctrl+C/window close requests guest shutdown. See [the complete keyboard protocol](doc/IMPLEMENTATION.md#keyboard-and-host-control-pins), including queue commands, IRQ registers and masking behavior.
+
+The debugger's `sh info` includes MTU IMEM, EMEM and stack bounds. `soft-reset`/`shutdown` request guest control pins; `reset` resets CPU state.
+
+## Emulator speed
+
+Use `--uncapped` to run as fast as the host allows while keeping video and keyboard input. `--speed=N` targets approximately `100 × N` instructions/second using batched pacing; `--fast-mode` also removes delays but disables video/audio. SDL input/rendering updates about 60 times per second.
+
+For optimized binaries, build with `./build.sh -DCMAKE_BUILD_TYPE=Release`. This keeps SDL enabled and runs the tests.

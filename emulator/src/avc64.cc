@@ -12,7 +12,7 @@ AVC64::AVC64(EmemMapper *mapper, EmuFlags flags, Video::Window *win) : Device(ma
     {
         window->init();
         window->change_logical_res(256, 224);
-        window->change_window_res(512, 448);
+        window->change_window_res(256 * flags.zoom, 224 * flags.zoom);
         if (!flags.novideo)
             window->show();
         if (flags.fullscreen)

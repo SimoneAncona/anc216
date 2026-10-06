@@ -7,14 +7,24 @@
 #include <thread>
 #include <vector>
 #include <string>
+#include <map>
+#include <optional>
 
 namespace ANC216
 {
     struct CPUInfo
     {
         std::array<int16_t, 8> reg{};
+        std::array<uint16_t, 6> mtu{};
         uint8_t sr;
         uint16_t sp, bp, pc, current_instruction;
+    };
+    struct CPUDebugState
+    {
+        bool running, halted;
+        uint64_t instructions, stop_serial;
+        std::optional<uint16_t> breakpoint;
+        bool temporary;
     };
     class CPU
     {
@@ -33,9 +43,14 @@ namespace ANC216
         mutable std::recursive_mutex mutex;
         std::condition_variable_any wake;
         bool killed = false, running = false;
+        bool reset_requested = false, shutdown_requested = false;
         std::string failure;
+        std::map<uint16_t, bool> breakpoints;
+        std::optional<uint16_t> breakpoint_hit, resume_breakpoint, temporary_pc, temporary_sp;
+        bool temporary_hit = false;
+        uint64_t instruction_count = 0, stop_serial = 0;
         void cycle();
-        void execute();
+        void execute(bool honor_breakpoints = false);
         void update_timer();
         uint16_t mapped(uint16_t, bool external = false) const;
         void check(uint16_t, unsigned, bool write = false) const;
@@ -59,10 +74,20 @@ namespace ANC216
         void shutdown();
         void wait();
         void step();
-        void einr(uint16_t address = 0, uint16_t data = 0, uint8_t type = 1);
+        void request_soft_reset();
+        void request_shutdown();
+        bool einr(uint16_t address = 0, uint16_t data = 0, uint8_t type = 1);
         uint16_t get_pc();
         uint16_t get_current_instruction();
         CPUInfo get_info();
+        CPUDebugState debug_state() const;
+        void set_breakpoint(uint16_t, bool enabled = true);
+        bool remove_breakpoint(uint16_t);
+        void clear_breakpoints();
+        std::map<uint16_t, bool> list_breakpoints() const;
+        void run_until(uint16_t address, std::optional<uint16_t> stack = std::nullopt);
+        void debug_set(const std::string &name, uint16_t value);
+        std::vector<uint8_t> memory(uint16_t address, size_t size) const;
         uint8_t peek(uint16_t) const;
         void poke(uint16_t, uint8_t);
         bool halted() const;

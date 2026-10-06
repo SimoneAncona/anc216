@@ -46,7 +46,12 @@ with tempfile.TemporaryDirectory(prefix='anc216-tests-') as directory:
 
     assemble('load r0, (word 5) + (byte 2)\n')
     assert binary.read_bytes() == bytes.fromhex('c13a0007')
+    assemble('reserve 3\nbyte 0x55\n')
+    assert binary.read_bytes() == bytes.fromhex('00000055')
     assemble('reserve -1\n', False)
+    (p/'part.anc216').write_text('byte 0xbb\n')
+    assemble('byte 0xaa\nimport "part.anc216"\nbyte 0xcc\n')
+    assert binary.read_bytes() == bytes.fromhex('aabbcc')
     assemble('use enabled\nif enabled then\nkill\n', False)
     assemble('tran l0, l1\n', False)
     assemble('swap r0, r1\n')
@@ -84,9 +89,14 @@ with tempfile.TemporaryDirectory(prefix='anc216-tests-') as directory:
     assemble('ldsp 0x3000\nload r0, 5\nload r1, 0\nloop:\nadd r1, r0\ndec r0\ncmp r0, 0\njne * loop\nkill\n')
     run(emulator,'--boot',binary,'--novideo','--fast-mode','--max-cycles=100')
     debug = run(emulator,'--boot',binary,'--novideo','--debug',input=b'ni\nni\nni\nsh info\nexit\n')
+    assert b'MTU IMEM=0000..feff EMEM=0000..ffff STACK=3200..feff' in debug.stdout
     assert b'R0=0005' in debug.stdout and b'SP=3000' in debug.stdout
     run(emulator,'--boot',ok=False)
     run(emulator,'--boot',binary,'--speed=nan',ok=False)
+    for zoom in ('0', '17', 'nan', '-1'):
+        run(emulator,'--boot',binary,'--zoom='+zoom,ok=False)
+    run(emulator,'--boot',binary,'--novideo','--uncapped','--zoom=3')
+    run(emulator,'--boot',binary,'--novideo','--fast-mode','--zoom','5')
     run(emulator,'--boot',binary,'--unknown',ok=False)
     binary.write_bytes(bytes(257)); run(emulator,'--boot',binary,ok=False)
     binary.write_bytes(bytes.fromhex('8022ff00')); run(emulator,'--boot',binary,'--fast-mode','--max-cycles=5',ok=False)

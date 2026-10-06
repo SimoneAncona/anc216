@@ -1,57 +1,87 @@
 # ANC216 OS
 
-A first bootable kernel written entirely in ANC216 assembly. It loads from an external ROM, initializes the system stack and fault vectors, prints a banner with an AVC64 console, and stays in an idle loop. This is the starting point for the OS; there is no scheduler, filesystem driver, user-program loader, or keyboard shell yet.
+The kernel is written in ANC216 assembly and split into imported modules. Firmware loads it from external ROM. It mounts AFS v1 on MPME216 chips, runs UALf applications in user mode, and provides console and filesystem syscalls.
 
 ## Build and run
 
 From the repository root, with SDL2 development packages installed:
 
 ```sh
-cmake -S . -B build -DANC216_WITH_SDL=ON
-cmake --build build --parallel
-cmake --build build --target os
+./build.sh
 build/emulator/anc216emu --boot build/os/boot.bin \
     --insert 0x0100 build/os/system.rom \
-    --insert-charmap build/os/charmap.bin --gpu=default --speed=100
+    --insert-card 0x0200 build/os/disk0.afs \
+    --insert-card 0x0201 build/os/disk1.afs \
+    --insert-charmap build/os/charmap.bin --gpu=default --uncapped
 ```
 
-Close the window to exit. Zed also has an **ANC216: run OS (SDL)** task. Do not use `--fast-mode` for the display: that option enables no-video mode.
+The kernel attempts to run `/bin/init` on chip `0x0200`. The demo tests file reads across three clusters, overwrites a byte, reads the second chip, mounts the first again, and executes `/bin/echo`. Type a line and press Enter. The echo program prints it and exits; the kernel then consumes keys silently while idle. Input echo occurs only during an active `getl` call.
 
-For the debugger, use the same boot and external ROM with `--novideo --debug`. At `0x00f0`, the kernel writes `0x2160` when ready, or `0xffff` on a fault. `start`, `stop`, and `imem watch 0x00f0 2` inspect this marker. Headless mode runs the same guest but does not attach a display.
+Ctrl+D requests a soft reset. Ctrl+C or closing the SDL window requests guest shutdown. Terminal Ctrl+C also requests shutdown. These controls work independently of the keyboard device. See [the keyboard protocol](../doc/IMPLEMENTATION.md#keyboard-and-host-control-pins).
+
+Without cards, the kernel starts its console and idles. Supply your own AFS images using repeated `--insert-card address image`; the mount syscall selects any chip address. Each chip holds its own filesystem, so additional chips increase available storage without changing AFS's 64 KiB image format. There is one selected volume and one open descriptor at a time; files do not span chips.
+
+`os/build.py` regenerates **only its own demo cards in the output directory**, replacing previous generated copies. Use separate filenames for personal card images. MPME writes currently last for the emulator session; they do not update host image files.
+
+Headless debugging uses the same boot/ROM/card arguments with `--novideo --debug`. `sh info` includes MTU bounds. `start`, `stop`, `soft-reset`, `shutdown`, and `imem watch 0x00f0 8` inspect/control execution. Headless mode has a keyboard device but no SDL text source; the interactive demo waits at `getl`.
 
 ## What is system.rom?
 
-`build/os/system.rom` is the kernel packaged for the firmware loader. `os/build.py` generates it from `kernel.anc216`; it is not a source file you need to create manually.
+`build/os/system.rom` is the kernel packaged for the firmware loader. It is generated from `kernel.anc216`, including all imported modules.
 
-| File offset | Size | Contents |
-| --- | --- | --- |
-| `0..1` | 2 bytes | Kernel payload length in bytes, unsigned big-endian |
-| `2..` | Length from header | Raw kernel instructions and data, padded to an even byte count |
+| File offset | Contents |
+| --- | --- |
+| `0..1` | Unsigned big-endian kernel payload length, including padding |
+| `2..` | Raw kernel instructions/data, padded to an even byte count |
 
-The length includes padding but excludes the two-byte header. There is no magic number, filesystem, or UALf header. The payload begins with the kernel entry point and is assembled for IMEM address `0x0100`; assembler `org` padding is removed before packaging. The current loader accepts nonzero even lengths up to `0x2e00` bytes.
+The loader accepts nonzero even lengths up to `0x2e00`. There is no magic, AFS, or UALf header. Assembler `org` padding is removed. The file is attached as a device at **EMEM `0x0100`**; firmware copies its payload into **IMEM `0x0100`**, then jumps there. These are separate address spaces. Change both firmware READ operands and the emulator's `--insert` address to relocate the ROM device.
 
-`--insert 0x0100 build/os/system.rom` attaches the file as a read-only device at **EMEM `0x0100`**. Firmware in `boot.bin` reads the header, copies the payload from device offset 2 into **IMEM `0x0100`**, then jumps to that IMEM address. EMEM device addresses and IMEM addresses are separate address spaces; their matching numbers are a convention of this loader.
+## Source modules and generated files
 
-The three runtime assets have separate jobs:
+| File | Responsibility |
+| --- | --- |
+| `boot.anc216` | Firmware at IMEM `0xff00`; kernel copy loop |
+| `kernel.anc216` | Entry, vectors, boot application, reset/shutdown/fault handlers, imports |
+| `kernel/console.anc216` | AVC64 character output and persistent cursor |
+| `kernel/storage.anc216` | MPME word/byte reads and byte writes |
+| `kernel/fs.anc216` | Mount, absolute path lookup, chain validation, sequential read/write |
+| `kernel/loader.anc216` | UALf header/symbol bounds, user memory setup, process replacement |
+| `kernel/syscalls.anc216` | ABI dispatch, permissions, buffer validation, interrupt return |
+| `kernel/keyboard.anc216` | Keyboard IRQ register/frame restoration and silent idle input |
+| `programs/init.anc216` | Filesystem/multi-chip/exec demo using actual user syscalls |
+| `programs/echo.anc216` | Line input/print/exit demo with a nonzero UALf entry offset |
+| `glyphs.txt`, `charmap.bin` | Original printable ASCII glyph source and ready-to-use AVC64 map |
+| `build.py` | Assemble firmware/kernel/apps, package ROM, grant demo permissions, generate cards/font |
 
-- `boot.bin`: firmware loaded into IMEM at `0xff00`, at most 256 bytes.
-- `system.rom`: kernel image attached at EMEM `0x0100`.
-- `charmap.bin`: textures loaded into AVC64's internal storage by `--insert-charmap`; AVC64 commands go to EMEM `0xfffd`.
+CMake outputs to `build/os`; invoking `python3 os/build.py` directly outputs to `os/build`. The charmap has 95 monochrome 8×8 records with ASCII IDs 32–126; lowercase uses uppercase letter shapes. Copy a newly generated map to `os/charmap.bin` after editing the glyph source.
 
-The bootloader does not discover the ROM address automatically. To change it, change the `read & 0x0100` instructions in `boot.anc216`, rebuild, and use the same address with `--insert`.
+## Memory and application ABI
 
-## Files and layout
+| IMEM | Purpose |
+| --- | --- |
+| `0000..000d` | Entry/IRQ/NMI/syscall/timer/shutdown vectors and system SP |
+| `00f0..00f7` | State, exit code, fault code, last keyboard IRQ payload |
+| `0100..2eff` | Kernel code/data |
+| `3000..31ef` | Kernel CALL stack; IRQ/syscall stack starts at 3100; interrupted BP/SP saved at `31fc/31fe` |
+| `3200..3fff` | UALf staging, maximum entire file size 3584 bytes |
+| `4000..7fff` | User memory, with initial SP/BP `7800` |
+| `7ff0..7ff3` | Reinstalled POSR/POPC transition stub |
+| `ff00..ffff` | Boot ROM |
 
-- `boot.anc216`: 101-byte boot ROM at `0xff00`. Reads a big-endian kernel byte count at offset zero of EMEM device `0x0100`, copies its even-sized payload into IMEM at `0x0100`, and jumps there. Zero, odd, or oversized lengths halt the loader.
-- `kernel.anc216`: kernel, `puts`/`putc` console routines, and banner. The console uses 32 columns × 28 rows, wraps lines, and clears when the bottom is reached. Keyboard input is pending emulator support.
-- `glyphs.txt`: original editable five-by-seven glyphs, centered in eight-by-eight cells. Covers printable ASCII; lowercase currently uses uppercase letter shapes.
-- `charmap.bin`: ready-to-use AVC64 map, 95 textures / 1330 bytes. Texture IDs match ASCII codes 32–126. Each record is a big-endian ID, width 8, height 8, zero, CL=0, then eight monochrome row bytes. The console sets foreground white and background black.
-- `build.py`: assembles boot/kernel, removes `org` padding from physical-origin payloads, pads the kernel to a word boundary, packages `system.rom`, and generates `charmap.bin` from the glyph source. Outputs go to `build/os` through CMake, or `os/build` when invoked directly. To update the checked-in font after editing glyphs, copy the generated `charmap.bin` into `os/`.
+User absolute operands are logical offsets rebased by MTU `4000`; PC/SP/BP remain physical. Syscall buffers must remain inside logical `0000..3fef`; SP must be `7800..7ffd` to leave room for interrupt return. CALL sites save BP with `phbp; call routine; pobp`.
 
-IMEM `0x0000..0x000d` holds vectors/system SP; `0x00f0..0x00f1` is the ready marker; kernel/data starts at `0x0100` and must end before `0x2f00`; the stack starts at `0x3000`. Interrupts remain masked during this initial version; fault/syscall vectors halt through `panic`. CALL sites save BP explicitly. EMEM `0x0100` is the system ROM, and `0xfffd` is AVC64.
+UALf version 1, ANC216 architecture, application type 0, bounded optional symbol records, and a valid file-relative entry are required. Payloads use logical origin zero. Libraries and symbol-only files are rejected. Flag `80` grants console/input and `20` grants filesystem; other bits are rejected. The demo build sets `a0` for init and `80` for echo; the assembler's default flags grant neither. A failed load keeps the current user memory intact. A successful exec replaces the single process and clears its prior memory.
 
-The raw system ROM is an initial boot protocol, not an AFS filesystem image. A card-backed filesystem can replace it in a later loader.
+See [the syscall ABI](SYSCALLS.md) for register arguments and errors.
+
+State at `00f0`: `2160` kernel ready, `2163` user running, `2161` user exited, `2162` user fault, `2164` shutdown, `ffff` kernel panic. Exit status is at `00f2`, fault code at `00f4`, last keyboard IRQ at `00f6`.
+
+## Filesystem scope
+
+AFS uses the corrected v1 layout documented in [IMPLEMENTATION.md](../doc/IMPLEMENTATION.md#afs-v1-and-cardreader). Guest paths are absolute, with nested directories (15-byte names), a 17-byte file base and optional 3-byte extension. Empty components, `.`/`..`, directory dots, and multiple filename dots are rejected. Opening validates IDs, parent/type metadata, payload sizes and cycles in that file's complete chain. It does not audit unrelated files or orphan clusters.
+
+Reads traverse 300-byte head and 320-byte continuation payloads. Writes overwrite existing allocated file bytes and can return a short count at EOF; they do not allocate, resize, create, rename, or delete files. Use cardreader for those operations. Unsupported syscalls return an error. There is no scheduler, dynamic linker, user key callback, allocator, or shell yet.
 
 ## Verification
 
-`ctest --test-dir build --output-on-failure` includes `os_boot`: it boots the actual ROM and kernel, loads the charmap, checks the ready marker and restored stack, verifies pixels in the first banner glyph, and checks continued idle execution without opening a window.
+`ctest --test-dir build --output-on-failure` boots the actual ROM/kernel and checks console pixels, real user-mode execution, two MPME volumes, AFS continuation reads/writes, UALf process replacement, keyboard line input, exit, queue/IRQ behavior, SDL event translation, and control-pin handling. SDL tests use the dummy display driver.

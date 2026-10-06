@@ -1,0 +1,1 @@
+./build/emulator/anc216emu -b ./build/os/boot.bin -i 0x0100 ./build/os/system.rom --insert-charmap ./os/charmap.bin --insert-card 0x0200 ./build/os/disk0.afs --insert-card 0x0201 ./build/os/disk1.afs --uncapped $*

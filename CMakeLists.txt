@@ -23,12 +23,28 @@ endif()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_custom_target(os
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/os/build.py
-        --assembler $<TARGET_FILE:assembler> --output ${CMAKE_BINARY_DIR}/os
-    DEPENDS assembler
+        --assembler $<TARGET_FILE:assembler> --cardreader $<TARGET_FILE:cardreader> --output ${CMAKE_BINARY_DIR}/os
+    DEPENDS assembler cardreader
     COMMENT "Build ANC216 OS ROM and AVC64 charmap")
 if(BUILD_TESTING)
     add_executable(os_test tests/os_test.cc)
     target_link_libraries(os_test PRIVATE anc216core)
     add_dependencies(os_test os)
     add_test(NAME os_boot COMMAND os_test ${CMAKE_BINARY_DIR}/os)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(host_input_test tests/host_input_test.cc)
+    target_link_libraries(host_input_test PRIVATE anc216core)
+    add_test(NAME host_input COMMAND host_input_test)
+    set_tests_properties(host_input PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(debugger_test tests/debugger_test.cc)
+    target_link_libraries(debugger_test PRIVATE anc216core)
+    add_test(NAME debugger COMMAND debugger_test)
+    if(UNIX)
+        add_test(NAME debugger_console COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/debugger_console_test.py $<TARGET_FILE:anc216emu>)
+    endif()
 endif()

@@ -1,8 +1,6 @@
 #include <types.hh>
 #include <string>
-#include <tuple>
 #include <cstring>
-#include <stack>
 #include <vector>
 #include <filesystem>
 
@@ -405,12 +403,13 @@ namespace ANC216
 
         inline void unshift_tokens(std::vector<Token> &token_vector)
         {
+            const size_t insertion = i;
             for (size_t index = 0; index < token_vector.size(); index++)
             {
                 if (token_vector[index].type == END)
                     return;
+                tokens.insert(tokens.begin() + insertion + index, token_vector[index]);
                 i++;
-                tokens.insert(tokens.begin() + index, token_vector[index]);
             }
         }
 

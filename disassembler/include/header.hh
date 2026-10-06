@@ -1,63 +1,58 @@
+#pragma once
 #include <fstream>
-#include <string>
 #include <map>
-#include <tuple>
+#include <string>
+#include <vector>
 
 namespace ANC216
 {
     class Header
     {
-    private:
         std::ifstream &input;
         std::map<std::string, int> symbols;
 
-        bool process_ualf()
-        {
-            std::string magic = {(char)input.get(), (char)input.get(), (char)input.get()};
-            if (magic != "UAL")
-                return false;
-            input.seekg(3, input.beg);
-            if (input.get() != 1)
-                return false;
-            input.seekg(6, input.beg);
-            if (input.get() != 1)
-                return false;
-            input.seekg(9, input.beg);
-            int header_size = input.get() << 8 | input.get();
-
-            std::string temp_symbol = "";
-            char ch;
-            int temp;
-            while (input.tellg() < header_size)
-            {
-                while ((ch = input.get()) != 0)
-                {
-                    temp_symbol += ch;
-                }
-                input.get();
-                input.get();
-                temp = input.get() << 8 | input.get();
-                symbols[temp_symbol] = temp;
-            }
-        }
-
     public:
-        Header(std::ifstream &in)
-            : input(in)
+        explicit Header(std::ifstream &in) : input(in)
         {
         }
-
-        ~Header() = default;
-
-        inline bool process(const std::string &header_type)
+        bool process(const std::string &type)
         {
-            if (header_type == "ualf")
-                return process_ualf();
+            if (type != "ualf")
+                return false;
+            std::vector<unsigned char> h(11);
+            if (!input.read(reinterpret_cast<char *>(h.data()), h.size()))
+                return false;
+            if (h[0] != 'U' || h[1] != 'A' || h[2] != 'L' || h[3] != 1 || h[6] != 1 || h[8] > 2)
+                return false;
+            unsigned size = (unsigned(h[9]) << 8) | h[10];
+            if (size < 11)
+                return false;
+            unsigned used = 11;
+            while (used < size)
+            {
+                std::string name;
+                int ch;
+                do
+                {
+                    if (used == size || (ch = input.get()) == EOF)
+                        return false;
+                    ++used;
+                    if (ch)
+                        name += char(ch);
+                } while (ch);
+                if (name.empty() || size - used < 4)
+                    return false;
+                unsigned char address[4];
+                if (!input.read(reinterpret_cast<char *>(address), 4))
+                    return false;
+                used += 4;
+                symbols[name] = (unsigned(address[2]) << 8) | address[3];
+            }
+            return true;
         }
-
-        inline std::map<std::string, int> &get_symbols()
+        std::map<std::string, int> &get_symbols()
         {
             return symbols;
         }
     };
-}
+} // namespace ANC216

@@ -19,7 +19,7 @@ if ($args.Contains("--release")) {
         exit
     }
     Set-Location build
-    cmake -DCMAKE_BUILD_TYPE=Release ../
+    cmake -DANC216_WITH_SDL=ON -DCMAKE_BUILD_TYPE=Release ../
     cmake --build . --config Release
 } else {
     if ($args.Contains("-t=linux")) {
@@ -27,7 +27,7 @@ if ($args.Contains("--release")) {
         exit
     }
     Set-Location build
-    cmake  -DCMAKE_BUILD_TYPE=Debug ../
+    cmake -DANC216_WITH_SDL=ON -DCMAKE_BUILD_TYPE=Debug ../
     cmake --build . --config Debug
 }
 Set-Location ../

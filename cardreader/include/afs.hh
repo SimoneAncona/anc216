@@ -1,582 +1,508 @@
+#pragma once
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <fstream>
+#include <map>
+#include <set>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <filesystem>
-#include <tuple>
-#include <map>
+#include <stdexcept>
 
-#pragma once
-
-namespace fs = std::filesystem;
-
+// AFS v1 uses the original repository's on-disk layout. See doc/IMPLEMENTATION.md.
 #define MAGIC_NUMBER 0xFE
 #define VERSION 0x01
-
 #define DIR_NAME_SIZE 15
 #define FILE_NAME_SIZE 17
 #define FILE_EXT_SIZE 3
 #define CLUSTER_SIZE 323
-
 #define MAX_CLUSTER_COUNT 196
 #define MAX_DIR_COUNT 96
-
 #define BOOTX_SIZE 255
-#define BLOCK_INFO_ADDRESS 2 + BOOTX_SIZE
-#define DIR_INFO_ADDRESS BLOCK_INFO_ADDRESS + (MAX_CLUSTER_COUNT * 2)
-#define DATA_ADDRESS DIR_INFO_ADDRESS + (DIR_NAME_SIZE + 1) * MAX_DIR_COUNT
-
-
+#define BLOCK_INFO_ADDRESS (2 + BOOTX_SIZE)
+#define DIR_INFO_ADDRESS (BLOCK_INFO_ADDRESS + MAX_CLUSTER_COUNT * 2)
+#define DATA_ADDRESS (DIR_INFO_ADDRESS + (DIR_NAME_SIZE + 1) * MAX_DIR_COUNT)
 #define CLUSTER_UNUSED 0
 #define CLUSTER_USED 1
 #define CLUSTER_CONTINUE 2
-
 #define INVALID_DIRNAME_FILENAME 1
 #define DIRNAME_FILENAME_TOO_LONG 2
 #define DIRNAME_FILENAME_EMPTY 3
 #define DIRNAME_FILENAME_ALREADY_EXIST 4
 #define FILENAME_EXTENSION_TOO_LONG 5
 #define NO_MORE_SPACE -1
-
-#define get_block_address(blockid) ((blockid - 1) * CLUSTER_SIZE) + DATA_ADDRESS
-#define get_real_dir_address(dirid) ((dirid - 1) * (DIR_NAME_SIZE + 1)) + DIR_INFO_ADDRESS
+#define get_block_address(blockid) (((blockid) - 1) * CLUSTER_SIZE + DATA_ADDRESS)
+#define get_real_dir_address(dirid) (((dirid) - 1) * (DIR_NAME_SIZE + 1) + DIR_INFO_ADDRESS)
 
 namespace ANC216
 {
     class AFS
     {
-    private:
-        unsigned char buffer[65'536] = {0};
-        std::string current_dir;
-        char current_dir_addr;
-        bool is_corrupt;
-        std::ifstream &file;
-
-        char get_dir_addr(const std::string &dirname, char diraddr)
+        static constexpr unsigned first_header = FILE_NAME_SIZE + FILE_EXT_SIZE + 3;
+        static constexpr unsigned first_capacity = CLUSTER_SIZE - first_header;
+        static constexpr unsigned next_capacity = CLUSTER_SIZE - 3;
+        std::array<uint8_t, 65536> buffer{};
+        unsigned current = 0;
+        bool corrupt = false;
+        static unsigned block(unsigned id)
         {
-            char j = 1;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
-            {
-                if (buffer[i] == diraddr && get_dirname(get_real_dir_address(j) + 1) == dirname)
-                {
-                   return j;
-                }
-            }
+            return get_block_address(id);
+        }
+        static unsigned dir(unsigned id)
+        {
+            return get_real_dir_address(id);
+        }
+        unsigned kind(unsigned id) const
+        {
+            return buffer[BLOCK_INFO_ADDRESS + 2 * (id - 1) + 1];
+        }
+        unsigned owner(unsigned id) const
+        {
+            return buffer[BLOCK_INFO_ADDRESS + 2 * (id - 1)];
+        }
+        void metadata(unsigned id, unsigned parent, unsigned type)
+        {
+            buffer[BLOCK_INFO_ADDRESS + 2 * (id - 1)] = parent;
+            buffer[BLOCK_INFO_ADDRESS + 2 * (id - 1) + 1] = type;
+        }
+        std::string text(unsigned at, unsigned size) const
+        {
+            std::string result;
+            for (unsigned i = 0; i < size && buffer[at + i]; ++i)
+                result += char(buffer[at + i]);
+            return result;
+        }
+        void text(unsigned at, unsigned size, const std::string &value)
+        {
+            std::fill_n(buffer.begin() + at, size, 0);
+            std::copy(value.begin(), value.end(), buffer.begin() + at);
+        }
+        unsigned word(unsigned at) const
+        {
+            return (unsigned(buffer[at]) << 8) | buffer[at + 1];
+        }
+        void word(unsigned at, unsigned value)
+        {
+            buffer[at] = value >> 8;
+            buffer[at + 1] = value;
+        }
+        bool valid_dir(unsigned id) const
+        {
+            return id == 0 || (id <= MAX_DIR_COUNT && buffer[dir(id) + 1] != 0);
+        }
+        std::string filename(unsigned id) const
+        {
+            unsigned at = block(id);
+            auto base = text(at, FILE_NAME_SIZE), ext = text(at + FILE_NAME_SIZE, FILE_EXT_SIZE);
+            return base + (ext.empty() ? "" : "." + ext);
+        }
+        int child(const std::string &name, unsigned parent) const
+        {
+            for (unsigned id = 1; id <= MAX_DIR_COUNT; ++id)
+                if (buffer[dir(id)] == parent && text(dir(id) + 1, DIR_NAME_SIZE) == name && valid_dir(id))
+                    return id;
             return -1;
         }
-
-        bool check_corrupt()
+        int file(const std::string &name, unsigned parent) const
         {
-            if (buffer[0] != MAGIC_NUMBER)
+            for (unsigned id = 1; id <= MAX_CLUSTER_COUNT; ++id)
+                if (kind(id) == CLUSTER_USED && owner(id) == parent && filename(id) == name)
+                    return id;
+            return -1;
+        }
+        int directory(const std::string &path, unsigned start) const
+        {
+            unsigned result = path.starts_with('/') ? 0 : start;
+            std::istringstream stream(path);
+            std::string part;
+            while (std::getline(stream, part, '/'))
+            {
+                if (part.empty() || part == ".")
+                    continue;
+                if (part == "..")
+                {
+                    result = result ? buffer[dir(result)] : 0;
+                    continue;
+                }
+                int found = child(part, result);
+                if (found < 0)
+                    return -1;
+                result = found;
+            }
+            return result;
+        }
+        std::pair<int, std::string> parent(const std::string &path, int start = -1) const
+        {
+            if (path.empty() || path.back() == '/')
+                return {-1, ""};
+            auto pos = path.find_last_of('/');
+            if (pos == std::string::npos)
+                return {start < 0 ? int(current) : start, path};
+            return {directory(pos == 0 ? "/" : path.substr(0, pos), start < 0 ? current : start), path.substr(pos + 1)};
+        }
+        static bool name_ok(const std::string &name)
+        {
+            if (name.empty() || name == "." || name == "..")
                 return false;
+            for (unsigned char c : name)
+                if (c < 32 || c == 127 || c == '/' || c == '\\' || c == ':')
+                    return false;
+            return true;
+        }
+        std::vector<unsigned> chain(unsigned id) const
+        {
+            std::vector<unsigned> ids;
+            std::set<unsigned> seen;
+            while (id)
+            {
+                if (id > MAX_CLUSTER_COUNT || !seen.insert(id).second)
+                    throw std::runtime_error("Invalid AFS cluster chain");
+                ids.push_back(id);
+                id = buffer[block(id) + (ids.size() == 1 ? FILE_NAME_SIZE + FILE_EXT_SIZE : 0)];
+            }
+            return ids;
+        }
+        void free_file(unsigned id)
+        {
+            for (auto b : chain(id))
+            {
+                metadata(b, 0, 0);
+                std::fill_n(buffer.begin() + block(b), CLUSTER_SIZE, 0);
+            }
+        }
+        void free_dir(unsigned id)
+        {
+            for (unsigned f = 1; f <= MAX_CLUSTER_COUNT; ++f)
+                if (kind(f) == CLUSTER_USED && owner(f) == id)
+                    free_file(f);
+            for (unsigned d = 1; d <= MAX_DIR_COUNT; ++d)
+                if (valid_dir(d) && buffer[dir(d)] == id)
+                    free_dir(d);
+            std::fill_n(buffer.begin() + dir(id), 16, 0);
+        }
+        bool validate() const
+        {
+            if (buffer[0] != MAGIC_NUMBER || buffer[1] != VERSION)
+                return false;
+            std::set<std::pair<unsigned, std::string>> names;
+            for (unsigned d = 1; d <= MAX_DIR_COUNT; ++d)
+                if (valid_dir(d))
+                {
+                    auto name = text(dir(d) + 1, DIR_NAME_SIZE);
+                    if (!name_ok(name) || !valid_dir(buffer[dir(d)]) || !names.emplace(buffer[dir(d)], name).second)
+                        return false;
+                    std::set<unsigned> seen;
+                    for (unsigned p = d; p; p = buffer[dir(p)])
+                        if (!valid_dir(p) || !seen.insert(p).second)
+                            return false;
+                }
+            std::set<unsigned> used;
+            for (unsigned b = 1; b <= MAX_CLUSTER_COUNT; ++b)
+            {
+                if (kind(b) > CLUSTER_CONTINUE)
+                    return false;
+                if (kind(b) != CLUSTER_USED)
+                    continue;
+                if (!valid_dir(owner(b)) || !name_ok(filename(b)) || text(block(b), FILE_NAME_SIZE).empty() || !names.emplace(owner(b), filename(b)).second)
+                    return false;
+                auto ids = chain(b);
+                for (unsigned j = 0; j < ids.size(); ++j)
+                {
+                    unsigned id = ids[j], at = block(id), header = j == 0 ? first_header : 3;
+                    if (!used.insert(id).second || kind(id) != (j == 0 ? CLUSTER_USED : CLUSTER_CONTINUE) || word(at + header - 2) > CLUSTER_SIZE - header)
+                        return false;
+                }
+            }
+            for (unsigned b = 1; b <= MAX_CLUSTER_COUNT; ++b)
+                if (kind(b) == CLUSTER_CONTINUE && !used.contains(b))
+                    return false;
             return true;
         }
 
-        char get_upper_dir(char dir_addr)
-        {
-            return buffer[get_real_dir_address(dir_addr)];
-        }
-
-        std::string get_dirname(size_t index)
-        {
-            std::string res = "";
-            for (size_t i = index; i < index + DIR_NAME_SIZE; i++)
-            {
-                if (buffer[i] == 0)
-                    break;
-                res += buffer[i];
-            }
-            return res;
-        }
-
-        size_t find_file_current_dir(const std::string &filename, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && filename == get_filename(get_block_address(block_id)))
-                {
-                    return get_block_address(block_id);
-                }
-            }
-            return -1;
-        }
-
-        std::string get_filename(size_t index)
-        {
-            std::string res = "";
-            for (size_t i = index; i < index + FILE_NAME_SIZE; i++)
-            {
-                if (buffer[i] == 0)
-                    break;
-                res += buffer[i];
-            }
-            if (buffer[index + FILE_NAME_SIZE] != 0)
-                res += ".";
-            for (size_t i = index + FILE_NAME_SIZE; i < index + FILE_NAME_SIZE + FILE_EXT_SIZE; i++)
-            {
-                if (buffer[i] == 0)
-                    break;
-                res += buffer[i];
-            }
-            return res;
-        }
-
-        std::pair<size_t, size_t> get_file_size(size_t index)
-        {
-            size_t real = CLUSTER_SIZE;
-            size_t file = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] << 8 | buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 2];
-
-            if (buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE] != 0)
-            {
-                auto size = get_next_size(get_block_address(buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE]));
-                real += size.first;
-                file += size.second;
-            }
-
-            return {real, file};
-        }
-
-        std::pair<size_t, size_t> get_next_size(size_t index)
-        {
-            size_t real = CLUSTER_SIZE;
-            size_t file = buffer[index + 1] << 8 | buffer[index + 2];
-
-            if (buffer[index] != 0)
-            {
-                auto size = get_next_size(get_block_address(buffer[index]));
-                real += size.first;
-                file += size.second;
-            }
-
-            return {real, file};
-        }
-
-        int resize_write_file(std::ifstream &file, size_t old_block_id, bool is_continue = false)
-        {
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i + 1] == CLUSTER_UNUSED)
-                {
-                    buffer[i + 1] = CLUSTER_CONTINUE;
-                    buffer[get_block_address(old_block_id) + (is_continue ? 0 : FILE_NAME_SIZE + FILE_EXT_SIZE)] = block_id;
-                    short j;
-                    int value;
-                    for (j = 3; j < CLUSTER_SIZE; j++)
-                    {
-                        value = file.get();
-                        if (value == EOF) 
-                            break;
-                        buffer[get_block_address(block_id) + j] = (unsigned char) value;
-                    }
-                    buffer[get_block_address(block_id) + 1] = (unsigned char) ((j - 3) >> 8);
-                    buffer[get_block_address(block_id) + 2] = (unsigned char) ((j - 3) & 0xFF);
-                    if (!file.eof())
-                    {
-                        resize_write_file(file, block_id, true);
-                    }
-                    return 0;
-                }
-            }
-            return NO_MORE_SPACE;
-        }
-
-        std::string get_next_content(size_t index)
-        {
-            std::string res;
-            size_t size = buffer[index + 1] << 8 | buffer[index + 2];
-            for (size_t i = 3; i < size + 3; i++)
-            {
-                res += buffer[index + i];
-            }
-            if (buffer[index] != 0)
-                return res + get_next_content(get_block_address(buffer[index]));
-            return res;
-        }
-
     public:
-        AFS(std::ifstream &fl)
-            : file(fl)
+        AFS()
         {
-            this->file.read((char*)buffer, sizeof(buffer));
-            file.close();
             buffer[0] = MAGIC_NUMBER;
             buffer[1] = VERSION;
-            // this->is_corrupt = check_corrupt();
-            this->is_corrupt = false;
-            this->current_dir = "";
-            current_dir_addr = 0;
         }
-
-        inline std::string get_current_dir()
+        explicit AFS(std::ifstream &input)
         {
-            return current_dir;
-        }
-
-        std::string get_current_dir_absolute_path(char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            std::string res = "/";
-            res += get_dirname(get_real_dir_address(diraddr) + 1);
-
-            while (get_upper_dir(diraddr) != 0 && diraddr != 0)
+            input.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
+            corrupt = input.gcount() != long(buffer.size()) || input.peek() != EOF;
+            if (!corrupt)
             {
-                diraddr = get_upper_dir(diraddr);
-                res = "/" + get_dirname(get_real_dir_address(diraddr) + 1) + res;
-            }
-            return res;
-        }
-
-        std::vector<std::string> find_file(const std::string &filename, char diraddr = 0)
-        {
-            std::vector<std::string> res;
-
-            auto files = get_files(diraddr);
-            for (auto file : files)
-            {
-                if (file == filename)
-                    res.push_back(file);
-            }
-
-            char j = 1;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] != 0)
+                try
                 {
-                    auto r = find_file(filename, j);
-                    for (auto file : r)
-                        res.push_back(get_dirname(get_real_dir_address(j) + 1) + "/" + file);
+                    corrupt = !validate();
+                }
+                catch (...)
+                {
+                    corrupt = true;
                 }
             }
-
-            return res;
         }
-
-        bool remove(std::string name, char diraddr = -1)
+        bool get_corrupted() const
         {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            if (get_dir_addr(name, diraddr) != -1)
-                return remove_dir(name, diraddr);
-            return remove_file(name, diraddr);
+            return corrupt;
         }
-
-        int get_content(const std::string &file, std::string &content, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
-                {
-                    size_t size = buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] << 8 | buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2];
-                    for (size_t i = FILE_NAME_SIZE + FILE_EXT_SIZE + 3; i < size + FILE_NAME_SIZE + FILE_EXT_SIZE + 3; i++)
-                        content += buffer[get_block_address(block_id) + i];
-                    if (buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE] != 0)
-                        content += get_next_content(get_block_address(buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE]));
-                    return 0;
-                }
-            }
-            return INVALID_DIRNAME_FILENAME;
-        }
-
-        int set_content(const std::string &file, std::ifstream &content, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
-                {
-                    int value;
-                    short j;
-                    for (j = FILE_NAME_SIZE + FILE_EXT_SIZE + 3; j < CLUSTER_SIZE; j++)
-                    {
-                        value = content.get();
-                        if (value == EOF) return 0;
-                        buffer[j + get_block_address(block_id)] = value;
-                    }
-                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] = (unsigned char) ((j - (FILE_NAME_SIZE + FILE_EXT_SIZE + 3)) >> 8);
-                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] = (unsigned char) ((j - (FILE_NAME_SIZE + FILE_EXT_SIZE + 3)) & 0xFF);
-                    if (!content.eof())
-                    {
-                        return resize_write_file(content, block_id);
-                    }
-                }
-            }
-            return INVALID_DIRNAME_FILENAME;
-        }
-
-        bool remove_file(std::string file, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED && get_filename(get_block_address(block_id)) == file)
-                {
-                    buffer[i + 1] = CLUSTER_UNUSED;
-                    for (size_t j = get_block_address(block_id); j < get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE; j++)
-                        buffer[j] = 0;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        std::map<std::string, std::pair<size_t, size_t>> disk_usage(const std::string &name, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            char addr;
-            if (name == "." || name == "./")
-                addr = current_dir_addr;
-            else if (name == "/" || name == "\\")
-                addr = 0;
-            else
-                addr = get_dir_addr(name, diraddr);
-            if (addr != -1)
-            {
-                std::map<std::string, std::pair<size_t, size_t>> res;
-                std::map<std::string, std::pair<size_t, size_t>> r;
-                auto dirs = get_sub_diectories(addr);
-                auto files = get_files(addr);
-                for (auto &dir : dirs)
-                {
-                    r = disk_usage(dir, addr);
-                    for (auto s : r)
-                        res[s.first] = s.second;
-                }
-                for (auto &file : files)
-                {
-                    r = disk_usage(file, addr);
-                    for (auto s : r)
-                        res[s.first] = s.second;
-                }
-                return res;
-            }
-            auto file_addr = find_file_current_dir(name, diraddr);
-            if (file_addr == -1) return {};
-            return {{diraddr == 0 ? "./" + name : "./" + get_dirname(get_real_dir_address(diraddr) + 1) + "/" + name, get_file_size(file_addr)}};
-        }
-
-        bool remove_dir(const std::string &dirname, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            char j = 1;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
-            {
-                if (buffer[i] == diraddr && get_dirname(i + 1) == dirname)
-                {
-                    auto subdirs = get_sub_diectories(j);
-                    auto files = get_files(j);
-                    for (auto& dir : subdirs)
-                    {
-                        remove_dir(dir, j);
-                    }
-                    for (auto& file : files)
-                    {
-                        remove_file(file, j);
-                    }
-                    buffer[i] = 0;
-                    for (size_t k = i + 1; k < DIR_NAME_SIZE + i + 1; k++)
-                        buffer[k] = 0;
-                    
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        std::vector<std::string> get_sub_diectories(char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            std::vector<std::string> dirs;
-            std::string dirname;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] != 0)
-                {
-                    dirname = get_dirname(i + 1);
-                    if (dirname != "")
-                        dirs.push_back(dirname);
-                }
-            }
-            return dirs;
-        }
-
-        bool change_directory(const std::string &dirname, char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            if (dirname == "./" || dirname == ".")
-            {
-                return true;
-            }
-            if (dirname == "/")
-            {
-                current_dir_addr = 0;
-                current_dir = "";
-                return true;
-            }
-            if (dirname == "..")
-            {
-                current_dir_addr = buffer[get_real_dir_address(diraddr)];
-                current_dir = get_dirname(get_real_dir_address(diraddr) + 1);
-                return true;
-            }
-            std::string dir;
-            char j = 1;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1, j++)
-            {
-                dir = get_dirname(i + 1);
-                if (dir == dirname && buffer[i] == diraddr)
-                {
-                    current_dir_addr = j;
-                    current_dir = dir;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        std::vector<char> get_file_content(const std::string &filename)
-        {
-            std::vector<char> res;
-            size_t index = find_file_current_dir(filename);
-            char next = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE];
-            short size = buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] << 8 | buffer[index + FILE_NAME_SIZE + FILE_EXT_SIZE + 1];
-            return res;
-        }
-
-        bool get_corrupted()
-        {
-            return is_corrupt;
-        }
-
-        std::vector<std::string> get_files(char diraddr = -1)
-        {
-            if (diraddr == -1)
-                diraddr = current_dir_addr;
-            std::vector<std::string> res;
-            for (size_t i = BLOCK_INFO_ADDRESS, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i] == diraddr && buffer[i + 1] == CLUSTER_USED)
-                    res.push_back(get_filename(get_block_address(block_id)));
-            }
-            return res;
-        }
-
-        int touch(const std::string &fname)
-        {
-            std::string extension;
-            std::string filename = fname;
-            if (fname.find_first_of(".") == std::string::npos)
-            {
-                extension = "";
-            }
-            else
-            {
-                extension = fname.substr(fname.find_first_of(".") + 1);
-                filename = fname.substr(0, fname.find_first_of("."));
-            }
-            for (char ch : filename)
-            {
-                if (!iswalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
-                    return INVALID_DIRNAME_FILENAME;
-            }
-            for (char ch : extension)
-            {
-                if (!iswalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
-                    return INVALID_DIRNAME_FILENAME;
-            }
-            if (filename.empty())
-                return DIRNAME_FILENAME_TOO_LONG;
-            if (filename.size() > FILE_NAME_SIZE)
-                return DIRNAME_FILENAME_TOO_LONG;
-            if (extension.size() > FILE_EXT_SIZE)
-                return FILENAME_EXTENSION_TOO_LONG;
-            auto files = get_files();
-            for (auto file : files)
-            {
-                if (file == fname)
-                    return DIRNAME_FILENAME_ALREADY_EXIST;
-            }
-            auto dirs = get_sub_diectories();
-            for (auto dir : dirs)
-            {
-                if (dir == fname)
-                    return DIRNAME_FILENAME_ALREADY_EXIST;
-            }
-            for (size_t i = BLOCK_INFO_ADDRESS, j, block_id = 1; i < DIR_INFO_ADDRESS; i += 2, block_id++)
-            {
-                if (buffer[i + 1] == CLUSTER_UNUSED)
-                {
-                    buffer[i] = current_dir_addr;
-                    buffer[i + 1] = CLUSTER_USED;
-                    for (j = 0; j < filename.size(); j++)
-                        buffer[j + get_block_address(block_id)] = filename[j];
-                    for (j++; j < FILE_NAME_SIZE; j++)
-                        buffer[j + get_block_address(block_id)] = 0;
-                    for (j = 0; j < extension.size(); j++)
-                        buffer[j + get_block_address(block_id) + FILE_NAME_SIZE] = extension[j];
-                    for (j++; j < FILE_EXT_SIZE; j++)
-                        buffer[j + get_block_address(block_id) + FILE_NAME_SIZE] = 0;
-                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE] = 0;
-                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 1] = 0;
-                    buffer[get_block_address(block_id) + FILE_NAME_SIZE + FILE_EXT_SIZE + 2] = 0;
-                    return 0;
-                }
-            }
-            return NO_MORE_SPACE;
-        }
-
-        int make_dir(const std::string &dirname)
-        {
-            for (char ch : dirname)
-            {
-                if (!iswalnum(ch) && ch != '_' && ch != '(' && ch != ' ' && ch != ')')
-                    return INVALID_DIRNAME_FILENAME;
-            }
-            if (dirname.empty())
-                return DIRNAME_FILENAME_TOO_LONG;
-            if (dirname.size() > DIR_NAME_SIZE)
-                return DIRNAME_FILENAME_TOO_LONG;
-            auto files = get_files();
-            for (auto file : files)
-            {
-                if (file == dirname)
-                    return DIRNAME_FILENAME_ALREADY_EXIST;
-            }
-            auto dirs = get_sub_diectories();
-            for (auto dir : dirs)
-            {
-                if (dir == dirname)
-                    return DIRNAME_FILENAME_ALREADY_EXIST;
-            }
-            char j = 0;
-            for (size_t i = DIR_INFO_ADDRESS; i < DATA_ADDRESS; i += DIR_NAME_SIZE + 1)
-            {
-                if (buffer[i] == 0 && buffer[i + 1] == 0)
-                {
-                    buffer[i] = current_dir_addr;
-                    i++;
-                    for (j = 0; j < dirname.size(); j++)
-                        buffer[i + j] = dirname[j];
-                    for (j++; j < DIR_NAME_SIZE; j++)
-                        buffer[i + j] = 0;
-                    return 0;
-                }
-            }
-            return NO_MORE_SPACE;
-        }
-
         char *get_buffer()
         {
-            return (char*)buffer;
+            return reinterpret_cast<char *>(buffer.data());
+        }
+        const char *get_buffer() const
+        {
+            return reinterpret_cast<const char *>(buffer.data());
+        }
+        std::string get_current_dir() const
+        {
+            return current ? text(dir(current) + 1, DIR_NAME_SIZE) : "";
+        }
+        std::string get_current_dir_absolute_path(int address = -1) const
+        {
+            unsigned d = address < 0 ? current : unsigned(address);
+            std::string result;
+            for (; d; d = buffer[dir(d)])
+                result = "/" + text(dir(d) + 1, DIR_NAME_SIZE) + result;
+            return result.empty() ? "/" : result;
+        }
+        bool change_directory(const std::string &path, int start = -1)
+        {
+            int found = directory(path, start < 0 ? current : start);
+            if (found < 0)
+                return false;
+            current = found;
+            return true;
+        }
+        std::vector<std::string> get_sub_diectories(int address = -1) const
+        {
+            unsigned parent = address < 0 ? current : address;
+            std::vector<std::string> result;
+            for (unsigned d = 1; d <= MAX_DIR_COUNT; ++d)
+                if (valid_dir(d) && buffer[dir(d)] == parent)
+                    result.push_back(text(dir(d) + 1, DIR_NAME_SIZE));
+            return result;
+        }
+        std::vector<std::string> get_files(int address = -1) const
+        {
+            unsigned parent = address < 0 ? current : address;
+            std::vector<std::string> result;
+            for (unsigned b = 1; b <= MAX_CLUSTER_COUNT; ++b)
+                if (kind(b) == CLUSTER_USED && owner(b) == parent)
+                    result.push_back(filename(b));
+            return result;
+        }
+        int make_dir(const std::string &path)
+        {
+            auto [p, name] = parent(path);
+            if (p < 0 || !name_ok(name))
+                return INVALID_DIRNAME_FILENAME;
+            if (name.size() > DIR_NAME_SIZE)
+                return DIRNAME_FILENAME_TOO_LONG;
+            if (child(name, p) >= 0 || file(name, p) >= 0)
+                return DIRNAME_FILENAME_ALREADY_EXIST;
+            for (unsigned d = 1; d <= MAX_DIR_COUNT; ++d)
+                if (!valid_dir(d))
+                {
+                    buffer[dir(d)] = p;
+                    text(dir(d) + 1, DIR_NAME_SIZE, name);
+                    return 0;
+                }
+            return NO_MORE_SPACE;
+        }
+        int touch(const std::string &path)
+        {
+            auto [p, name] = parent(path);
+            if (p < 0 || !name_ok(name))
+                return INVALID_DIRNAME_FILENAME;
+            auto pos = name.find_last_of('.');
+            auto base = pos == std::string::npos ? name : name.substr(0, pos), ext = pos == std::string::npos ? "" : name.substr(pos + 1);
+            if (base.empty() || base.size() > FILE_NAME_SIZE)
+                return DIRNAME_FILENAME_TOO_LONG;
+            if (ext.size() > FILE_EXT_SIZE)
+                return FILENAME_EXTENSION_TOO_LONG;
+            if (pos != std::string::npos && ext.empty())
+                return INVALID_DIRNAME_FILENAME;
+            if (child(name, p) >= 0 || file(name, p) >= 0)
+                return DIRNAME_FILENAME_ALREADY_EXIST;
+            for (unsigned b = 1; b <= MAX_CLUSTER_COUNT; ++b)
+                if (kind(b) == CLUSTER_UNUSED)
+                {
+                    std::fill_n(buffer.begin() + block(b), CLUSTER_SIZE, 0);
+                    metadata(b, p, CLUSTER_USED);
+                    text(block(b), FILE_NAME_SIZE, base);
+                    text(block(b) + FILE_NAME_SIZE, FILE_EXT_SIZE, ext);
+                    return 0;
+                }
+            return NO_MORE_SPACE;
+        }
+        int get_content(const std::string &path, std::string &content, int start = -1) const
+        {
+            auto [p, name] = parent(path, start);
+            if (p < 0)
+                return INVALID_DIRNAME_FILENAME;
+            int id = file(name, p);
+            if (id < 0)
+                return INVALID_DIRNAME_FILENAME;
+            content.clear();
+            auto ids = chain(id);
+            for (unsigned j = 0; j < ids.size(); ++j)
+            {
+                unsigned at = block(ids[j]), header = j == 0 ? first_header : 3;
+                content.append(reinterpret_cast<const char *>(buffer.data() + at + header), word(at + header - 2));
+            }
+            return 0;
+        }
+        std::vector<char> get_file_content(const std::string &name) const
+        {
+            std::string result;
+            if (get_content(name, result))
+                return {};
+            return {result.begin(), result.end()};
+        }
+        int set_content(const std::string &path, std::ifstream &input, int start = -1)
+        {
+            std::string content;
+            char chunk[4096];
+            while (input.read(chunk, sizeof(chunk)) || input.gcount())
+            {
+                content.append(chunk, input.gcount());
+                if (content.size() > first_capacity + (MAX_CLUSTER_COUNT - 1) * next_capacity)
+                    return NO_MORE_SPACE;
+            }
+            if (input.bad())
+                throw std::runtime_error("Cannot read file content");
+            return set_content(path, content, start);
+        }
+        int set_content(const std::string &path, const std::string &content, int start = -1)
+        {
+            auto [p, name] = parent(path, start);
+            if (p < 0)
+                return INVALID_DIRNAME_FILENAME;
+            int id = file(name, p);
+            if (id < 0)
+                return INVALID_DIRNAME_FILENAME;
+            size_t need = 1 + (content.size() > first_capacity ? (content.size() - first_capacity + next_capacity - 1) / next_capacity : 0);
+            auto old = chain(id);
+            std::set<unsigned> reusable(old.begin(), old.end());
+            std::vector<unsigned> ids{unsigned(id)};
+            for (unsigned b = 1; b <= MAX_CLUSTER_COUNT && ids.size() < need; ++b)
+                if (b != unsigned(id) && (kind(b) == CLUSTER_UNUSED || reusable.contains(b)))
+                    ids.push_back(b);
+            if (ids.size() != need)
+                return NO_MORE_SPACE; // no writes until capacity is known
+            std::string base = text(block(id), FILE_NAME_SIZE), ext = text(block(id) + FILE_NAME_SIZE, FILE_EXT_SIZE);
+            free_file(id);
+            size_t consumed = 0;
+            for (unsigned j = 0; j < ids.size(); ++j)
+            {
+                unsigned at = block(ids[j]), header = j == 0 ? first_header : 3;
+                unsigned count = std::min<size_t>(CLUSTER_SIZE - header, content.size() - consumed);
+                metadata(ids[j], p, j == 0 ? CLUSTER_USED : CLUSTER_CONTINUE);
+                if (j == 0)
+                {
+                    text(at, FILE_NAME_SIZE, base);
+                    text(at + FILE_NAME_SIZE, FILE_EXT_SIZE, ext);
+                }
+                buffer[at + header - 3] = j + 1 < ids.size() ? ids[j + 1] : 0;
+                word(at + header - 2, count);
+                std::copy_n(content.begin() + consumed, count, buffer.begin() + at + header);
+                consumed += count;
+            }
+            return 0;
+        }
+        bool remove(const std::string &path, int start = -1)
+        {
+            auto [p, name] = parent(path, start);
+            if (p < 0)
+                return false;
+            int f = file(name, p);
+            if (f >= 0)
+            {
+                free_file(f);
+                return true;
+            }
+            int d = child(name, p);
+            if (d < 0)
+                return false;
+            for (unsigned a = current; a; a = buffer[dir(a)])
+                if (a == unsigned(d))
+                {
+                    current = 0;
+                    break;
+                }
+            free_dir(d);
+            return true;
+        }
+        bool remove_file(const std::string &path, int start = -1)
+        {
+            auto [p, n] = parent(path, start);
+            int f = p < 0 ? -1 : file(n, p);
+            if (f < 0)
+                return false;
+            free_file(f);
+            return true;
+        }
+        bool remove_dir(const std::string &path, int start = -1)
+        {
+            auto [p, n] = parent(path, start);
+            if (p < 0 || child(n, p) < 0)
+                return false;
+            return remove(path, start);
+        }
+        std::vector<std::string> find_file(const std::string &name, int address = 0) const
+        {
+            std::vector<std::string> result;
+            for (auto &f : get_files(address))
+                if (f == name)
+                    result.push_back((get_current_dir_absolute_path(address) == "/" ? "" : get_current_dir_absolute_path(address)) + "/" + f);
+            for (unsigned d = 1; d <= MAX_DIR_COUNT; ++d)
+                if (valid_dir(d) && buffer[dir(d)] == address)
+                {
+                    auto r = find_file(name, d);
+                    result.insert(result.end(), r.begin(), r.end());
+                }
+            return result;
+        }
+        std::map<std::string, std::pair<size_t, size_t>> disk_usage(const std::string &path, int start = -1) const
+        {
+            unsigned initial = start < 0 ? current : start;
+            int d = directory(path, initial);
+            std::map<std::string, std::pair<size_t, size_t>> result;
+            if (d >= 0)
+            {
+                for (auto &f : get_files(d))
+                {
+                    auto r = disk_usage(f, d);
+                    result.insert(r.begin(), r.end());
+                }
+                for (auto &sub : get_sub_diectories(d))
+                {
+                    auto r = disk_usage(sub, d);
+                    result.insert(r.begin(), r.end());
+                }
+            }
+            else
+            {
+                auto [p, n] = parent(path, initial);
+                int f = p < 0 ? -1 : file(n, p);
+                if (f < 0)
+                    return {};
+                auto ids = chain(f);
+                size_t size = 0;
+                for (unsigned j = 0; j < ids.size(); ++j)
+                    size += word(block(ids[j]) + (j == 0 ? first_header : 3) - 2);
+                auto root = get_current_dir_absolute_path(p);
+                result[(root == "/" ? root : root + "/") + n] = {ids.size() * CLUSTER_SIZE, size};
+            }
+            return result;
+        }
+        void set_boot(const std::vector<uint8_t> &boot)
+        {
+            if (boot.size() > BOOTX_SIZE)
+                throw std::runtime_error("AFS boot code exceeds 255 bytes");
+            std::fill_n(buffer.begin() + 2, BOOTX_SIZE, 0);
+            std::copy(boot.begin(), boot.end(), buffer.begin() + 2);
         }
     };
-}
+} // namespace ANC216

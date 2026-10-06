@@ -1,8 +1,12 @@
-if (Test-Path .\assembler\build\) {
-    Remove-Item -r assembler\build 
+$ErrorActionPreference = "Stop"
+Push-Location $PSScriptRoot
+try {
+    cmake -S . -B build -DANC216_WITH_SDL=ON @args
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    cmake --build build --parallel --config Release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    ctest --test-dir build --build-config Release --output-on-failure
+    exit $LASTEXITCODE
+} finally {
+    Pop-Location
 }
-if (Test-Path .\cardreader\build\) {
-    Remove-Item -r cardreader\build 
-}
-Set-Location .\assembler\; .\build.ps1 $args; cd..
-Set-Location .\cardreader\; .\build.ps1 $args; cd..

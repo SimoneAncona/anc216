@@ -49,6 +49,7 @@ namespace ANC216
             std::vector<unsigned char> res;
             for (auto &ins : env.instructions)
             {
+                active_label = ins.label;
                 auto x = dump_instruction(ins);
                 for (auto ch : x)
                     res.push_back(ch);
@@ -60,34 +61,14 @@ namespace ANC216
             return res;
         }
 
+        std::string active_label;
         Label current_label()
         {
-            Label label;
-            size_t current = 0;
-            for (auto &lb : env.labels)
-            {
-                if (current_address >= lb.second.address && lb.second.address > current)
-                {
-                    label = lb.second;
-                    current = lb.second.address;
-                }
-            }
-            return label;
+            return env.labels[active_label];
         }
-
         std::string current_label_name()
         {
-            std::string label;
-            size_t current = 0;
-            for (auto &lb : env.labels)
-            {
-                if (current_address >= lb.second.address && lb.second.address > current)
-                {
-                    label = lb.first;
-                    current = lb.second.address;
-                }
-            }
-            return label;
+            return active_label;
         }
 
         int eval_expression(AST *ast)
@@ -100,7 +81,7 @@ namespace ANC216
                     return static_cast<int>(current_address);
 
                 if (ast->get_token().type == NUMBER_LITERAL)
-                    return stoi(ast->get_token().value, nullptr, 0);
+                    return parse_number(ast->get_token().value);
 
                 if (ast->get_token().type == IDENTIFIER)
                 {
@@ -122,10 +103,10 @@ namespace ANC216
             if (children.size() == 1)
             {
                 if (ast->get_token() == "+")
-                    return eval_expression(ast->get_children()[1]);
+                    return eval_expression(ast->get_children()[0]);
 
                 if (ast->get_token() == "-")
-                    return -eval_expression(ast->get_children()[1]);
+                    return -eval_expression(ast->get_children()[0]);
 
                 return eval_expression(children[0]);
             }
@@ -151,7 +132,7 @@ namespace ANC216
 
             if (children[0]->get_token() == "offset")
             {
-                auto var = env.variables.find(children[1]->get_token().value);
+                auto var = env.variables.find(active_label + "::" + children[1]->get_token().value);
                 if (var == env.variables.end())
                 {
                     error_stack.push_back({"Undefined reference to '" + children[1]->get_token().value + "' variable", children[1]->get_token()});
@@ -180,7 +161,13 @@ namespace ANC216
             }
             if (children[1]->get_token() == "/")
             {
-                return value / eval_expression(children[2]);
+                const int divisor = eval_expression(children[2]);
+                if (divisor == 0)
+                {
+                    error_stack.push_back({"Division by zero", children[1]->get_token()});
+                    return 0;
+                }
+                return value / divisor;
             }
             return value;
         }
@@ -221,27 +208,33 @@ namespace ANC216
                 {
                     ins.addressing_mode = MEMORY_ABSOULTE;
                 }
-                else if (ins.addressing_mode == MEMORY_ABSOULTE_INDEXED)
-                {
-                    error_stack.push_back({"'" + ins.instruction + "' does not support memory absolute indexed mode", {}});
-                    return {};
-                }
                 else if (ins.addressing_mode == MEMORY_RELATIVE_TO_PC)
                 {
                     auto adr = eval_expression(ins.op1);
                     if (is_id(ins.op1))
                     {
-                        
+
                         if (adr - static_cast<int>(current_address) - 3 > 127 || adr - static_cast<int>(current_address) - 3 < -128)
-                            error_stack.push_back({"The size of the argument exceeds the limit of signed byte, use absolute addressing mode", get_id(ins.op1), true});
-                        
+                            error_stack.push_back({"The size of the argument exceeds the limit of signed byte, use absolute addressing mode", get_id(ins.op1)});
+
                         ins.op1 = new AST(Token{std::to_string(static_cast<unsigned char>((adr - current_address) - 3)).c_str(), NUMBER_LITERAL});
                     }
                 }
             }
+            if (ins.indexing.second && ins.indexing.second->get_token().type == REGISTER && ins.indexing.first == '-')
+            {
+                error_stack.push_back({"Register indexing encodes addition only; use a signed negative value in the low register", ins.indexing.second->get_token()});
+                return {};
+            }
             unsigned char addr = build_addressing_mode(ins);
             unsigned char opc = isa[ins.instruction].first;
             std::vector<unsigned char> args = get_arguments(ins);
+            const auto wire = anc216_isa::decode(addr);
+            if (!anc216_isa::valid(opc, wire) || args.size() != wire.size)
+            {
+                error_stack.push_back({"Invalid operand width or addressing mode for '" + ins.instruction + "'", ins.op1 ? ins.op1->get_token() : Token{}});
+                return {};
+            }
             std::vector<unsigned char> res = {addr, opc};
             for (auto ch : args)
             {
@@ -384,6 +377,7 @@ namespace ANC216
                     res.push_back(a >> 8);
                     res.push_back(a & 0xFF);
                 }
+                break;
             case IMMEDIATE_TO_MEMORY_RELATIVE_TO_BP_WITH_REGISTER:
                 if (ins.addr_mode_size == BYTE_S)
                 {
@@ -424,13 +418,14 @@ namespace ANC216
         Assembler(Environment &env)
             : env(env)
         {
-// #ifdef _DEBUG
-//             print_env();
-// #endif
+            // #ifdef _DEBUG
+            //             print_env();
+            // #endif
         }
 
         inline std::vector<unsigned char> assemble()
         {
+            current_address = 0;
             return dump_instructions();
         }
 
@@ -449,4 +444,4 @@ namespace ANC216
             return error_stack;
         }
     };
-}
+} // namespace ANC216

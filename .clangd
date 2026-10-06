@@ -1,0 +1,4 @@
+# CMake records the correct include directory for each executable.
+# This matters because assembler, disassembler and emulator each have isa.hh.
+CompileFlags:
+  CompilationDatabase: build

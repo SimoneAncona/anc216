@@ -1,17 +1,12 @@
 #pragma once
-
-// -- DEFINES
+#include <cstdint>
+#include <types.hh>
 #define MAX_MEM 65'536
-
 #define DEFAULT_VIDEO_CARD_ADDR 0xFFFD
 #define DEFAULT_AUDIO_CARD_ADDR 0xFFFE
 #define ROM_ADDR 0xFF00
-
-#include <types.hh>
-
 namespace ANC216
 {
-
     enum DeviceID
     {
         ROM = 0,
@@ -26,11 +21,4 @@ namespace ANC216
     class VideoCard;
     class AVC64;
     struct CPUInfo;
-}
-
-#include <emem.hh>
-#include <cpu.hh>
-#include <device.hh>
-#include <stdint.h>
-#include <thread>
-#include <console.hh>
+} // namespace ANC216

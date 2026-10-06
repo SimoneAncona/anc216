@@ -1,0 +1,34 @@
+; ROM loader: EMEM 0x0100 holds a word byte count, then an even-sized kernel.
+org 0xff00
+    clri
+    clrt
+    careq
+    ldsp 0x3000
+    load r1, 0
+    read & 0x0100
+    tran r4, r1
+    cmp r4, 0
+    jeq failed
+    tran r0, r4
+    and r0, 0x8000
+    jne failed
+    cmp r4, 0x2e00
+    jgr failed
+    tran r0, r4
+    and r0, 1
+    jne failed
+    load r2, 2
+    load r3, 0x0100
+copy:
+    tran r1, r2
+    read & 0x0100
+    ldbp r3
+    store & bp + 0, r1
+    add r2, 2
+    add r3, 2
+    sub r4, 2
+    jne copy
+    ldbp 0x3000
+    jmp 0x0100
+failed:
+    kill

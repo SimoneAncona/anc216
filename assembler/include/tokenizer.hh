@@ -23,14 +23,17 @@ namespace ANC216
         std::string module_name;
         size_t i;
 
-        inline Token nil(size_t index, size_t line, size_t column) const { return {"", END, index, line, column, module_name}; };
+        inline Token nil(size_t index, size_t line, size_t column) const
+        {
+            return {"", END, index, line, column, module_name};
+        };
 
         Token eat(size_t index, size_t line, size_t column)
         {
             if (index >= program.length())
                 return {"", END, index, line, column, module_name};
 
-            for (; (program[index] == '\r' || program[index] == '\t' || program[index] == ' ') && index < program.length(); index++, column++)
+            for (; index < program.length() && (program[index] == '\r' || program[index] == '\t' || program[index] == ' '); index++, column++)
                 ;
 
             if (index >= program.length())
@@ -57,7 +60,10 @@ namespace ANC216
             if (program[index] == ')')
                 return {")", CLOSED_ROUND_BRACKET, index, line, column, module_name};
 
-            if (program[index] == '&' || program[index] == '*' || program[index] == '+' || program[index] == '-' || program[index] == '=' || program[index] == '!')
+            if (program[index] == '+' || program[index] == '-' || program[index] == '*' || program[index] == '/')
+                return {std::string(1, program[index]), BINARY_OPERATOR, index, line, column, module_name};
+
+            if (program[index] == '&' || program[index] == '=' || program[index] == '!')
                 return {std::string(1, program[index]), OTHER, index, line, column, module_name};
 
             if (program[index] == '$')
@@ -79,7 +85,7 @@ namespace ANC216
         Token eat_number(size_t index, size_t line, size_t column)
         {
             std::string value = "";
-            if (program[index] == '0' && index < program.size() && program[index + 1] == 'b' && index + 1 < program.size())
+            if (index + 1 < program.size() && program[index] == '0' && program[index + 1] == 'b')
             {
                 for (size_t j = index + 2; j < program.size(); j++)
                 {
@@ -95,7 +101,7 @@ namespace ANC216
                 return {"0b" + value, NUMBER_LITERAL, index, line, column, module_name};
             }
 
-            if (program[index] == '0' && index < program.size() && program[index + 1] == 'x' && index + 1 < program.size())
+            if (index + 1 < program.size() && program[index] == '0' && program[index + 1] == 'x')
             {
                 for (size_t j = index + 2; j < program.size(); j++)
                 {
@@ -131,7 +137,7 @@ namespace ANC216
             std::string value = std::string(1, ending);
             bool escape = false;
 
-            for (size_t i = index + 1; !(program[i] == ending && !escape); i++)
+            for (size_t i = index + 1; i >= program.size() || !(program[i] == ending && !escape); i++)
             {
                 if (i >= program.size())
                 {
@@ -232,6 +238,12 @@ namespace ANC216
                     escape = false;
                     continue;
                 }
+                if (!comment && (ch == '"' || ch == '\''))
+                {
+                    open_string = ch;
+                    no_comments.push_back(ch);
+                    continue;
+                }
                 if (ch == ';')
                 {
                     comment = true;
@@ -283,7 +295,8 @@ namespace ANC216
                     for (auto ch : e)
                         if (ch == '\\')
                             temp += "/";
-                        else temp += ch;
+                        else
+                            temp += ch;
                     str = "import \"" + temp + "\"\n" + str;
                     line--;
                 }
@@ -411,4 +424,4 @@ namespace ANC216
             return false;
         }
     };
-}
+} // namespace ANC216

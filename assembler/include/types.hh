@@ -7,6 +7,25 @@
 
 namespace ANC216
 {
+    inline int parse_number(const std::string &value)
+    {
+        size_t used = 0;
+        int result;
+        if (value.starts_with("0b") || value.starts_with("0B"))
+        {
+            result = std::stoi(value.substr(2), &used, 2);
+            if (used != value.size() - 2)
+                throw std::runtime_error("Invalid binary literal");
+        }
+        else
+        {
+            result = std::stoi(value, &used, (value.starts_with("0x") || value.starts_with("0X")) ? 16 : 10);
+            if (used != value.size())
+                throw std::runtime_error("Invalid numeric literal");
+        }
+        return result;
+    }
+
     enum TokenType
     {
         IDENTIFIER,
@@ -35,10 +54,10 @@ namespace ANC216
     {
     public:
         std::string value;
-        TokenType type;
-        size_t index;
-        size_t line;
-        size_t column;
+        TokenType type = END;
+        size_t index = 0;
+        size_t line = 1;
+        size_t column = 1;
         std::string module_name;
 
         Token() = default;
@@ -57,18 +76,16 @@ namespace ANC216
         {
             this->value = value;
             this->type = type;
-            this->line = line;
-            this->column = column;
         }
 
         ~Token() = default;
 
-        inline bool operator==(const std::string &value)
+        inline bool operator==(const std::string &value) const
         {
             return this->value == value;
         }
 
-        inline bool operator==(const char *value)
+        inline bool operator==(const char *value) const
         {
             return this->value == value;
         }
@@ -108,7 +125,8 @@ namespace ANC216
             {
                 size_t n = 0;
                 for (auto ch : value)
-                    if (ch == '\n') n++;
+                    if (ch == '\n')
+                        n++;
                 return line + n;
             }
             return line;
@@ -142,9 +160,9 @@ namespace ANC216
         inline std::string to_string()
         {
             std::stringstream ss;
-            ss  << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n" 
-                << (warning ? YELLOW + std::string("Warning: ") : RED + std::string("Error: ")) << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET 
-                << "\n\t" << message;
+            ss << YELLOW << "( " << RESET << token.module_name << ":" << token.line << ":" << token.column << YELLOW << " )" << "\n"
+               << (warning ? YELLOW + std::string("Warning: ") : RED + std::string("Error: ")) << RESET << "at line " << CYAN << token.line << RESET << " and column " << CYAN << token.column << RESET
+               << "\n\t" << message;
             return ss.str();
         }
 
@@ -169,4 +187,4 @@ namespace ANC216
         unsigned char suppress_warnings : 1 = 0;
     };
 
-}
+} // namespace ANC216

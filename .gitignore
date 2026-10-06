@@ -13,3 +13,7 @@
 /**/*/node_modules
 /**/*/lib
 .vscode/
+.zed/
+
+/build/
+/compile_commands.json

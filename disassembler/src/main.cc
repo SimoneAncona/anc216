@@ -20,7 +20,7 @@ struct Flags
     unsigned char print_stdout : 1;
 };
 
-int main(int argc, char **argv)
+int disassemble_main(int argc, char **argv)
 {
     if (argc < 2)
     {
@@ -45,11 +45,11 @@ int main(int argc, char **argv)
     }
     std::string in_filename;
     std::string out_filename;
-    Flags flags;
+    Flags flags{};
     std::string arg;
     for (size_t i = 1; i < argc; i++)
     {
-        arg = std::string(argv[i]); 
+        arg = std::string(argv[i]);
         if (arg.starts_with("-"))
         {
             if (arg == "--stdout")
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
                 std::cerr << RED << "Urecognized flag: " << RESET << arg;
                 exit(EXIT_FAILURE);
             }
-            if (i != argc)
+            if (i + 1 < static_cast<size_t>(argc))
             {
                 i++;
                 arg = argv[i];
@@ -98,6 +98,9 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    if (out_filename.empty())
+        out_filename = "a.anc216";
+    out_filename = fs::absolute(out_filename).string();
     fs::path p(fs::weakly_canonical(in_filename));
     in_filename = p.string();
     fs::current_path(p.parent_path());
@@ -107,7 +110,15 @@ int main(int argc, char **argv)
     std::ifstream in(in_filename, std::ios::binary);
     ANC216::Disassembler dis(in, flags.header);
     std::ofstream out(out_filename, std::ios::binary);
-    out << dis.disassemble();
+    const auto result = dis.disassemble();
+    if (flags.print_stdout)
+        std::cout << result;
+    out << result;
+    if (!out)
+    {
+        std::cerr << "Cannot write output file\n";
+        return 1;
+    }
     out.close();
     return 0;
 }
@@ -146,4 +157,16 @@ void print_version()
     std::cout << "Disassembler version:"
               << "\t" << GREEN << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_PATCH
               << RESET << std::endl;
+}
+int main(int argc, char **argv)
+{
+    try
+    {
+        return disassemble_main(argc, argv);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "disassembler: " << e.what() << '\n';
+        return 1;
+    }
 }

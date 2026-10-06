@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <stack>
 #include <tokenizer.hh>
@@ -139,7 +141,8 @@ namespace ANC216
             else
                 filename += ".anc216";
 
-            std::string long_filename = fs::weakly_canonical("./" + filename).string();
+            const auto source_directory = fs::path(this->filename).parent_path();
+            std::string long_filename = fs::weakly_canonical(source_directory / filename).string();
 
             bool found = false;
             if (!fs::exists(long_filename))
@@ -203,201 +206,103 @@ namespace ANC216
 
         void conditional(std::map<std::string, Token> &defines)
         {
-            std::string id;
-            bool neg = false;
-            tokenizer.remove_current_token();
-            if (tokenizer.get_current_token() == "!")
+            const size_t start = tokenizer.get_index();
+            auto guard = [&]()
             {
-                neg = true;
-                tokenizer.remove_current_token();
-            }
-            if (tokenizer.get_current_token().type != IDENTIFIER)
-            {
-                error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
-                skip_line();
-                return;
-            }
-            id = tokenizer.get_current_token().value;
-            tokenizer.remove_current_token();
-            if (tokenizer.get_current_token() != "then")
-            {
-                error_stack.push_back({expected_error_message("'then'"), tokenizer.get_current_token()});
-                skip_line();
-                return;
-            }
-            tokenizer.remove_current_token();
-            if (tokenizer.get_current_token() != "\n")
-            {
-                error_stack.push_back({"Expected the end of the line after an if", tokenizer.get_next_token()});
-                skip_line();
-                return;
-            }
-            tokenizer.remove_current_token();
-            int elif = 0;
-            size_t i = tokenizer.get_index();
-            if ((defines.find(id) != defines.end()) && !neg)
-            {
-                while (tokenizer.get_current_token() != "endif")
+                tokenizer.remove_current_token(); // if/elif
+                bool negate = false;
+                if (tokenizer.get_current_token() == "!")
                 {
-                    if (elif == 1)
-                        tokenizer.remove_current_token();
-                    else
-                        tokenizer.next_token();
-                    if (tokenizer.get_current_token() == "elif")
-                        elif = 1;
+                    negate = true;
+                    tokenizer.remove_current_token();
                 }
+                const auto token = tokenizer.get_current_token();
+                if (token.type != IDENTIFIER)
+                    throw std::runtime_error("Conditional requires a define name");
+                const bool defined = defines.find(token.value) != defines.end();
+                tokenizer.remove_current_token();
+                if (tokenizer.get_current_token() != "then")
+                    throw std::runtime_error("Conditional requires then");
                 tokenizer.remove_current_token();
                 if (tokenizer.get_current_token() != "\n")
-                {
-                    error_stack.push_back({"Expected the end of the line after an endif", tokenizer.get_current_token()});
-                    skip_line();
-                    return;
-                }
-                tokenizer.set_index(i);
-                return;
-            }
-            while (tokenizer.get_current_token() != "endif")
+                    throw std::runtime_error("Conditional requires a newline after then");
+                tokenizer.remove_current_token();
+                return negate ? !defined : defined;
+            };
+            bool active = guard(), taken = active;
+            unsigned depth = 0;
+            while (!tokenizer.get_current_token().end())
             {
-                if (elif == 0 || elif == -1)
-                    tokenizer.remove_current_token();
-                else
-                    tokenizer.next_token();
-                if (tokenizer.get_current_token().type == END)
+                auto token = tokenizer.get_current_token();
+                if (token == "endif")
                 {
-                    error_stack.push_back({"Unexpected the end of the file, 'endif' was expected", tokenizer.get_current_token()});
-                    return;
-                }
-                if (tokenizer.get_current_token() == "elif")
-                {
-                    if (elif == 1)
+                    if (depth == 0)
                     {
-                        elif = -1;
-                        continue;
-                    }
-                    tokenizer.remove_current_token();
-                    neg = false;
-                    if (tokenizer.get_current_token() == "!")
-                    {
-                        neg = true;
                         tokenizer.remove_current_token();
-                    }
-                    if (tokenizer.get_current_token().type != IDENTIFIER)
-                    {
-                        error_stack.push_back({expected_error_message("identifier"), tokenizer.get_current_token()});
-                        skip_line();
+                        tokenizer.set_index(start);
                         return;
                     }
-                    id = tokenizer.get_current_token().value;
-                    tokenizer.remove_current_token();
-                    if (tokenizer.get_current_token() != "then")
-                    {
-                        error_stack.push_back({expected_error_message("'then'"), tokenizer.get_current_token()});
-                        skip_line();
-                        return;
-                    }
-                    tokenizer.remove_current_token();
-                    if (tokenizer.get_current_token() != "\n")
-                    {
-                        error_stack.push_back({"Expected the end of the line after an elif", tokenizer.get_next_token()});
-                        skip_line();
-                        return;
-                    }
-                    tokenizer.remove_current_token();
-                    if ((defines.find(id) != defines.end()) && !neg)
-                    {
-                        elif = 1;
-                        i = tokenizer.get_index();
-                    }
+                    --depth;
                 }
+                else if (token == "if")
+                    ++depth;
+                else if (token == "elif" && depth == 0)
+                {
+                    const bool matches = guard();
+                    active = !taken && matches;
+                    taken = taken || active;
+                    continue;
+                }
+                if (active)
+                    tokenizer.next_token();
+                else
+                    tokenizer.remove_current_token();
             }
-
-            tokenizer.remove_current_token();
-            if (tokenizer.get_current_token() != "\n" && tokenizer.get_current_token().type != END)
-            {
-                error_stack.push_back({"Expected the end of the line after an endif", tokenizer.get_current_token()});
-                skip_line();
-                return;
-            }
-            tokenizer.set_index(i);
+            error_stack.push_back({"Missing endif", tokenizer.get_current_token()});
         }
 
         AST *prog()
         {
-            AST *ast = new AST(COMMAND);
-            if (tokenizer.get_current_token() == "section")
+            AST *root = new AST(COMMAND), *cursor = root;
+            while (!tokenizer.get_current_token().end())
             {
-                ast->insert(section());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token() == "structure")
-            {
-                ast->insert(structure());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token() == "org")
-            {
-                ast->insert(org());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token().type == IDENTIFIER)
-            {
-                if (tokenizer.get_next_token() == ":")
+                if (tokenizer.get_current_token() == "\n")
                 {
-                    ast->insert(label());
-                    ast->insert(prog());
-                    return ast;
+                    tokenizer.next_token();
+                    continue;
                 }
-                ast->insert(exp_list());
-                ast->insert(prog());
-                return ast;
+                AST *statement = nullptr;
+                const auto token = tokenizer.get_current_token();
+                const size_t previous = tokenizer.get_index();
+                if (token == "section")
+                    statement = section();
+                else if (token == "structure")
+                    statement = structure();
+                else if (token == "org")
+                    statement = org();
+                else if (token == "var")
+                    statement = declaration();
+                else if (token.type == INSTRUCTION)
+                    statement = instruction();
+                else if (token == "global" || token == "local" || (token.type == IDENTIFIER && tokenizer.get_next_token() == ":"))
+                    statement = label();
+                else if (token.type == IDENTIFIER || token.type == NUMBER_LITERAL || token.type == STRING_LITERAL ||
+                         token.type == OPEN_ROUND_BRACKET || token == "+" || token == "-" || token == "sizeof" ||
+                         token == "offset" || token == "word" || token == "byte" || token == "$" || token == "reserve")
+                    statement = exp_list();
+                else
+                    error_stack.push_back({unexpected_error_message("'" + token.value + "'"), token});
+                if (statement)
+                {
+                    cursor->insert(statement);
+                    AST *next = new AST(COMMAND);
+                    cursor->insert(next);
+                    cursor = next;
+                }
+                if (tokenizer.get_index() == previous)
+                    tokenizer.next_token();
             }
-
-            if (tokenizer.get_current_token().type == NUMBER_LITERAL || tokenizer.get_current_token().type == STRING_LITERAL || tokenizer.get_current_token().type == OPEN_ROUND_BRACKET || tokenizer.get_current_token() == "+" || tokenizer.get_current_token() == "-" || tokenizer.get_current_token() == "sizeof" || tokenizer.get_current_token() == "offset" || tokenizer.get_current_token() == "word" || tokenizer.get_current_token() == "byte" || tokenizer.get_current_token() == "$")
-            {
-                ast->insert(exp_list());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token() == "var")
-            {
-                ast->insert(declaration());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token().type == INSTRUCTION)
-            {
-                ast->insert(instruction());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token() == "global" || tokenizer.get_current_token() == "local")
-            {
-                ast->insert(label());
-                ast->insert(prog());
-                return ast;
-            }
-
-            if (tokenizer.get_current_token() == "\n")
-            {
-                tokenizer.next_token();
-                return prog();
-            }
-
-            if (tokenizer.get_current_token().end())
-                return ast;
-
-            error_stack.push_back({unexpected_error_message("'" + tokenizer.get_current_token().value + "'"), tokenizer.get_next_token()});
-            tokenizer.next_token();
-            return nullptr;
+            return root;
         }
 
         AST *org()
@@ -524,6 +429,7 @@ namespace ANC216
             AST *ast = new AST(LABEL);
             if (tokenizer.get_current_token() == "global" || tokenizer.get_current_token() == "local")
             {
+                ast->insert(new AST(tokenizer.get_current_token()));
                 tokenizer.next_token();
                 if (tokenizer.get_current_token().type != IDENTIFIER)
                 {
@@ -1001,7 +907,24 @@ namespace ANC216
             AST *ast = new AST(ADDRESSING_MODE_REALTIVE_PC);
             ast->insert(new AST(tokenizer.get_current_token()));
             tokenizer.next_token();
-            ast->insert(expression());
+            if (tokenizer.get_current_token().type == REGISTER)
+            {
+                if (tokenizer.get_current_token().value[0] != 'l')
+                    error_stack.push_back({"PC indexing requires a low register", tokenizer.get_current_token()});
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+            }
+            else
+                ast->insert(expression());
+            if (tokenizer.get_current_token() == ",")
+            {
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+                if (tokenizer.get_current_token().type != REGISTER)
+                    error_stack.push_back({"PC relative stores require a register", tokenizer.get_current_token()});
+                ast->insert(new AST(tokenizer.get_current_token()));
+                tokenizer.next_token();
+            }
             return ast;
         }
 
@@ -1170,23 +1093,14 @@ namespace ANC216
             switch (tokenizer.get_current_token().type)
             {
             case OPEN_ROUND_BRACKET:
-                ast = new AST(EXPRESSION);
-                ast->insert(new AST(tokenizer.get_current_token()));
                 tokenizer.next_token();
-                if (!(tokenizer.get_next_token().type == NUMBER_LITERAL || tokenizer.get_next_token().type == STRING_LITERAL || tokenizer.get_next_token().type == OPEN_ROUND_BRACKET || tokenizer.get_next_token() == "+" || tokenizer.get_next_token() == "-" || tokenizer.get_next_token() == "sizeof" || tokenizer.get_next_token() == "offset" || tokenizer.get_next_token() == "word" || tokenizer.get_next_token() == "byte" || tokenizer.get_next_token() == "$"))
+                ast = expression();
+                if (tokenizer.get_current_token() != ")")
                 {
-                    error_stack.push_back({expected_error_message("expression"), tokenizer.get_next_token()});
+                    error_stack.push_back({expected_error_message("')'"), tokenizer.get_current_token()});
                     skip_line();
                     return nullptr;
                 }
-                ast->insert(expression());
-                if (tokenizer.get_current_token() != ")")
-                {
-                    error_stack.push_back({expected_error_message("')'"), tokenizer.get_next_token()});
-                    tokenizer.next_token();
-                    return nullptr;
-                }
-                ast->insert(new AST(tokenizer.get_current_token()));
                 tokenizer.next_token();
                 return ast;
             case UNARY_LEFT_OPERATOR:
@@ -1221,16 +1135,17 @@ namespace ANC216
                     return ast;
                 }
             case BINARY_OPERATOR:
-                ast = new AST(EXPRESSION);
                 if (tokenizer.get_current_token() != "-" && tokenizer.get_current_token() != "+")
                 {
-                    error_stack.push_back({unexpected_error_message("'" + tokenizer.get_current_token().value + "'"), tokenizer.get_next_token()});
+                    error_stack.push_back({unexpected_error_message("operator"), tokenizer.get_current_token()});
                     tokenizer.next_token();
                     return nullptr;
                 }
-                ast->insert(new AST(tokenizer.get_current_token()));
+                ast = new AST(tokenizer.get_current_token());
+                ast->set_rule_name(EXPRESSION);
                 tokenizer.next_token();
                 ast->insert(atom());
+                return ast;
             case TYPE:
                 ast = new AST(EXPRESSION);
                 ast->insert(new AST(tokenizer.get_current_token()));
@@ -1257,7 +1172,11 @@ namespace ANC216
             : tokenizer(str, flags, filename),
               asm_flags(flags)
         {
+            this->filename = filename;
             this->modules = modules;
+            const auto canonical = fs::weakly_canonical(filename).string();
+            if (std::find(this->modules.begin(), this->modules.end(), canonical) == this->modules.end())
+                this->modules.push_back(canonical);
         }
 
         ~Parser() = default;
@@ -1296,4 +1215,4 @@ namespace ANC216
             return false;
         }
     };
-}
+} // namespace ANC216

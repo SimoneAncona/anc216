@@ -1,30 +1,29 @@
 #pragma once
-
-#include <common.hh>
+#include <device.hh>
 #include <video.hh>
-#include <iostream>
-
-class ANC216::VideoCard : public ANC216::Device
+namespace ANC216
 {
-protected:
-    ANC216::Video::Window *window;
-
-public:
-    VideoCard(ANC216::EmemMapper *emem, const int w_resolution, const int h_resolution, EmuFlags flags, Video::Window *win)
-        : Device(emem, flags)
+    class VideoCard : public Device
     {
-        this->window = win;
-        window->init();
-        std::thread(
-            [this, w_resolution, h_resolution, flags]
-            { 
-                this->window->wait_init(); 
-                window->change_window_res(w_resolution, h_resolution);
-                if (!flags.novideo)
-                    this->window->show();
-                if (flags.fullscreen) 
-                    window->set_fullscreen(); 
-            }
-            ).join();
-    }
-};
+    protected:
+        Video::Window *window;
+
+    public:
+        VideoCard(EmemMapper *mapper, int width, int height, EmuFlags flags, Video::Window *win) : Device(mapper, flags), window(win)
+        {
+#ifdef ANC216_WITH_SDL
+            if (!window || flags.novideo)
+                return;
+            window->init();
+            window->change_window_res(width, height);
+            if (!flags.novideo)
+                window->show();
+            if (flags.fullscreen)
+                window->set_fullscreen();
+#else
+            (void)width;
+            (void)height;
+#endif
+        }
+    };
+} // namespace ANC216

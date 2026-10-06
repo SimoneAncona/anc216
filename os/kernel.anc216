@@ -1,0 +1,84 @@
+; First ANC216 kernel. System mode, cooperative console, no host services.
+org 0x0100
+entry:
+    clri
+    clrt
+    careq
+    ldsp 0x3000
+    ldbp 0x3000
+    store & 0x0000, word panic
+    store & 0x0002, word panic
+    store & 0x0004, word panic
+    store & 0x0006, word panic
+    store & 0x0008, word panic
+    store & 0x000a, word panic
+    store & 0x000c, word 0x3000
+    ; RGB332 black background / white foreground, ASCII texture IDs.
+    write & 0xfffd, word 0x0500
+    write & 0xfffd, word 0x0200
+    write & 0xfffd, word 0x0700 + 0xff
+    write & 0xfffd, word 0x0800
+    write & 0xfffd, word 0x0500
+    load r5, 0
+    load r6, 0
+    load r2, banner
+    phbp
+    call puts
+    pobp
+    ; Ready marker for debugger and boot tests. Idle keeps the window alive.
+    store & 0x00f0, word 0x2160
+idle:
+    jmp idle
+
+; puts: R2 = physical zero-terminated string. Preserves BP via call convention.
+; Clobbers R0/R2/R3/R7; R5/R6 are console pixel cursor coordinates.
+puts:
+    trbp r7
+puts_next:
+    ldbp r2
+    load l0, & bp + 0
+    cmp l0, 0
+    jeq puts_done
+    phbp
+    call putc
+    pobp
+    inc r2
+    jmp puts_next
+puts_done:
+    ldbp r7
+    ret
+
+; putc: L0 = ASCII character; wraps at 32 columns and clears at 28 rows.
+putc:
+    cmp l0, 10
+    jeq newline
+    tran r3, r5
+    or r3, 0x0300
+    write & 0xfffd, r3
+    tran r3, r6
+    or r3, 0x0400
+    write & 0xfffd, r3
+    and r0, 0x00ff
+    or r0, 0x0600
+    write & 0xfffd, r0
+    write & 0xfffd, word 0x0100
+    add r5, 8
+    cmp r5, 256
+    jne putc_done
+newline:
+    load r5, 0
+    add r6, 8
+    cmp r6, 224
+    jne putc_done
+    write & 0xfffd, word 0x0200
+    load r6, 0
+putc_done:
+    ret
+panic:
+    store & 0x00f0, word 0xffff
+    kill
+banner:
+    "ANC216 OS", 10
+    "SYSTEM MODE - AVC64 CONSOLE", 10
+    "ROM KERNEL LOADED", 10
+    "READY", 10, 0

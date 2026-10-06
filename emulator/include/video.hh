@@ -1,115 +1,124 @@
 #pragma once
-
+#ifdef ANC216_WITH_SDL
 #include <SDL.h>
 #include <stdexcept>
-#include <thread>
-#include <iostream>
-
+#include <cstdint>
+#include <vector>
 namespace ANC216::Video
 {
     class Window
     {
-    private:
-        SDL_Window *window = NULL;
-        SDL_Renderer *renderer = NULL;
-        std::thread *thread;
-        int r_width = 400, r_height = 400;
-        char last_key = '\0';
-
-        void _init()
-        {
-            if (SDL_Init(SDL_INIT_VIDEO) != 0)
-                throw std::runtime_error("Cannot initialize video");
-            window = SDL_CreateWindow("Emulated GPU video", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, r_width, r_height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
-            if (window == NULL)
-                throw std::runtime_error("Cannot create window");
-
-            renderer = SDL_CreateRenderer(window, 0, 0);
-            if (renderer == NULL)
-                throw std::runtime_error("Cannot init renderer");
-
-            auto run = true;
-            SDL_Event event;
-
-            while (run)
-            {
-                SDL_PollEvent(&event);
-
-                switch (event.type)
-                {
-                case SDL_QUIT:
-                    run = false;
-                    SDL_Quit();
-                    exit(0);
-                    break;
-                case SDL_KEYDOWN:
-                    last_key = event.key.keysym.sym;
-                
-                }
-            }
-        }
+        SDL_Window *window = nullptr;
+        SDL_Renderer *renderer = nullptr;
+        int width = 256, height = 224;
+        char last_key = 0;
 
     public:
         Window() = default;
         ~Window()
         {
-            delete thread;
+            if (renderer)
+                SDL_DestroyRenderer(renderer);
+            if (window)
+                SDL_DestroyWindow(window);
+            if (window)
+                SDL_Quit();
         }
-
-        inline void init()
+        void init()
         {
-            thread = new std::thread([this]() { this->_init(); });
+            if (SDL_Init(SDL_INIT_VIDEO) != 0)
+                throw std::runtime_error(SDL_GetError());
+            window = SDL_CreateWindow("ANC216 AVC64", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 512, 448, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+            if (!window)
+                throw std::runtime_error(SDL_GetError());
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+            if (!renderer)
+                throw std::runtime_error(SDL_GetError());
         }
-
-        inline void wait_init()
+        void wait_init()
         {
-            while (renderer == NULL);
         }
-
-        inline void wait()
+        void wait()
         {
-            if (thread != nullptr)
-                thread->join();
         }
-
-        char key_pressed()
+        bool poll()
+        {
+            SDL_Event event;
+            while (SDL_PollEvent(&event))
+            {
+                if (event.type == SDL_QUIT)
+                    return false;
+                if (event.type == SDL_KEYDOWN)
+                    last_key = event.key.keysym.sym;
+            }
+            return true;
+        }
+        char key_pressed() const
         {
             return last_key;
         }
-
-        inline void change_logical_res(const int width, const int height)
+        void change_logical_res(int w, int h)
         {
-            SDL_RenderSetLogicalSize(renderer, width, height);
+            width = w;
+            height = h;
+            SDL_RenderSetLogicalSize(renderer, w, h);
         }
-
-        inline void change_window_res(const int width, const int height)
+        void change_window_res(int w, int h)
         {
-            SDL_SetWindowSize(window, width, height);
+            SDL_SetWindowSize(window, w, h);
         }
-
-        inline void set_fullscreen()
+        void set_fullscreen()
         {
-            SDL_SetWindowFullscreen(window, 0);
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
         }
-
-        inline void show()
+        void show()
         {
             SDL_ShowWindow(window);
         }
-
-        inline void hide()
+        void hide()
         {
             SDL_HideWindow(window);
         }
-
-        inline SDL_Window *get_sdl_window()
+        SDL_Window *get_sdl_window()
         {
             return window;
         }
-
-        inline SDL_Renderer *get_sdl_renderer()
+        SDL_Renderer *get_sdl_renderer()
         {
             return renderer;
         }
+        void present(const std::vector<uint8_t> &pixels)
+        {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                {
+                    const uint8_t c = pixels[y * width + x];
+                    SDL_SetRenderDrawColor(renderer, ((c >> 5) & 7) * 255 / 7, ((c >> 2) & 7) * 255 / 7, (c & 3) * 255 / 3, 255);
+                    SDL_RenderDrawPoint(renderer, x, y);
+                }
+            SDL_RenderPresent(renderer);
+        }
     };
-}
+} // namespace ANC216::Video
+#else
+namespace ANC216::Video
+{
+    class Window
+    {
+    public:
+        void wait()
+        {
+        }
+        bool poll()
+        {
+            return true;
+        }
+        char key_pressed() const
+        {
+            return 0;
+        }
+    };
+} // namespace ANC216::Video
+#endif

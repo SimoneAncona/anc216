@@ -3,7 +3,10 @@
 #include <analyzer.hh>
 #include <types.hh>
 #include <assembler.hh>
+#include <header.hh>
 
+#include <iterator>
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -25,7 +28,7 @@ void print_help(char **);
 void print_version();
 ANC216::AsmFlags get_flags(int, char **);
 
-int main(int argc, char **argv)
+int assemble_main(int argc, char **argv)
 {
     if (argc < 2)
     {
@@ -49,10 +52,13 @@ int main(int argc, char **argv)
         return 0;
     }
     ANC216::AsmFlags flags = get_flags(argc, argv);
+    flags.output_file = fs::absolute(flags.output_file).string();
     fs::path p(fs::weakly_canonical(flags.input_file));
     flags.input_file = p.string();
     fs::current_path(p.parent_path());
     std::ifstream file = std::ifstream(flags.input_file);
+    if (!file)
+        throw std::runtime_error("Cannot read input file");
     std::stringstream ss;
     ss << file.rdbuf();
     std::string file_string = ss.str();
@@ -87,24 +93,41 @@ int main(int argc, char **argv)
     if (assembler.has_errors())
         return -1;
 
+    if (!flags.header.empty())
+    {
+        ANC216::HeaderBuilder header;
+        header.setUALf();
+        if (flags.get_symbol_table)
+            header.setSymbolTable(analyzer.get_environment().labels);
+        header.setEntryPoint(analyzer.get_environment().labels);
+        a.insert(a.begin(), header.get_header().begin(), header.get_header().end());
+    }
+    else if (flags.get_symbol_table)
+    {
+        throw std::runtime_error("-s requires -h=ualf");
+    }
     const auto end{std::chrono::steady_clock::now()};
     const std::chrono::duration<float> elapsed_seconds{end - start};
 
     std::ofstream out_file(flags.output_file, std::ios::binary | std::ios::trunc);
+    if (!out_file)
+        throw std::runtime_error("Cannot open output file: " + flags.output_file);
     std::ostream_iterator<char> out_file_it(out_file);
-    std::copy(a.begin(), a.end(), out_file_it); 
+    std::copy(a.begin(), a.end(), out_file_it);
 
     out_file.close();
+    if (!out_file)
+        throw std::runtime_error("Cannot write output file");
 
     if (flags.output_size)
     {
         std::cout << CYAN << "Info: " << RESET << "the size of the output is " << a.size() << " bytes\n"
-        << std::endl;
+                  << std::endl;
     }
     if (flags.get_time)
     {
-        std::cout << CYAN << "Info: " << RESET << "elapsed time is " << elapsed_seconds << "\n"
-        << std::endl;
+        std::cout << CYAN << "Info: " << RESET << "elapsed time is " << elapsed_seconds.count() << "\n"
+                  << std::endl;
     }
 
     return 0;
@@ -156,10 +179,17 @@ ANC216::AsmFlags get_flags(int argc, char **argv)
             continue;
         }
         if (arg == "--preview")
+            throw std::runtime_error("ANC216.2 preview grammar is not a supported assembly standard");
+        if (arg == "-w")
         {
-            std::cout << YELLOW << "Warning:\n\t" << RESET << "You are using the preview assembly standard, this standard is " << RED << "NOT" << RESET << " fully implemented\n"
-                      << std::endl;
-            flags.preview = true;
+            flags.suppress_warnings = true;
+            continue;
+        }
+        if (arg == "--stdlib")
+        {
+            if (++i >= argc || !fs::is_directory(argv[i]))
+                throw std::runtime_error("--stdlib requires an existing directory");
+            flags.import_paths.push_back(fs::absolute(argv[i]).string());
             continue;
         }
         if (arg == "-t")
@@ -180,6 +210,8 @@ ANC216::AsmFlags get_flags(int argc, char **argv)
 
         if (arg == "-i")
         {
+            if (i + 1 >= argc || std::string(argv[i + 1]).starts_with("-"))
+                throw std::runtime_error("-i requires an import path");
             int j;
             for (j = i + 1; j < argc; j++)
             {
@@ -239,6 +271,8 @@ ANC216::AsmFlags get_flags(int argc, char **argv)
             continue;
         }
 
+        if (arg.starts_with("-"))
+            throw std::runtime_error("Unknown option: " + arg);
         if (flags.input_file == "")
         {
             flags.input_file = arg;
@@ -249,6 +283,7 @@ ANC216::AsmFlags get_flags(int argc, char **argv)
             flags.output_file = arg;
             continue;
         }
+        throw std::runtime_error("Unexpected argument: " + arg);
     }
     if (flags.input_file == "")
     {
@@ -302,7 +337,7 @@ void print_help(char **argv)
               << "Print the size of the output file"
               << "\n"
               << CYAN << "-s" << RESET << "\t\t\t"
-              << "Generate symbol table constants"
+              << "Include public symbols in the UALf header"
               << "\n"
               << CYAN << "--stdlib <dir>" << RESET << "\t\t"
               << "Set standard library path"
@@ -342,4 +377,16 @@ void print_version()
               << RESET << "Assembly standard preview:"
               << "\t" << GREEN << ASSEMBLY_PREVIEW_STANDARD_VERSION << "\n"
               << RESET;
+}
+int main(int argc, char **argv)
+{
+    try
+    {
+        return assemble_main(argc, argv);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "assembler: " << e.what() << '\n';
+        return 1;
+    }
 }

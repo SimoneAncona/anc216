@@ -1,354 +1,268 @@
-#include <iostream>
-#include <fstream>
+#include <afs.hh>
 #include <filesystem>
-#include "console.hh"
-#include "afs.hh"
-
-#define CARD_READER_MAJOR_VERSION 1
-#define CARD_READER_MINOR_VERSION 0
-#define CARD_READER_PATCH_VERSION 0
-
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <chrono>
 namespace fs = std::filesystem;
 
-void start_console_loop(ANC216::AFS &);
-void mkdir(ANC216::AFS &, std::string  &);
-void cd(ANC216::AFS &, std::string &);
-void get(ANC216::AFS &, std::string &);
-void set(ANC216::AFS &, std::string &);
-void touch(ANC216::AFS &, std::string &);
-void ls(ANC216::AFS &, std::string &);
-void rm(ANC216::AFS &, std::string &);
-void find(ANC216::AFS &, std::string &);
-void du(ANC216::AFS &, std::string &);
-void help();
-
-std::string tabs(const std::string &);
-
+static void help()
+{
+    std::cout << "Usage: cardreader <image> [command [arguments...]]\n"
+                 "       cardreader --format <new image> [--boot <file>]\n"
+                 "Commands (paths may be quoted in the interactive shell):\n"
+                 "  mkdir <path>              Create directory\n"
+                 "  cd <path>                 Change directory\n"
+                 "  ls [path]                 List directory\n"
+                 "  touch <path>              Create empty file\n"
+                 "  set <path> <host file>    Replace existing file contents\n"
+                 "  put <path> <host file>    Import or replace file\n"
+                 "  get <path> [host file]    Print or export file\n"
+                 "  rm <path>                 Remove file or directory recursively\n"
+                 "  find <name>               Find files from the root\n"
+                 "  du [path]                 File bytes and allocated bytes\n"
+                 "  boot <host file>          Replace boot code (up to 255 bytes)\n"
+                 "  exit                      Save and quit (EOF also saves)\n";
+}
+static void result(int code)
+{
+    if (!code)
+        return;
+    switch (code)
+    {
+    case INVALID_DIRNAME_FILENAME:
+        throw std::runtime_error("Invalid name, missing file, or missing parent directory");
+    case DIRNAME_FILENAME_TOO_LONG:
+        throw std::runtime_error("Name exceeds AFS field size");
+    case DIRNAME_FILENAME_ALREADY_EXIST:
+        throw std::runtime_error("File or directory already exists");
+    case FILENAME_EXTENSION_TOO_LONG:
+        throw std::runtime_error("Extension exceeds three bytes");
+    case NO_MORE_SPACE:
+        throw std::runtime_error("Not enough space");
+    default:
+        throw std::runtime_error("AFS operation failed");
+    }
+}
+static std::vector<uint8_t> read_boot(const std::string &path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        throw std::runtime_error("Cannot read boot file");
+    std::vector<uint8_t> bytes;
+    int ch;
+    while ((ch = in.get()) != EOF)
+    {
+        bytes.push_back(ch);
+        if (bytes.size() > BOOTX_SIZE)
+            throw std::runtime_error("AFS boot code exceeds 255 bytes");
+    }
+    return bytes;
+}
+static bool command(ANC216::AFS &afs, const std::vector<std::string> &args, bool &dirty)
+{
+    if (args.empty())
+        return true;
+    const auto &op = args[0];
+    auto arity = [&](unsigned min, unsigned max)
+    {
+        if (args.size() < min + 1 || args.size() > max + 1)
+            throw std::runtime_error("Wrong number of arguments for " + op);
+    };
+    if (op == "exit")
+    {
+        arity(0, 0);
+        return false;
+    }
+    if (op == "help")
+    {
+        arity(0, 0);
+        help();
+    }
+    else if (op == "mkdir")
+    {
+        arity(1, 1);
+        result(afs.make_dir(args[1]));
+        dirty = true;
+    }
+    else if (op == "touch")
+    {
+        arity(1, 1);
+        result(afs.touch(args[1]));
+        dirty = true;
+    }
+    else if (op == "cd")
+    {
+        arity(1, 1);
+        if (!afs.change_directory(args[1]))
+            throw std::runtime_error("Directory not found");
+    }
+    else if (op == "ls")
+    {
+        arity(0, 1);
+        auto copy = afs;
+        if (args.size() == 2 && !copy.change_directory(args[1]))
+            throw std::runtime_error("Directory not found");
+        for (auto &name : copy.get_sub_diectories())
+            std::cout << name << "/\n";
+        for (auto &name : copy.get_files())
+            std::cout << name << '\n';
+    }
+    else if (op == "set" || op == "put")
+    {
+        arity(2, 2);
+        std::ifstream in(args[2], std::ios::binary);
+        if (!in)
+            throw std::runtime_error("Cannot read host file: " + args[2]);
+        auto copy = afs;
+        if (op == "put")
+        {
+            int code = copy.touch(args[1]);
+            if (code != DIRNAME_FILENAME_ALREADY_EXIST)
+                result(code);
+        }
+        result(copy.set_content(args[1], in));
+        afs = copy;
+        dirty = true;
+    }
+    else if (op == "get")
+    {
+        arity(1, 2);
+        std::string content;
+        result(afs.get_content(args[1], content));
+        if (args.size() == 2)
+            std::cout.write(content.data(), content.size());
+        else
+        {
+            std::ofstream out(args[2], std::ios::binary | std::ios::trunc);
+            if (!out || !out.write(content.data(), content.size()))
+                throw std::runtime_error("Cannot write exported file");
+        }
+    }
+    else if (op == "rm")
+    {
+        arity(1, 1);
+        if (!afs.remove(args[1]))
+            throw std::runtime_error("File or directory not found");
+        dirty = true;
+    }
+    else if (op == "find")
+    {
+        arity(1, 1);
+        for (auto &name : afs.find_file(args[1]))
+            std::cout << name << '\n';
+    }
+    else if (op == "du")
+    {
+        arity(0, 1);
+        const std::string path = args.size() == 2 ? args[1] : ".";
+        auto copy = afs;
+        std::string content;
+        if (!copy.change_directory(path) && afs.get_content(path, content))
+            throw std::runtime_error("File or directory not found");
+        size_t allocated = 0, size = 0;
+        for (auto &[name, usage] : afs.disk_usage(path))
+        {
+            std::cout << name << " allocated=" << usage.first << " bytes=" << usage.second << '\n';
+            allocated += usage.first;
+            size += usage.second;
+        }
+        std::cout << "total allocated=" << allocated << " bytes=" << size << '\n';
+    }
+    else if (op == "boot")
+    {
+        arity(1, 1);
+        afs.set_boot(read_boot(args[1]));
+        dirty = true;
+    }
+    else
+        throw std::runtime_error("Unknown command: " + op);
+    return true;
+}
+static void save(const fs::path &path, const ANC216::AFS &afs)
+{
+    auto temporary = path;
+    temporary += ".tmp." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    try
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out || !out.write(afs.get_buffer(), 65536))
+            throw std::runtime_error("Cannot save card image");
+        out.close();
+        if (!out)
+            throw std::runtime_error("Cannot close card image");
+        fs::rename(temporary, path);
+    }
+    catch (...)
+    {
+        std::error_code error;
+        fs::remove(temporary, error);
+        throw;
+    }
+}
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    try
     {
-        std::cout << "Usage:\n"
-                  << "\t" << argv[0] << " <source file>"
-                  << std::endl
-                  << RESET;
-        return 0;
-    }
-    if (!fs::exists(argv[1]))
-    {
-        std::cout << RED << "error: " << RESET << "Cannot find " << argv[1] << std::endl;
-        return -1;
-    }
-    fs::current_path(fs::absolute(argv[1]).parent_path());
-    std::ifstream ifile(argv[1], std::ios::binary);
-    ANC216::AFS afs(ifile);
-    std::ofstream ofile(argv[1], std::ios::binary);
-    if (afs.get_corrupted())
-    {
-        std::cout << RED << "error: " << RESET << "Corrupted card" << std::endl;
-        return -1;
-    }
-    start_console_loop(afs);
-    ofile.write(afs.get_buffer(), 65'536);
-    ofile.close();
-    return 0;
-}
-
-void start_console_loop(ANC216::AFS &fs)
-{
-    char c_input[256];
-    std::string input;
-    std::string command;
-    while (true)
-    {
-        std::cout << GREEN << "$ " << RESET << fs.get_current_dir_absolute_path() << "> "; 
-        std::cin.getline(c_input, sizeof(c_input));
-        input = c_input;
-        command = input.substr(0, input.find_first_of(" ") != std::string::npos ? input.find_first_of(" ") : input.length());
-        for (auto &c : command)
-            c = towlower(c);
-
-        input += " ";
-        if (command == "help")
+        if (argc < 2 || std::string(argv[1]) == "--help")
         {
             help();
-            continue;
+            return 0;
         }
-        if (command == "mkdir")
+        if (std::string(argv[1]) == "--format")
         {
-            mkdir(fs, input);
-            continue;
+            if (argc != 3 && !(argc == 5 && std::string(argv[3]) == "--boot"))
+                throw std::runtime_error("Expected --format <new image> [--boot <file>]");
+            if (fs::exists(argv[2]))
+                throw std::runtime_error("Image already exists; choose a new image path");
+            ANC216::AFS afs;
+            if (argc == 5)
+                afs.set_boot(read_boot(argv[4]));
+            save(argv[2], afs);
+            return 0;
         }
-        if (command == "cd")
+        const fs::path path = fs::absolute(argv[1]);
+        std::ifstream in(path, std::ios::binary);
+        if (!in)
+            throw std::runtime_error("Cannot read card image");
+        ANC216::AFS afs(in);
+        in.close();
+        if (afs.get_corrupted())
+            throw std::runtime_error("Corrupted AFS v1 card image");
+        bool dirty = false;
+        if (argc > 2)
         {
-            cd(fs, input);
-            continue;
+            std::vector<std::string> args(argv + 2, argv + argc);
+            command(afs, args, dirty);
         }
-        if (command == "get")
+        else
         {
-            get(fs, input);
-            continue;
+            std::string line;
+            while (std::cout << afs.get_current_dir_absolute_path() << "> " && std::getline(std::cin, line))
+            {
+                std::istringstream stream(line);
+                std::vector<std::string> args;
+                std::string arg;
+                while (stream >> std::quoted(arg))
+                    args.push_back(arg);
+                try
+                {
+                    if (!command(afs, args, dirty))
+                        break;
+                }
+                catch (const std::exception &e)
+                {
+                    std::cerr << "cardreader: " << e.what() << '\n';
+                }
+            }
         }
-        if (command == "touch")
-        {
-            touch(fs, input);
-            continue;
-        }
-        if (command == "ls")
-        {
-            ls(fs, input);
-            continue;
-        }
-        if (command == "exit")
-        {
-            return;
-        }
-        if (command == "rm")
-        {
-            rm(fs, input);
-            continue;
-        }
-        if (command == "find")
-        {
-            find(fs, input);
-            continue;
-        }
-        if (command == "du")
-        {
-            du(fs, input);
-            continue;
-        }
-        if (command == "set")
-        {
-            set(fs, input);
-            continue;
-        }
-        if (command == "get")
-        {
-            get(fs, input);
-            continue;
-        }
-        std::cerr << RED << "error: " << RESET << "Unrecognized command" << std::endl;
+        if (dirty)
+            save(path, afs);
+        return 0;
     }
-}
-
-std::string tabs(const std::string &str)
-{
-    std::string res = "";
-    for (int i = 0; i < 4 - str.size() / 8; i++)
+    catch (const std::exception &e)
     {
-        res += "\t";
-    }
-    return res;
-}
-
-void help()
-{
-    std::cout <<
-    CYAN << "cd <dir>" << RESET << "\t\t" << "change current directory" << "\n" <<
-    CYAN << "du <file | dir>" << RESET << "\t\t" << "disk usage" << "\n" <<
-    CYAN << "exit" << RESET << "\t\t\t" << "save end exit" << "\n" <<
-    CYAN << "find <file>" << RESET << "\t\t" << "find a file" << "\n" <<
-    CYAN << "get <file>" << RESET << "\t\t" << "print the file content" << "\n" <<
-    CYAN << "help" << RESET << "\t\t\t" << "print this list" << "\n" <<
-    CYAN << "ls" << RESET << "\t\t\t" << "show the content of the current directory" << "\n" <<
-    CYAN << "mkdir <name>" << RESET << "\t\t" << "create a new directory" << "\n" <<
-    CYAN << "rm <file>" << RESET << "\t\t" << "remove a file or a directory" << "\n" <<
-    CYAN << "set <file> <real file>" << RESET << "\t" << "set the content of a file based on real file" << "\n" <<
-    CYAN << "touch <name>" << RESET << "\t\t" << "create a new file" << "\n" <<
-    "";
-}
-
-void mkdir(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 7);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    auto res = fs.make_dir(arg);
-    switch (res)
-    {
-    case DIRNAME_FILENAME_ALREADY_EXIST:
-        std::cerr << RED << "error: " << RESET << "File or directory already exist" << std::endl;
-        return;
-    case DIRNAME_FILENAME_TOO_LONG:
-        std::cerr << RED << "error: " << RESET << "Directory name is too long" << std::endl;
-        return;
-    case NO_MORE_SPACE:
-        std::cerr << RED << "error: " << RESET << "No more space" << std::endl;
-        return;
-    default:
-        std::cout << "Directory created" << std::endl;
-        return;
-    }
-}
-
-void cd(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    if (!fs.change_directory(arg))
-    {
-        std::cerr << RED << "error: " << RESET << "Cannot find directory " << arg << std::endl;
-    }
-}
-
-void du(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    auto res = fs.disk_usage(arg);
-    if (res.empty())
-    {
-        std::cerr << RED << "error: " << RESET << "Cannot find file or directory " << arg << std::endl;
-    }
-    size_t real = 0;
-    size_t file = 0;
-    for (auto &s : res)
-    {
-        real += s.second.first;
-        file += s.second.second;
-        std::cout << s.first << "\t" << tabs(s.first) << "real: " << CYAN << s.second.first << RESET << "\tfile: " << CYAN << s.second.second << RESET << std::endl;
-    }
-    std::cout << "\nreal: " << CYAN << real << RESET << "\tfile: " << CYAN << file << RESET << std::endl; 
-}
-
-void rm(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 4);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    if (!fs.remove(arg))
-    {
-        std::cerr << RED << "error: " << RESET << "Cannot find the file or directory " << arg << std::endl;
-    }
-}
-
-void find(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 6);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    auto res = fs.find_file(arg);
-    if (res.size() == 0)
-    {
-        std::cout << "No file found" << std::endl;
-        return;
-    }
-    for (auto e : res)
-    {
-        std::cout << "./" << e << "\n";
-    }
-}
-
-
-void set(ANC216::AFS &fs, std::string &input)
-{
-    input = input.substr(0, input.find_last_of(" "));
-    auto arg1 = input.substr(input.find_first_of(" ") + 1, input.find_last_of(" ") - input.find_first_of(" ") - 1);
-    auto arg2 = input.substr(input.find_last_of(" ") + 1, input.length() - input.find_last_of(" "));
-    if (arg1.empty() || arg1 == " " || arg2.empty() || arg2 == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected two arguments" << std::endl;
-        return;
-    }
-
-    if (!fs::exists(arg2))
-    {
-        std::cerr << RED << "error: " << RESET << "File " << arg2 << " not found" << std::endl;
-        return;
-    }
-    std::ifstream infile(arg2, std::ios::binary);
-    auto res = fs.set_content(arg1, infile);
-    switch (res)
-    {
-    case INVALID_DIRNAME_FILENAME:
-        std::cerr << RED << "error: " << RESET << "Cannot find file " << arg2 << std::endl;
-        return;
-    case NO_MORE_SPACE:
-        std::cerr << RED << "error: " << RESET << "No more space" << std::endl;
-        return;
-    default:
-        std::cout << "File updated" << std::endl;
-        return;
-    }
-}
-
-void get(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 5);
-     if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    std::string content;
-    auto res = fs.get_content(arg, content);
-    switch (res)
-    {
-    case INVALID_DIRNAME_FILENAME:
-        std::cerr << RED << "error: " << RESET << "Cannot find file " << arg << std::endl;
-        return;
-    default:
-        std::cout << content;
-    }
-}
-
-void touch(ANC216::AFS &fs, std::string &input)
-{
-    auto arg = input.substr(input.find_first_of(" ") + 1, input.length() - 7);
-    if (arg.empty() || arg == " ")
-    {
-        std::cerr << RED << "error: " << RESET << "Expected one argument" << std::endl;
-        return;
-    }
-    auto res = fs.touch(arg);
-    switch (res)
-    {
-    case DIRNAME_FILENAME_ALREADY_EXIST:
-        std::cerr << RED << "error: " << RESET << "File or directory already exist" << std::endl;
-        return;
-    case DIRNAME_FILENAME_TOO_LONG:
-        std::cerr << RED << "error: " << RESET << "File name is too long" << std::endl;
-        return;
-    case NO_MORE_SPACE:
-        std::cerr << RED << "error: " << RESET << "No more space" << std::endl;
-        return;
-    case FILENAME_EXTENSION_TOO_LONG:
-        std::cerr << RED << "error: " << RESET << "File extension must be less than or equal to 3 characters" << std::endl;
-        return;
-    default:
-        std::cout << "File created" << std::endl;
-        return;
-    }
-}
-
-void ls(ANC216::AFS &fs, std::string &input)
-{
-    auto subdirs = fs.get_sub_diectories();
-    auto subfiles = fs.get_files();
-    for (auto &dir : subdirs)
-    {
-        std::cout << CYAN << dir << RESET << std::endl;
-    }
-    for (auto &file : subfiles)
-    {
-        std::cout << file << RESET << std::endl;
+        std::cerr << "cardreader: " << e.what() << '\n';
+        return 1;
     }
 }

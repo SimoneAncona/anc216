@@ -1,0 +1,11 @@
+; A raw ROM program. Result R1 = 1+2+3+4+5 = 15.
+; Keep this file below 256 bytes; labels are relative to the ROM here.
+ldsp 0x3000
+load r0, 5
+load r1, 0
+loop:
+    add r1, r0
+    dec r0
+    cmp r0, 0
+    jne * loop
+    kill

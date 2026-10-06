@@ -1,0 +1,34 @@
+cmake_minimum_required(VERSION 3.16)
+project(anc216 LANGUAGES CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(CTest)
+add_subdirectory(assembler)
+add_subdirectory(disassembler)
+add_subdirectory(emulator)
+add_subdirectory(cardreader)
+if(BUILD_TESTING)
+    add_subdirectory(assembler/test)
+    add_test(NAME legacy_assembler COMMAND assembler_test)
+    set_tests_properties(legacy_assembler PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assembler/test" FAIL_REGULAR_EXPRESSION "failed;Different sizes")
+    add_executable(cpu_test tests/cpu_test.cc)
+    target_link_libraries(cpu_test PRIVATE anc216core)
+    add_test(NAME cpu COMMAND cpu_test)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME toolchain COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/toolchain_test.py
+        $<TARGET_FILE:assembler> $<TARGET_FILE:disassembler> $<TARGET_FILE:anc216emu> $<TARGET_FILE:cardreader>)
+endif()
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_custom_target(os
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/os/build.py
+        --assembler $<TARGET_FILE:assembler> --output ${CMAKE_BINARY_DIR}/os
+    DEPENDS assembler
+    COMMENT "Build ANC216 OS ROM and AVC64 charmap")
+if(BUILD_TESTING)
+    add_executable(os_test tests/os_test.cc)
+    target_link_libraries(os_test PRIVATE anc216core)
+    add_dependencies(os_test os)
+    add_test(NAME os_boot COMMAND os_test ${CMAKE_BINARY_DIR}/os)
+endif()

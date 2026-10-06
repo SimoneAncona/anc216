@@ -2,7 +2,6 @@
 #include <vector>
 #include <map>
 #include <types.hh>
-#include <tuple>
 #include <string>
 #include <isa.hh>
 #include <cmath>
@@ -30,7 +29,7 @@ namespace ANC216
 
     struct Variable
     {
-        size_t bp_relative_address;
+        size_t bp_relative_address = 0;
         std::string label;
         AST *assign;
     };
@@ -62,16 +61,29 @@ namespace ANC216
         Environment env;
 
         size_t current_address;
-        size_t bp_relative_address;
+        size_t bp_relative_address = 0;
+        std::string variable_key(const std::string &name) const
+        {
+            return current_label + "::" + name;
+        }
         std::string current_label;
         std::string current_section;
 
-        void analyze_command(AST *ast)
+        void analyze_command(AST *root)
         {
-            for (auto el : ast->get_children())
+            std::vector<AST *> pending{root};
+            while (!pending.empty())
             {
+                AST *el = pending.back();
+                pending.pop_back();
+                if (!el)
+                    continue;
                 switch (el->get_rule_name())
                 {
+                case COMMAND:
+                    for (auto it = el->get_children().rbegin(); it != el->get_children().rend(); ++it)
+                        pending.push_back(*it);
+                    break;
                 case SECTION:
                     analyze_section(el);
                     break;
@@ -90,11 +102,10 @@ namespace ANC216
                 case EXPRESSION_LIST:
                     analyze_expression_list(el);
                     break;
-                case COMMAND:
-                    analyze_command(el);
-                    break;
                 case ORIGIN:
                     analyze_origin(el);
+                    break;
+                default:
                     break;
                 }
             }
@@ -103,6 +114,11 @@ namespace ANC216
         void analyze_origin(AST *ast)
         {
             size_t value = eval_expression(ast->get_children()[1]);
+            if (value > 65535)
+            {
+                error_stack.push_back({"Origin exceeds 16 bits", ast->get_children()[1]->get_token()});
+                return;
+            }
             if (value < current_address)
             {
                 error_stack.push_back({"Cannot set address, the address must be grater than or equal to the current address value", ast->get_children()[0]->get_token()});
@@ -117,7 +133,7 @@ namespace ANC216
 
         void analyze_section(AST *ast)
         {
-            current_section = ast->get_children()[1]->get_token().value;
+            current_section = ast->get_children()[2]->get_token().value;
         }
 
         void analyze_structure(AST *ast)
@@ -144,9 +160,9 @@ namespace ANC216
             }
             auto children = ast->get_children();
             std::string name = children[1]->get_token().value;
-            if (env.variables.find(name) != env.variables.end())
+            if (env.variables.find(variable_key(name)) != env.variables.end())
             {
-                if (env.variables[name].label == current_label)
+                if (env.variables[variable_key(name)].label == current_label)
                 {
                     error_stack.push_back({"Redefinition of \"" + name + "\"", children[1]->get_token()});
                     return;
@@ -196,9 +212,10 @@ namespace ANC216
                     is_assigned = true;
                 }
             }
-            env.variables[name] = {bp_relative_address, current_label, is_assigned ? children[i + 1] : nullptr};
+            env.variables[variable_key(name)] = {bp_relative_address, current_label, is_assigned ? children[i + 1] : nullptr};
             bp_relative_address += size;
             Instruction ins;
+            ins.label = current_label;
             if (is_assigned)
             {
                 ins.addressing_mode = size == WORD_S ? IMMEDIATE_WORD : IMMEDIATE_BYTE;
@@ -263,6 +280,7 @@ namespace ANC216
             }
             env.labels[ast->get_children()[i]->get_token().value] = {current_address, is_local, ast->get_children()[i]->get_token().module_name};
             current_label = name;
+            env.labels[name].section = current_section;
             bp_relative_address = 0;
         }
 
@@ -288,6 +306,20 @@ namespace ANC216
             if (!found)
             {
                 error_stack.push_back({"'" + insr.instruction + "' does not support " + addr_to_string(insr.addressing_mode) + " addressing mode", ast->get_children()[0]->get_token()});
+                return;
+            }
+            if ((insr.instruction.starts_with("j") || insr.instruction == "call") &&
+                (insr.addressing_mode == IMMEDIATE_BYTE || insr.addressing_mode == IMMEDIATE_WORD))
+                insr.addr_mode_size = WORD_S;
+            if (insr.addressing_mode == IMMEDIATE_TO_MEMORY_ABSOLUTE_INDEXED && insr.addr_mode_size != 3)
+            {
+                error_stack.push_back({"Indexed immediate stores encode only byte values", ast->get_children()[0]->get_token()});
+                return;
+            }
+            if (insr.addressing_mode == REGISTER_TO_REGISTER_MODE &&
+                (insr.op1->get_token().value[0] != 'r' || insr.op2->get_token().value[0] != 'r'))
+            {
+                error_stack.push_back({"Register-to-register encoding requires two full registers", ast->get_children()[0]->get_token()});
                 return;
             }
             insr.label = current_label;
@@ -403,9 +435,16 @@ namespace ANC216
             // if (get_expression_size(ast->get_children()[1]) == WORD_S)
             //     error_stack.push_back({"The size of the argument exceeds the limit of signed byte", ast->get_children()[0]->get_token(), true});
             ins.op1 = ast->get_children()[1];
+            if (ins.op1->get_token().type == REGISTER)
+            {
+                ins.addressing_mode = MEMORY_RELATIVE_TO_PC_WITH_REGISTER;
+                ins.addr_mode_size = 0;
+                ins.indexing = {'+', ins.op1};
+                return ins;
+            }
             if (ast->get_children().size() > 2)
             {
-                ins.addressing_mode = MEMORY_RELATIVE_TO_PC_TO_REGISTER;
+                ins.addressing_mode = REGISTER_TO_MEMORY_RELATIVE_TO_PC;
                 ins.op2 = ast->get_children()[3];
             }
             return ins;
@@ -480,7 +519,7 @@ namespace ANC216
             if (ast->get_children().size() != 1)
                 return false;
             if (ast->get_children()[0]->get_token().type == IDENTIFIER)
-                return env.variables.find(ast->get_children()[0]->get_token().value) != env.variables.end();
+                return env.variables.find(variable_key(ast->get_children()[0]->get_token().value)) != env.variables.end();
             return is_var_expression(ast->get_children()[0]);
         }
 
@@ -505,7 +544,7 @@ namespace ANC216
                     check_local_variables(get_var_expression(ast->get_children()[2]));
                 if (!is_var && get_expression_size(ast->get_children()[2]) == WORD_S && ins.addr_mode_size == BYTE_S)
                     error_stack.push_back({"Conversion from word to byte may cause a data loss", ast->get_children()[1]->get_token()});
-                ins.indexing = {'+', !is_var ? nullptr : new AST({std::to_string(env.variables[get_var_expression(ast->get_children()[2]).value].bp_relative_address).c_str(), NUMBER_LITERAL})};
+                ins.indexing = {'+', !is_var ? nullptr : new AST({std::to_string(env.variables[variable_key(get_var_expression(ast->get_children()[2]).value)].bp_relative_address).c_str(), NUMBER_LITERAL})};
                 ins.op2 = ast->get_children()[2];
                 return ins;
             }
@@ -552,7 +591,7 @@ namespace ANC216
         {
             for (auto &var : env.variables)
             {
-                if (var.first == token.value && var.second.label == current_label)
+                if (var.first == variable_key(token.value) && var.second.label == current_label)
                     return;
             }
             error_stack.push_back({"Undefined variable '" + token.value + "'" + get_similar_var(token.value), token});
@@ -564,8 +603,9 @@ namespace ANC216
             {
                 if (var.second.label == current_label)
                 {
-                    if (is_similar(var.first, id))
-                        return ". Did you mean '" + var.first + "'?";
+                    const auto name = var.first.substr(var.first.find("::") + 2);
+                    if (is_similar(name, id))
+                        return ". Did you mean '" + name + "'?";
                 }
             }
             return "";
@@ -628,7 +668,7 @@ namespace ANC216
 
             if (get_expression_size(ast->get_children()[2]) == WORD_S)
                 error_stack.push_back({"The size of the expression exceeds the size limit. It should be in the range of -128, 127 (or 0, 255)", ast->get_children()[1]->get_token(), true});
-            ins.indexing = {'+', new AST({std::to_string(env.variables.find(ast->get_children()[0]->get_token().value)->second.bp_relative_address + eval_expression(ast->get_children()[2])).c_str(), NUMBER_LITERAL})};
+            ins.indexing = {'+', new AST({std::to_string(env.variables.find(variable_key(ast->get_children()[0]->get_token().value))->second.bp_relative_address + eval_expression(ast->get_children()[2])).c_str(), NUMBER_LITERAL})};
 
             if (ast->get_children()[5]->get_rule_name() == EXPRESSION)
             {
@@ -656,7 +696,7 @@ namespace ANC216
                 break;
             case KEYWORD:
                 ins.instruction = "reserve";
-                ins.addr_mode_size = eval_expression(ast->get_children()[1]);
+                ins.addr_mode_size = eval_expression(ast->get_children()[0]);
                 current_address += ins.addr_mode_size;
                 break;
             default:
@@ -688,14 +728,18 @@ namespace ANC216
             if (children.size() == 1)
             {
                 if (ast->get_token() == "+")
-                    return is_evaluable(ast->get_children()[1]);
+                    return is_evaluable(ast->get_children()[0]);
 
                 if (ast->get_token() == "-")
-                    return is_evaluable(ast->get_children()[1]);
+                    return is_evaluable(ast->get_children()[0]);
 
                 return is_evaluable(children[0]);
             }
 
+            if (children.size() == 2 && (children[0]->get_token() == "byte" || children[0]->get_token() == "word"))
+                return is_evaluable(children[1]);
+            if (children.size() != 3)
+                return false;
             return is_evaluable(children[0]) && is_evaluable(children[2]);
         }
 
@@ -712,8 +756,8 @@ namespace ANC216
 
                 if (ast->get_token().type == NUMBER_LITERAL)
                 {
-                    auto value = std::stoi(ast->get_token().value, 0);
-                    if (value > 65'536 || value < -32'768)
+                    auto value = parse_number(ast->get_token().value);
+                    if (value > 65'535 || value < -32'768)
                     {
                         error_stack.push_back({"The size of the literal number exceeds the bit limit", ast->get_token()});
                         return WORD_S;
@@ -744,6 +788,10 @@ namespace ANC216
             }
             if (children.size() == 2)
             {
+                if (children[0]->get_token() == "byte")
+                    return BYTE_S;
+                if (children[0]->get_token() == "word")
+                    return WORD_S;
                 if (children[0]->get_token() == "sizeof")
                     return WORD_S;
                 return WORD_S;
@@ -758,8 +806,15 @@ namespace ANC216
             else if (children[1]->get_token() == "*")
                 res = v1 * v2;
             else
+            {
+                if (v2 == 0)
+                {
+                    error_stack.push_back({"Division by zero", children[1]->get_token()});
+                    return WORD_S;
+                }
                 res = v1 / v2;
-            if (res > 65'356 || res < -32'768)
+            }
+            if (res > 65'535 || res < -32'768)
             {
                 error_stack.push_back({"The size of the literal number exceeds the bit limit", children[1]->get_token()});
                 return WORD_S;
@@ -798,20 +853,22 @@ namespace ANC216
                     return static_cast<int>(current_address);
 
                 if (ast->get_token().type == NUMBER_LITERAL)
-                    return stoi(ast->get_token().value, nullptr, 0);
+                    return parse_number(ast->get_token().value);
             }
 
             if (children.size() == 1)
             {
                 if (ast->get_token() == "+")
-                    return eval_expression(ast->get_children()[1]);
+                    return eval_expression(ast->get_children()[0]);
 
                 if (ast->get_token() == "-")
-                    return -eval_expression(ast->get_children()[1]);
+                    return -eval_expression(ast->get_children()[0]);
 
                 return eval_expression(children[0]);
             }
 
+            if (children.size() == 2 && (children[0]->get_token() == "word" || children[0]->get_token() == "byte"))
+                return eval_expression(children[1]);
             int value = eval_expression(children[0]);
             if (children[1]->get_token() == "+")
             {
@@ -827,7 +884,13 @@ namespace ANC216
             }
             if (children[1]->get_token() == "/")
             {
-                return value / eval_expression(children[2]);
+                const int divisor = eval_expression(children[2]);
+                if (divisor == 0)
+                {
+                    error_stack.push_back({"Division by zero", children[1]->get_token()});
+                    return 0;
+                }
+                return value / divisor;
             }
             return value;
         }
@@ -843,6 +906,10 @@ namespace ANC216
         inline void analyze()
         {
             analyze_command(this->ast);
+            if (!current_label.empty())
+                env.labels[current_label].size = current_address - env.labels[current_label].address;
+            if (current_address > 65536)
+                error_stack.push_back({"Program exceeds the 64 KiB address space", {}});
         }
 
         inline std::vector<Error> &get_error_stack()
@@ -865,4 +932,4 @@ namespace ANC216
             return false;
         }
     };
-}
+} // namespace ANC216

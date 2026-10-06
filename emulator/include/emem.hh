@@ -1,20 +1,29 @@
 #pragma once
-
 #include <common.hh>
-#include <video.hh>
-
-class ANC216::EmemMapper
+#include <device.hh>
+#include <array>
+#include <memory>
+namespace ANC216
 {
-private:
-    std::pair<uint8_t, Device *> *emem = new std::pair<uint8_t, Device *>[MAX_MEM];
-    CPU *cpu;
+    namespace Video
+    {
+        class Window;
+    }
+    class EmemMapper
+    {
+        std::array<std::unique_ptr<Device>, MAX_MEM> devices{};
+        CPU *cpu = nullptr;
 
-public:
-    EmemMapper(const EmuFlags &, Video::Window*);
-    ~EmemMapper();
-    void set_cpu(CPU *);
-    uint16_t where_am_i(const Device *);
-    void write(uint16_t, uint16_t);
-    void read(uint16_t, uint16_t);
-    void info_req(uint16_t);
-};
+    public:
+        EmemMapper(const EmuFlags &, Video::Window * = nullptr);
+        ~EmemMapper();
+        void set_cpu(CPU *);
+        void present();
+        void attach(uint16_t, std::unique_ptr<Device>);
+        uint16_t where_am_i(const Device *) const;
+        void write(uint16_t value, uint16_t address, bool additional = false, unsigned width = 2, bool high_priority = false);
+        uint16_t read(uint16_t value, uint16_t address, bool additional = false, unsigned width = 2);
+        uint16_t info_req(uint16_t address);
+        void request(uint16_t address, uint16_t value, bool additional = false, bool high_priority = false);
+    };
+} // namespace ANC216

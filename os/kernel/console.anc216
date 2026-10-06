@@ -56,3 +56,136 @@ console_x:
     word 0
 console_y:
     word 0
+
+; _______________________________________________________________________
+; getl cursor: an eight-pixel underline, blinking from the hardware countdown.
+; T stays masked: poll TRT instead of interrupting the nonreentrant syscall.
+; Save underlying pixels before drawing, then restore them when hiding so the
+; cursor does not become part of the text or overwrite a previous glyph.
+use CONSOLE_GPU as 0xfffd
+use CONSOLE_CELL_WIDTH as 8
+use CONSOLE_CURSOR_ROW as 7
+use CONSOLE_CURSOR_MS as 500
+use AVC_SET_X as 0x0300
+use AVC_SET_Y as 0x0400
+use AVC_SET_COLOR as 0x0500
+use AVC_SET_TEXTURE as 0x0600
+use AVC_DRAW_TEXTURE as 0x0100
+use AVC_WHITE as 0xff
+use CONSOLE_SPACE_TEXTURE as 32
+
+console_cursor_reset:
+    phbp
+    call console_cursor_hide
+    pobp
+    time CONSOLE_CURSOR_MS      ; restart the visible phase after an edit
+    tstart
+    phbp
+    call console_cursor_show
+    pobp
+    ret
+console_cursor_tick:
+    trt r0                     ; timer advances with host time, not CPU speed
+    cmp r0, 0
+    jne console_cursor_return
+    load r0, & console_cursor_active
+    cmp r0, 0
+    jeq console_cursor_tick_show
+    phbp
+    call console_cursor_hide
+    pobp
+    jmp console_cursor_tick_restart
+console_cursor_tick_show:
+    phbp
+    call console_cursor_show
+    pobp
+console_cursor_tick_restart:
+    time CONSOLE_CURSOR_MS
+    tstart
+console_cursor_return:
+    ret
+console_cursor_show:
+    load r0, & console_cursor_active
+    cmp r0, 0
+    jne console_cursor_return
+    load r5, & console_x
+    store & console_cursor_x, r5
+    load r6, & console_y
+    store & console_cursor_y, r6
+    add r6, CONSOLE_CURSOR_ROW
+    or r6, AVC_SET_Y
+    write & CONSOLE_GPU, r6
+    load r4, 0
+    phbp
+console_cursor_save_loop:
+    tran r3, r5
+    add r3, r4
+    or r3, AVC_SET_X
+    write & CONSOLE_GPU, r3
+    load r1, 0                 ; READ operation 0 returns the selected pixel
+    read & CONSOLE_GPU
+    load r2, console_cursor_pixels
+    add r2, r4
+    ldbp r2
+    store & bp + 0, l1         ; save RGB332 before drawing the underline
+    write & CONSOLE_GPU, word AVC_SET_COLOR + AVC_WHITE
+    write & CONSOLE_GPU, word 0
+    inc r4
+    cmp r4, CONSOLE_CELL_WIDTH
+    jne console_cursor_save_loop
+    pobp
+    write & CONSOLE_GPU, word AVC_SET_COLOR ; restore black clear/pixel color
+    store & console_cursor_active, word 1
+    ret
+console_cursor_hide:
+    load r0, & console_cursor_active
+    cmp r0, 0
+    jeq console_cursor_return
+    load r5, & console_cursor_x
+    load r6, & console_cursor_y
+    add r6, CONSOLE_CURSOR_ROW
+    or r6, AVC_SET_Y
+    write & CONSOLE_GPU, r6
+    load r4, 0
+    phbp
+console_cursor_restore_loop:
+    tran r3, r5
+    add r3, r4
+    or r3, AVC_SET_X
+    write & CONSOLE_GPU, r3
+    load r2, console_cursor_pixels
+    add r2, r4
+    ldbp r2
+    load r0, 0
+    load l0, & bp + 0
+    or r0, AVC_SET_COLOR
+    write & CONSOLE_GPU, r0
+    write & CONSOLE_GPU, word 0
+    inc r4
+    cmp r4, CONSOLE_CELL_WIDTH
+    jne console_cursor_restore_loop
+    pobp
+    write & CONSOLE_GPU, word AVC_SET_COLOR
+    store & console_cursor_active, word 0
+    ret
+
+; Erase the cell at console_x/y without advancing the text position.
+; getl restores this coordinate from its per-character history on backspace.
+console_erase_cell:
+    load r3, & console_x
+    or r3, AVC_SET_X
+    write & CONSOLE_GPU, r3
+    load r3, & console_y
+    or r3, AVC_SET_Y
+    write & CONSOLE_GPU, r3
+    write & CONSOLE_GPU, word AVC_SET_TEXTURE + CONSOLE_SPACE_TEXTURE
+    write & CONSOLE_GPU, word AVC_DRAW_TEXTURE
+    ret
+console_cursor_active:
+    word 0
+console_cursor_x:
+    word 0
+console_cursor_y:
+    word 0
+console_cursor_pixels:
+    reserve CONSOLE_CELL_WIDTH

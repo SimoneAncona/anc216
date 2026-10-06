@@ -1,3 +1,6 @@
+use SHELL_ARGUMENT_PHYSICAL as 0x7000
+use SHELL_ARGUMENT_LOGICAL as 0x3000
+
 ; UALf application loader. The filesystem descriptor must already be open.
 ; A bounded 3584-byte staging area prevents a bad file from overwriting kernel
 ; memory. Validate the complete header before replacing the current process.
@@ -144,9 +147,33 @@ exec_copy:
     load r0, & exec_entry
     push r0
     push byte 0
+    ; Only run(1a) requests an argument handoff and shell restart on exit.
+    load r0, & shell_launch_pending
+    store & shell_return_pending, r0
+    store & shell_launch_pending, word 0
+    cmp r0, 0
+    jeq exec_no_arguments
+    load r4, shell_arguments
+    load r3, SHELL_ARGUMENT_PHYSICAL
+    load r5, & shell_argument_length
+    phbp
+    call shell_copy_bytes
+    pobp
+    load r3, SHELL_ARGUMENT_PHYSICAL
+    add r3, & shell_argument_length
+    phbp
+    ldbp r3
+    store & bp + 0, byte 0
+    pobp
+exec_no_arguments:
+    ; Loading is complete; command file handles refer to the session data volume.
+    load r1, & shell_session_device
+    phbp
+    call fs_mount
+    pobp
     load r0, 0
-    load r1, 0
-    load r2, 0
+    load r1, SHELL_ARGUMENT_LOGICAL
+    load r2, & shell_argument_length
     load r3, 0
     load r4, 0
     load r5, 0
@@ -170,6 +197,9 @@ process_finish:
     ldbp 0x3000
     store & process_active, word 0
     store & fs_head, word 0
+    load r0, & shell_return_pending
+    cmp r0, 0
+    jne shell_restart
     jmp idle
 process_active:
     word 0

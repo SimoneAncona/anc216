@@ -1,0 +1,118 @@
+# Differences and clarifications relative to ANC216.pdf
+
+This file collects the corrections, implementation choices and open questions
+we have discussed. The original PDF remains unchanged. A clarification fills a
+gap; it does not imply that the PDF explicitly specifies the opposite behavior.
+See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
+[REVIEW.md](REVIEW.md) for the architecture review.
+
+## Confirmed corrections and agreed interpretation
+
+| PDF location | Issue | Implemented rule |
+| --- | --- | --- |
+| pp. 5–7 | Text calls some modes SP-relative, while the encodings use BP. | These modes are BP-relative; no SP-relative addressing exists. |
+| p. 5 | System SP storage is described as one byte. | The 16-bit system SP occupies `0x000c..0x000d`; subsequent OS storage starts at `0x000e`. |
+| p. 8 | A saved word SP is placed at the final byte `0x31ff`. | Saved SP occupies `0x31fe..0x31ff`; saved BP occupies `0x31fc..0x31fd`. |
+| pp. 14, 23 | CALL/RET frame cleanup and return position are ambiguous. | CALL accepts only absolute addressing and saves PC after its complete four-byte instruction, then SR. BP becomes the first local byte. RET restores PC/SR and sets SP to BP−3; BP preservation is caller-managed. RET returns from CALL routines. |
+| p. 18 | JLE uses AND between less-than and equality conditions. | JLE tests `(N != O) OR Z`. |
+| pp. 14, 21 | Additional-request flag A is confused with Z. | A is SR bit 2 (`0x04`); Z is a separate flag. |
+| p. 11 | WRITE example uses opcode `0x17`. | The opcode table is correct: WRITE is `0x1b`; example bytes are `e0 1b ff 00`. |
+| p. 7 | `bp - l4` implies a subtraction encoding. | Only register addition is encoded: `bp + l4`. A signed negative low-byte index can produce a negative displacement. |
+| p. 27 | SWAP detail permits memory operands. | SWAP exchanges two full registers only. |
+
+## Emulator clarifications and limitations
+
+- **MTU and S:** S=0 rebases absolute operands using the corresponding lower
+  index and enforces user bounds. S=1 uses physical addresses and bypasses user
+  bounds. PC/SP/BP, PC/BP-relative addresses and stack accesses are physical;
+  user accesses still undergo their applicable bounds checks. Interrupt/syscall
+  entry sets S; restoring SR with POSR can resume user mode. This explicit
+  execution contract resolves ambiguity in the PDF's general MTU description.
+- **Reset defaults:** the emulator initializes PC=`0xff00`, SP/BP=`0x3000`,
+  SR=`0x3c`, IMEM bounds `0..0xfeff`, EMEM bounds `0..0xffff`, stack bounds
+  `0x3200..0xfeff`, and the system-SP vector to `0x3000`.
+- **Return ABI:** CALL pushes a two-byte PC and one-byte SR; BP points just above
+  that frame. Nested callers preserve BP with `phbp; call routine; pobp`.
+  Interrupt return restores saved registers and SP/BP explicitly, then uses
+  POSR/POPC. There is no new interrupt-return opcode. NMI saves only L0, so the
+  original high byte of R0 is not automatically preserved.
+- **Instruction details:** PC-relative offsets use PC after the entire
+  instruction. Signed offsets/indexes use two's complement. Low-register writes
+  preserve the upper byte. LDSR/STSR memory transfers are bytes; ordinary full
+  memory transfers are words. TIME accepts immediate operands as the original
+  assembler did. Explicit flag behavior, shift edge cases and operand legality
+  are recorded in IMPLEMENTATION.md and the shared encoding table.
+- **Protection:** user LDSR/POSR/RET cannot elevate S/I/T. Faults save the faulting
+  PC; an unhandled vector halts with an error. Guest stores cannot modify ROM
+  `0xff00..0xffff`; host loading/debug initialization can.
+- **Timer:** TIME loads a stopped millisecond countdown, TSTART starts/resumes,
+  and TSTOP stops it. Time follows the host steady clock, independent of guest
+  instruction speed. The emulator does not model cycle-accurate hardware timing.
+- **Device requests:** READ uses R1 as request and response. REQ/HREQ use R1 as
+  payload and deliver EINR only when I is enabled; masked requests are not queued
+  for later delivery. IREQ returns ID in R0 and address in R1. An absent device
+  identifies as `0xffff`; unmapped reads return zero and writes do nothing.
+  High-priority variants have no scheduling distinction without bus arbitration.
+- **Mapped ROM/MPME:** WRITE/HWRITE carry their encoded source data. MPME uses
+  A=0 to select its internal address and A=1 to write data, with byte/word transfer
+  width. MPME writes persist only within the emulator session.
+- **Keyboard:** the ASCII/scancode queue, polling requests, overflow handling and
+  keyboard IRQ payload are an emulator protocol supplement, rather than a
+  complete protocol specified by ANC216.pdf. The device is at EMEM `0xfffc`, ID
+  `0x0301`. See IMPLEMENTATION.md for the complete wire contract.
+- **Host controls:** SDL Ctrl+D requests soft RESET NMI; SDL Ctrl+C/window close
+  requests shutdown. Terminal Ctrl+C requests shutdown during normal execution
+  and pauses during debugging. These are host bindings to guest control pins.
+- **Unsupported hardware:** audio, custom script extensions and bus-arbitration
+  timing lack complete implemented software contracts.
+
+## Open: user-mode IO and EMEM bounds
+
+The PDF marks READ, WRITE, IREQ, REQ, HREQ, HWRITE, PAREQ and CAREQ as privileged.
+The emulator currently follows that privilege table. Combined with the S=1 MTU
+bypass, this leaves the EMEM lower/upper indices ineffective for device access:
+user IO traps before mapping, while system IO bypasses mapping.
+
+Allowing READ and WRITE in user mode is a proposed change, **not implemented or
+accepted yet**. Existing system-mode IO can retain its current behavior and wire
+encoding. A complete change must address:
+
+- Validate every user device address against EMEM bounds. Currently absolute
+  operands are mapped, but register-address READ and PC/BP-relative IO paths do
+  not pass through that mapping. Decide the logical/physical convention for each
+  mode and reject access outside the granted range, without wrapping arithmetic.
+- Keep EMEM-bound setters privileged. The existing OS sets user EMEM to `0..0`,
+  so it grants no access to its devices at `0x0100`, `0x0200`, `0xfffc`, etc.
+- Define access to A: PAREQ/CAREQ are currently privileged, although user SR
+  writes can change A while preserving protected S/I/T. Decide the intended
+  supported interface, especially for MPME's address/data protocol.
+- Direct IO bypasses syscall permission flags and filesystem checks for any
+  device in the granted range. Shared device state, keyboard event consumption,
+  display access and raw card writes need an ownership policy. A contiguous range
+  grants all devices in it, not individual operations or files.
+- Update privilege tests and add coverage for allowed/denied IO, all address
+  modes, overflow, and unchanged system-mode access.
+
+Other choices are to reserve/remove the unused EMEM indices, or define explicit
+bounded system IO. See REVIEW.md. No choice has been applied to the code.
+
+## OS conventions, not ISA changes
+
+The kernel at `0x0100`, ROM device at EMEM `0x0100`, boot cards at `0x0200/0x0201`,
+user IMEM `0x4000..0x7fff`, interrupt stack at `0x3100`, and return stub at
+`0x7ff0` are this OS's choices. POSR at `0x7ff0` restores SR; POPC at `0x7ff2`
+restores the actual user PC. The stub must be inside user IMEM after clearing S.
+It is not a new ISA instruction or a fixed architectural return address.
+
+The initial OS implements selected syscalls and adds mount/exec/rewind/size;
+it does not implement every proposed service from the introductory PDF.
+User input is polled by getl with interrupts masked; idle IRQs consume keys
+silently. See [the OS guide](../os/README.md) and [ABI](../os/SYSCALLS.md).
+
+## Related documents
+
+The previously discussed UALf 11-byte base header/file-relative entry, AFS v1
+17+3-byte filenames and 300/320-byte payloads, and AVC64 256×224 resolution and
+emulator command/texture packing concern their own format/device documents,
+rather than ANC216.pdf alone. Their corrections and implementation contracts
+remain in IMPLEMENTATION.md and REVIEW.md.

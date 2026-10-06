@@ -2,12 +2,21 @@
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
 import "../libs/abi.anc216"
 _code:
+    load r0, SYS_GETCWD                  ; r0 = SYS_GETCWD
+    load r1, path_result                 ; r1 = path_result
+    load r2, OS_PATH_CAPACITY            ; r2 = OS_PATH_CAPACITY
+    syscall                              ; invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
+    jne app_error                        ; if not equal, goto app_error
+    tran r2, r6                          ; r2 = r6
     phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; print arguments verbatim, including spaces
+    call app_print                       ; app_print()
     pobp                                 ; restore the saved BP
     phbp                                 ; save BP before pointer/helper use
     call app_newline                     ; app_newline()
     pobp                                 ; restore the saved BP
     jmp app_exit                         ; goto app_exit
 
+import "../libs/strings.anc216"
+import "../libs/paths.anc216"
 import "../libs/io.anc216"

@@ -1,0 +1,47 @@
+; A standalone user executable. R1 points to argument bytes, R2 is their length.
+; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
+import "../libs/abi.anc216"
+_code:
+    cmp r2, 0                            ; compare r2 with 0
+    jeq app_error                        ; if equal, goto app_error
+    tili r5                              ; r5 = MTU IMEM base
+    add r1, r5                           ; r1 += r5
+    load r4, 0                           ; decimal EMEM chip address accumulator
+    phbp                                 ; save BP before pointer/helper use
+mount_digit:
+    ldbp r1                              ; BP = r1 (physical pointer or saved frame)
+    load r0, 0                           ; r0 = 0
+    load l0, & bp + 0                    ; l0 = *(bp + 0)
+    cmp r0, ASCII_DIGIT_ZERO             ; compare r0 with ASCII_DIGIT_ZERO
+    jls mount_bad                        ; if less, goto mount_bad
+    cmp r0, ASCII_DIGIT_NINE             ; compare r0 with ASCII_DIGIT_NINE
+    jgr mount_bad                        ; if greater, goto mount_bad
+    sub r0, ASCII_DIGIT_ZERO             ; r0 -= ASCII_DIGIT_ZERO
+    cmp r4, DECIMAL_MULTIPLY_LIMIT       ; compare r4 with DECIMAL_MULTIPLY_LIMIT
+    jgr mount_bad                        ; multiplication by ten must not overflow
+    tran r3, r4                          ; r3 = r4
+    shl r4, 3                            ; r4 <<= 3
+    shl r3, 1                            ; r3 <<= 1
+    add r4, r3                           ; r4 += r3
+    add r4, r0                           ; r4 += r0
+    trsr l3                              ; l3 = SR (inspect flags from the preceding operation)
+    and l3, 1                            ; l3 &= 1
+    jne mount_bad                        ; if not equal, goto mount_bad
+    inc r1                               ; r1++
+    dec r2                               ; r2--
+    jne mount_digit                      ; if not equal, goto mount_digit
+    pobp                                 ; restore the saved BP
+    load r0, SYS_MOUNT                   ; r0 = SYS_MOUNT
+    tran r1, r4                          ; r1 = r4
+    syscall                              ; invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
+    jne app_error                        ; if not equal, goto app_error
+    jmp app_exit                         ; goto app_exit
+mount_bad:
+    pobp                                 ; restore the saved BP
+    load r7, OS_INVALID                  ; r7 = OS_INVALID
+    jmp app_error                        ; goto app_error
+
+import "../libs/strings.anc216"
+import "../libs/paths.anc216"
+import "../libs/io.anc216"

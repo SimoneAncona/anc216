@@ -1,5 +1,8 @@
 # ISA and documentation review
 
+The collected PDF corrections, clarifications and pending changes are in
+[ANC216_DIFFERENCES.md](ANC216_DIFFERENCES.md).
+
 ANC216 has a clean, understandable core for an educational microcontroller. Eight 16-bit registers with named low bytes, big-endian words, an explicit addressing byte, and conventional arithmetic/condition flags make it easy to teach and decode. A single system/user bit is reasonable; a ring hierarchy would add little here. Software multiplication and division are also reasonable for a small implementation.
 
 The encoding is regular, although instructions are variable length: two header bytes followed by zero to four operand bytes. Separating addressing from the operation is a good design choice. The main implementation risk was three different copies of the ISA drifting apart; `common/encoding.hh` now supplies opcode names, legal operand families, privilege requirements, and wire decoding.

@@ -1,0 +1,92 @@
+; Guest regression test for byte-based, bounded string routines.
+import "../os/libs/abi.anc216"
+_code:
+    load r0, string_a
+    load r1, 3
+    load r2, string_b
+    load r3, 3
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, string_a
+    load r1, 3
+    load r2, string_c
+    load r3, 3
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_INVALID
+    jne test_failure
+    load r0, 0
+    load r1, 0
+    load r2, 0
+    load r3, 0
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, string_nul
+    load r1, 4
+    phbp
+    call str_nulterm_len
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 3
+    jne test_failure
+    load r0, string_nul
+    load r1, 3
+    phbp
+    call str_nulterm_len
+    pobp
+    cmp r7, OS_INVALID
+    jne test_failure
+    load r0, string_a
+    load r1, 3
+    load r2, string_buffer
+    load r3, 4
+    phbp
+    call str_copy
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load l0, & string_buffer + 3
+    cmp l0, ASCII_NUL
+    jne test_failure
+    load r0, string_buffer
+    load r1, 3
+    load r2, string_b
+    load r3, 3
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, string_a
+    load r1, 3
+    load r2, string_buffer
+    load r3, 3
+    phbp
+    call str_copy
+    pobp
+    cmp r7, OS_INVALID
+    jne test_failure
+    jmp app_exit
+string_a:
+    "abc", byte 88
+string_b:
+    "abc", byte 89
+string_c:
+    "abd"
+string_nul:
+    "abc", byte ASCII_NUL
+string_buffer:
+    reserve 4
+test_failure:
+    load r7, OS_INVALID        ; an assertion failure always exits nonzero
+    jmp app_error
+import "../os/libs/strings.anc216"
+import "../os/libs/io.anc216"

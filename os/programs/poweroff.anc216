@@ -1,0 +1,5 @@
+; Poweroff the system
+import "../libs/abi.anc216"
+_code:
+    load l0, SYS_POWEROFF
+    syscall

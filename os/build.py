@@ -21,7 +21,7 @@ def charmap():
     data = bytearray()
     for code in range(32, 127):
         data.extend(code.to_bytes(2, 'big') + bytes([8, 8, 0, 0]))
-        data.extend(glyphs[chr(code).upper() if chr(code).islower() else chr(code)])
+        data.extend(glyphs[chr(code)])
     return bytes(data)
 
 
@@ -48,13 +48,16 @@ def main():
         raise ValueError('Boot or kernel exceeds its memory region')
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
-    # The demo runs as a user application with console and filesystem grants.
-    for name in ('init', 'echo'):
+    # Shell and commands are real user executables; grants follow their services.
+    programs = ('init', 'readline-demo', 'sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'poweroff')
+    for name in programs:
         application = args.output / f'{name}.ual'
         subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),
                         str(application.resolve()), '-h=ualf', '-s'], check=True)
         data = bytearray(application.read_bytes())
-        data[7] = 0xa0 if name == 'init' else 0x80
+        data[7] = 0x80 if name in ('echo', 'clear', 'help', 'readline-demo') else 0xa0
+        if len(data) > 0x0e00:
+            raise ValueError(f"{name} exceeds the 3584-byte executable staging region")
         application.write_bytes(data)
     cardreader = str(args.cardreader.resolve())
     def card(*arguments):
@@ -70,14 +73,30 @@ def main():
     bad = args.output / 'bad.ual'
     bad.write_bytes(b'NOT UALf')
     card(disk0, 'put', '/bin/bad', bad)
-    card(disk0, 'put', '/bin/init', args.output / 'init.ual')
-    card(disk0, 'put', '/bin/echo', args.output / 'echo.ual')
+    for name in programs:
+        card(disk0, 'put', '/bin/' + ('demo-init' if name == 'init' else name), args.output / f'{name}.ual')
+    card(disk0, 'put', '/bin/init', args.output / 'sh.ual')
     content = args.output / 'message.txt'
     content.write_bytes(b'A' * 300 + b'B' * 320 + b'C' * 30)
     card(disk0, 'put', '/data/message.txt', content)
     content = args.output / 'other.txt'
     content.write_bytes(b'SECOND MPME VOLUME OK!\n')
     card(disk1, 'put', '/other.txt', content)
+    # The integration fixture selects the old init without changing disk0's shell.
+    demo_disk = args.output / 'demo-disk0.afs'
+    demo_disk.write_bytes(disk0.read_bytes())
+    card(demo_disk, 'set', '/bin/init', args.output / 'init.ual')
+    # Guest-only regression executables live on a separate test image.
+    shell_test_disk = args.output / 'shell-test.afs'
+    shell_test_disk.write_bytes(disk0.read_bytes())
+    for test_name in ('strings', 'fs_namespace'):
+        application = args.output / f'test-{test_name}.ual'
+        subprocess.run([str(args.assembler.resolve()), str(ROOT.parent / f'tests/{test_name}_test.anc216'),
+                        str(application.resolve()), '-h=ualf', '-s'], check=True)
+        data = bytearray(application.read_bytes())
+        data[7] = 0xa0
+        application.write_bytes(data)
+        card(shell_test_disk, 'put', '/bin/test-' + test_name, application)
     font = charmap()
     (args.output / 'charmap.bin').write_bytes(font)
     print(f'Boot: {len(boot)} bytes; kernel: {len(kernel)} bytes; font: {len(font)} bytes')

@@ -41,11 +41,15 @@ syscall_handler:
     jeq syscall_print
     cmp r0, 6
     jeq syscall_getl
+    cmp r0, 7
+    jeq syscall_clear
     cmp r0, 6
     jls syscall_fs_permission
+    cmp r0, 0x1d
+    jeq [0x000a]
     cmp r0, 0x10
     jls syscall_unsupported
-    cmp r0, 0x13
+    cmp r0, 0x1c
     jgr syscall_unsupported
 syscall_fs_permission:
     load r1, & process_flags
@@ -67,6 +71,22 @@ syscall_fs_permission:
     jeq syscall_rewind
     cmp r0, 0x13
     jeq syscall_size
+    cmp r0, 0x14
+    jeq syscall_directory
+    cmp r0, 0x15
+    jeq syscall_list
+    cmp r0, 0x16
+    jeq syscall_touch
+    cmp r0, 0x17
+    jeq syscall_mkdir
+    cmp r0, 0x18
+    jeq syscall_remove
+    cmp r0, 0x1a
+    jeq syscall_run
+    cmp r0, 0x1b
+    jeq syscall_getcwd
+    cmp r0, 0x1c
+    jeq syscall_chdir
 syscall_unsupported:
     load r7, 8
     jmp syscall_return
@@ -247,6 +267,12 @@ syscall_mount:
     phbp
     call fs_mount
     pobp
+    cmp r7, FS_SUCCESS
+    jne syscall_return
+    load r0, & arg1
+    store & shell_session_device, r0 ; cwd and selected volume survive commands
+    store & shell_cwd_length, word 1
+    store & shell_cwd, word 0x2f00 ; a new volume starts at root
     jmp syscall_return
 syscall_exec:
     load r1, & arg1
@@ -314,11 +340,18 @@ syscall_getl_present:
     dec r2
     store & input_capacity, r2
     store & input_length, word 0
+    phbp
+    call console_cursor_reset
+    pobp
 syscall_getl_loop:
+    phbp
+    call console_cursor_tick    ; blink even when the input queue is empty
+    pobp
     load r1, 0
     read & 0xfffc
     cmp r1, 0
     jeq syscall_getl_loop
+    store & input_event, r1     ; drawing uses R1 for GPU reads
     cmp r1, 10
     jeq syscall_getl_done
     cmp r1, 8
@@ -330,6 +363,22 @@ syscall_getl_loop:
     load r0, & input_length
     cmp r0, & input_capacity
     jge syscall_getl_loop
+    phbp
+    call console_cursor_hide
+    pobp
+    ; Remember the actual cell, including line wraps, for visual backspace.
+    load r2, & input_length
+    shl r2, 1
+    add r2, input_coordinates
+    load r0, & console_x
+    shl r0, 8
+    or r0, & console_y
+    phbp
+    ldbp r2
+    store & bp + 0, r0
+    pobp
+    load r0, & input_length
+    load r1, & input_event
     phbp
     load r2, & input_pointer
     ldbp r2
@@ -343,19 +392,50 @@ syscall_getl_loop:
     phbp
     call putc
     pobp
+    phbp
+    call console_cursor_reset
+    pobp
     jmp syscall_getl_loop
 syscall_getl_backspace:
     load r0, & input_length
     cmp r0, 0
     jeq syscall_getl_loop
+    phbp
+    call console_cursor_hide
+    pobp
+    load r0, & input_length
     dec r0
     store & input_length, r0
+    shl r0, 1
+    add r0, input_coordinates
+    phbp
+    ldbp r0
+    load r3, & bp + 0           ; high byte X, low byte Y of the deleted glyph
+    pobp
+    tran r0, r3
+    shr r0, 8
+    store & console_x, r0
+    and r3, 0xff
+    store & console_y, r3
     load r0, & input_pointer
     dec r0
     store & input_pointer, r0
-    ; Backspace updates the input buffer. Screen erasure is deferred.
+    phbp
+    ldbp r0
+    store & bp + 0, byte 0      ; remove the byte as well as its visible glyph
+    pobp
+    phbp
+    call console_erase_cell
+    pobp
+    phbp
+    call console_cursor_reset
+    pobp
     jmp syscall_getl_loop
 syscall_getl_done:
+    phbp
+    call console_cursor_hide   ; no cursor remains after Enter returns the line
+    pobp
+    tstop
     phbp
     load r2, & input_pointer
     ldbp r2
@@ -424,3 +504,10 @@ syscall_pc:
     word 0
 syscall_sr:
     word 0
+
+import "shell_services.anc216"
+
+input_event:
+    word 0
+input_coordinates:
+    reserve 510                ; 255 saved XY words; getl accepts at most 254 bytes

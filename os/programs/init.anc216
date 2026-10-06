@@ -182,6 +182,6 @@ other_path:
 bad_path:
     "/bin/bad"
 echo_path:
-    "/bin/echo"
+    "/bin/readline-demo"
 fd:
     byte 0

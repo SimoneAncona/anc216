@@ -1,0 +1,91 @@
+; Test readdir records/cursors independently of how ls prints them.
+import "../os/libs/abi.anc216"
+use EXPECTED_NAME_LENGTH as 11
+_code:
+    load r0, SYS_DIRECTORY
+    load r1, data_path
+    load r2, sizeof data_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 0
+    jeq test_failure
+    load r0, SYS_LIST
+    load r1, data_path
+    load r2, sizeof data_path
+    load r3, entry
+    load r4, 0
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 0
+    jeq test_failure
+    store & cursor, r6
+    load l0, & entry
+    cmp l0, 2
+    jne test_failure
+    load r0, entry + 1
+    load r1, EXPECTED_NAME_LENGTH
+    load r2, expected_name
+    load r3, sizeof expected_name
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load l0, & entry + EXPECTED_NAME_LENGTH + 1
+    cmp l0, ASCII_NUL
+    jne test_failure
+    load r0, SYS_LIST
+    load r1, data_path
+    load r2, sizeof data_path
+    load r3, entry
+    load r4, & cursor
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 0
+    jne test_failure
+    load l0, & entry
+    cmp l0, 0
+    jne test_failure
+    ; Invalid output cannot overlap the reserved mode-switch stub.
+    load r0, SYS_LIST
+    load r1, data_path
+    load r2, sizeof data_path
+    load r3, 0x3ff0
+    load r4, 0
+    syscall
+    cmp r7, OS_INVALID
+    jne test_failure
+    load r0, SYS_LIST
+    load r3, entry
+    load r4, 293
+    syscall
+    cmp r7, OS_INVALID
+    jne test_failure
+    ; Root lookup succeeds without scanning past a zero-length component.
+    load r0, SYS_DIRECTORY
+    load r1, root_path
+    load r2, sizeof root_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 0
+    jne test_failure
+    jmp app_exit
+cursor:
+    word 0
+entry:
+    reserve OS_ENTRY_BYTES
+data_path:
+    "/data"
+root_path:
+    "/"
+expected_name:
+    "message.txt"
+test_failure:
+    load r7, OS_INVALID        ; an assertion failure always exits nonzero
+    jmp app_error
+import "../os/libs/strings.anc216"
+import "../os/libs/io.anc216"

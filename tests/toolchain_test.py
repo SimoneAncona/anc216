@@ -52,6 +52,11 @@ with tempfile.TemporaryDirectory(prefix='anc216-tests-') as directory:
     (p/'part.anc216').write_text('byte 0xbb\n')
     assemble('byte 0xaa\nimport "part.anc216"\nbyte 0xcc\n')
     assert binary.read_bytes() == bytes.fromhex('aabbcc')
+    # Imported libraries share use/as aliases with their callers and siblings.
+    (p/'constants.anc216').write_text('use SHARED_BYTE as 0x42\n')
+    (p/'alias-user.anc216').write_text('byte SHARED_BYTE, CALLER_BYTE\n')
+    assemble('use CALLER_BYTE as 0x24\nimport "constants.anc216"\nimport "alias-user.anc216"\nbyte SHARED_BYTE\n')
+    assert binary.read_bytes() == bytes.fromhex('422442')
     assemble('use enabled\nif enabled then\nkill\n', False)
     assemble('tran l0, l1\n', False)
     assemble('swap r0, r1\n')

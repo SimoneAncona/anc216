@@ -1,466 +1,574 @@
 ; AFS v1 filesystem over MPME216. One mounted volume and one descriptor (1).
 ; Mounting another chip closes the descriptor; any EMEM address can be mounted.
 ; Paths are absolute, with directories up to 15 bytes and file names 17+3.
-; The cardreader owns formatting/allocation. Guest writes overwrite allocated
-; file bytes in place; EOF does not extend the chain or resize the file.
+; Guest namespace operations allocate empty file heads/directories and remove
+; validated files or empty directories. Transfers still overwrite existing bytes;
+; EOF does not extend the chain or resize the file.
 ; R7 is the status: 0 success, 1 invalid input, 2 device/format, 3 not found,
 ; 4 no descriptor, 5 corrupt chain, 6 capacity. All entry points clobber scratch
 ; registers. They preserve their CALL frame BP even when using BP as a pointer.
 
+use MPME216ID as 0x0102
+use AFS_MAGIC as 0xfe01
+use FS_SUCCESS as 0
+use FS_INVALID_INPUT as 1
+use FS_BAD_DEVICE as 2
+use FS_NOT_FOUND as 3
+use FS_NO_DESCRIPTOR as 4
+use FS_CORRUPT_CHAIN as 5
+use FS_DISK_CAPACITY as 6
+use FS_DIR_SEP_CHAR as 47
+use FS_EXT_DOT_CHAR as 46
+use FS_FIRST_PRINTABLE as 32
+use FS_DELETE_CHAR as 127
+use FS_BACKSLASH_CHAR as 92
+use FS_COLON_CHAR as 58
+use FS_MAX_FNAME_LEN as 17
+use FS_EXISTS as 10
+use FS_NOT_EMPTY as 11
+use FS_MAX_DIRNAME_LEN as 15
+use FS_NAME_FIELDS as 20
+use FS_MAX_PATH as 255
+use FS_DIRECTORY_COUNT as 96
+use FS_CLUSTER_COUNT as 196
+use FS_TABLE_OFFSET as 257
+use FS_DIRECTORY_OFFSET as 649
+use FS_DIRECTORY_BYTES as 16
+use FS_CLUSTER_OFFSET as 2185
+use FS_HEAD_NEXT as 20
+use FS_HEAD_LENGTH as 21
+use FS_HEAD_DATA as 23
+use FS_HEAD_CAPACITY as 300
+use FS_CONT_DATA as 3
+use FS_CONT_CAPACITY as 320
+use FS_ENTRY_BYTES as 24
+use FS_ENTRY_DIRECTORY as 1
+use FS_ENTRY_FILE as 2
+use FS_HEAD_TYPE as 1
+use FS_CONT_TYPE as 2
+
+; _______________________________________________________________________
 ; fs_mount(R1=EMEM address): require the MPME ID and AFS magic/version.
 fs_mount:
-    store & fs_device, r1
-    store & fs_mounted, word 0
-    store & fs_head, word 0
-    phbp
-    ldbp r1
-    ireq & bp + 0
-    pobp
-    cmp r0, 0x0102
-    jne fs_bad_device
-    load r1, 0
-    phbp
-    call disk_word
-    pobp
-    cmp r1, 0xfe01
-    jne fs_bad_device
-    store & fs_mounted, word 1
-    load r7, 0
-    ret
+    store & fs_device, r1                ; *fs_device = ememAddress
+    store & fs_mounted, word 0           ; *fs_mounted = false
+    store & fs_head, word 0              ; *(fs_head) = 0
+    phbp                                 ; temp save bp
+    ldbp r1                              ; bp = r1 (ememAddress)
+    ireq & bp + 0                        ; ireq bp (ireq returns the device id in the r0)
+    pobp                                 ; restore bp
+    cmp r0, MPME216ID                    ; if r0 != MPME216ID
+    jne fs_bad_device                    ; goto fs_bad_device
+    load r1, 0                           ; else r1 = 0
+    phbp                                 ; temp save bp
+    call disk_word                       ; disw_word()
+    pobp                                 ; restore bp
+    cmp r1, AFS_MAGIC                    ; if r1 != AFS_MAGIC
+    jne fs_bad_device                    ; goto fs_bad_device()
+    store & fs_mounted, word 1           ; else *fs_mounted = true
+    load r7, FS_SUCCESS                  ; status = success
+    ret                                  ; return 0
 fs_bad_device:
-    store & fs_device, word 0
-    load r7, 2
-    ret
+    store & fs_device, word 0            ; *fs_device = null
+    load r7, FS_BAD_DEVICE               ; status = device/format error
+    ret                                  ; return 2
 
+; _______________________________________________________________________
 ; fs_open(R1=physical path, R2=byte length): copy to a bounded kernel buffer.
 ; Components are resolved by scanning directory parents; no host FS is used.
 fs_open:
-    phbp
-    store & fs_head, word 0
-    load r0, & fs_mounted
-    cmp r0, 0
-    jeq fs_open_device
-    cmp r2, 1
-    jle fs_open_bad
-    cmp r2, 255
-    jgr fs_open_bad
-    load r3, fs_path
-    tran r4, r1
-    tran r5, r2
+    store & fs_directory_mode, word 0    ; resolve a file, not a directory
+    jmp fs_lookup                        ; goto fs_lookup
+
+; _______________________________________________________________________
+; fs_directory(R1=physical absolute path, R2=length): R6=directory ID.
+; Root is ID 0. This namespace lookup closes the single open descriptor.
+fs_directory:
+    store & fs_directory_mode, word 1    ; final component is a directory
+fs_lookup:
+    store & fs_missing_final, word 0     ; distinguish missing leaf from missing parent
+    phbp                                 ; temp save bp (see fs_open_keep where is restored)
+    store & fs_head, word 0              ; *fs_head = 0
+    load r0, & fs_mounted                ; r0 = *fs_mounted
+    cmp r0, 0                            ; if the mounted flag is false
+    jeq fs_open_device                   ; then goto fs_open_device
+    cmp r2, 1                            ; reject an empty path
+    jls fs_open_bad                      ; then goto fs_open_bad
+    cmp r2, FS_MAX_PATH                  ; else if r2 (byte length) >= 255
+    jgr fs_open_bad                      ; then goto fs_open_bad
+    load r3, fs_path                     ; r3 = fs_path
+    tran r4, r1                          ; r4 = r1 (physical path)
+    tran r5, r2                          ; r5 = r2 (byte length)
 fs_copy_path:
-    ldbp r4
-    load l0, & bp + 0
-    ldbp r3
-    store & bp + 0, l0
-    inc r4
-    inc r3
-    dec r5
-    jne fs_copy_path
-    ldbp r3
-    store & bp + 0, byte 0
-    load r0, & fs_path
-    shr r0, 8
-    cmp r0, 47
-    jne fs_open_bad
-    store & fs_parent, word 0
-    load r4, fs_path + 1
+    ldbp r4                              ; bp = r4 (physical path)
+    load l0, & bp + 0                    ; l0 = *bp (l0 = bp[0])
+    cmp l0, 0                            ; embedded NUL must not hide a path suffix
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    ldbp r3                              ; bp = r3
+    store & bp + 0, l0                   ; *bp = l0
+    inc r4                               ; r4++ (increment the pointer of the physical path)
+    inc r3                               ; r3++ (increment pointer of fs_path)
+    dec r5                               ; r5-- (decrement byte length)
+    jne fs_copy_path                     ; if r5 != 0 then goto fs_copy_path
+    ldbp r3                              ; else bp = r3 (pointer to end of fs_path)
+    store & bp + 0, byte 0               ; *bp = '\0'
+    load r0, & fs_path                   ; r0 = *fs_path
+    shr r0, 8                            ; r0 >>= 8 (so that l0 = to upper r0)
+    cmp r0, FS_DIR_SEP_CHAR              ; if l0 != '/'
+    jne fs_open_bad                      ; then goto fs_open_bad (path must begin with /)
+    store & fs_parent, word 0            ; *fs_parent = null
+    load r4, fs_path + 1                 ; start after the leading slash
+    cmp r2, 1                            ; is this the root path alone?
+    jne fs_component                     ; if not equal, goto fs_component
+    load r0, & fs_directory_mode         ; root can be opened only as a directory
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    load r6, 0                           ; root directory ID
+    load r7, FS_SUCCESS                  ; status = successr7 = FS_SUCCESS
+    jmp fs_open_finish                   ; goto fs_open_finish
 fs_component:
+    store & fs_final_directory, word 0   ; intermediate directory by default
     ; Clear a 20-byte fixed-field name before extracting each component.
-    load r3, fs_name
-    load r5, 20
+    load r3, fs_name                     ; r3 = fs_name
+    load r5, FS_NAME_FIELDS              ; r5 = 20
 fs_clear_name:
-    ldbp r3
-    store & bp + 0, byte 0
-    inc r3
-    dec r5
-    jne fs_clear_name
-    load r3, fs_name
-    load r5, 0
-    store & fs_dot, word 0
+    ldbp r3                              ; bp = r3
+    store & bp + 0, byte 0               ; *bp = 0
+    inc r3                               ; r3++
+    dec r5                               ; r5--
+    jne fs_clear_name                    ; if r5 != 0 then goto fs_clear_name
+    load r3, fs_name                     ; r3 = fs_name
+    load r5, 0                           ; r5 = 0
+    store & fs_dot, word 0               ; *fs_dot = false
 fs_component_char:
-    ldbp r4
-    load r0, 0
-    load l0, & bp + 0
-    cmp r0, 0
-    jeq fs_file_scan_start
-    cmp r0, 47
-    jeq fs_dir_scan_start
-    cmp r0, 46
-    jeq fs_extension
-    cmp r5, 20
-    jge fs_open_bad
-    ldbp r3
-    store & bp + 0, l0
-    inc r3
-    inc r4
-    inc r5
-    load r0, & fs_dot
-    cmp r0, 0
-    jne fs_component_char
-    cmp r5, 17
-    jgr fs_open_bad
-    jmp fs_component_char
+    ldbp r4                              ; bp = r4 (fs_path + 1)
+    load r0, 0                           ; r0 = 0
+    load l0, & bp + 0                    ; l0 = *bp (currentChar)
+    cmp r0, 0                            ; if r0 == '\0'
+    jeq fs_final_component               ; resolve the final component
+    cmp r0, FS_DIR_SEP_CHAR              ; else if r0 == '/'
+    jeq fs_dir_scan_start                ; then goto fs_dir_scan_start
+    cmp r0, FS_EXT_DOT_CHAR              ; else if r0 == '.'
+    jeq fs_extension                     ; then goto fs_extension
+    cmp r0, FS_FIRST_PRINTABLE           ; reject control characters in names
+    jls fs_open_bad                      ; if less, goto fs_open_bad
+    cmp r0, FS_DELETE_CHAR               ; compare r0 with FS_DELETE_CHAR
+    jge fs_open_bad                      ; if greater or equal, goto fs_open_bad
+    cmp r0, FS_BACKSLASH_CHAR            ; compare r0 with FS_BACKSLASH_CHAR
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    cmp r0, FS_COLON_CHAR                ; compare r0 with FS_COLON_CHAR
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    cmp r5, FS_NAME_FIELDS               ; if r5 >= 20 (the length of the fs_name is >= 20)
+    jge fs_open_bad                      ; then goto fs_open_bad
+    ldbp r3                              ; bp = r3 (fs_name)
+    store & bp + 0, l0                   ; *bp = l0 (*fs_name = currentChar)
+    inc r3                               ; fs_name++
+    inc r4                               ; fs_path++
+    inc r5                               ; r5++ (fs_name length)
+    load r0, & fs_dot                    ; r0 = *fs_dot
+    cmp r0, 0                            ; if a file extension is active
+    jne fs_component_char                ; continue within its three-byte field
+    cmp r5, FS_MAX_FNAME_LEN             ; if the base-name length exceeds its field
+    jgr fs_open_bad                      ; then goto fs_open_bad
+    jmp fs_component_char                ; goto fs_component_char
 fs_extension:
     ; The on-disk extension is a separate three-byte field.
-    load r0, & fs_dot
-    cmp r0, 0
-    jne fs_open_bad
-    cmp r5, 0
-    jeq fs_open_bad
-    store & fs_dot, word 1
-    load r3, fs_name + 17
-    load r5, 17
-    inc r4
-    jmp fs_component_char
-fs_dir_scan_start:
-    cmp r5, 0
-    jeq fs_open_bad
-    cmp r5, 15
-    jgr fs_open_bad
-    load r0, & fs_dot
-    cmp r0, 0
-    jne fs_open_bad
-    inc r4
-    store & fs_path_cursor, r4
-    load r4, 1
-    load r5, 649
-fs_dir_scan:
-    tran r1, r5
-    phbp
-    call disk_byte
-    pobp
-    cmp r1, & fs_parent
-    jne fs_dir_next
-    tran r2, r5
-    inc r2
-    load r3, fs_name
-    load r6, 15
-    phbp
-    call fs_match
-    pobp
-    cmp r7, 0
-    jeq fs_dir_found
-fs_dir_next:
-    inc r4
-    add r5, 16
-    cmp r4, 97
-    jne fs_dir_scan
-    jmp fs_open_missing
-fs_dir_found:
-    store & fs_parent, r4
-    load r4, & fs_path_cursor
-    jmp fs_component
-fs_file_scan_start:
-    cmp r5, 0
-    jeq fs_open_bad
-    load r4, 1
-fs_file_scan:
-    tran r1, r4
-    dec r1
-    shl r1, 1
-    add r1, 257
-    phbp
-    call disk_word
-    pobp
-    load r0, & fs_parent
-    shl r0, 8
-    or r0, 1
-    cmp r1, r0
-    jne fs_file_next
-    store & fs_cluster, r4
-    phbp
-    call fs_cluster_address
-    pobp
-    tran r2, r1
-    load r3, fs_name
-    load r6, 20
-    phbp
-    call fs_match
-    pobp
-    cmp r7, 0
-    jeq fs_file_found
-fs_file_next:
-    inc r4
-    cmp r4, 197
-    jne fs_file_scan
-    jmp fs_open_missing
-fs_file_found:
-    store & fs_head, r4
-    phbp
-    call fs_validate
-    pobp
-    cmp r7, 0
-    jne fs_open_finish
-    phbp
-    call fs_rewind
-    pobp
-    jmp fs_open_finish
-fs_open_bad:
-    load r7, 1
-    jmp fs_open_finish
-fs_open_device:
-    load r7, 2
-    jmp fs_open_finish
-fs_open_missing:
-    load r7, 3
-fs_open_finish:
-    cmp r7, 0
-    jeq fs_open_keep
-    store & fs_head, word 0
-fs_open_keep:
-    pobp
-    ret
+    load r0, & fs_dot                    ; r0 = *fs_dot
+    cmp r0, 0                            ; if r0 != '\0'
+    jne fs_open_bad                      ; then goto fs_open_bad (only file name can have '.' char in fname)
+    cmp r5, 0                            ; if r5 == 0
+    jeq fs_open_bad                      ; then goto fs_open_bad
+    store & fs_dot, word 1               ; *fs_dot = true
+    load r3, fs_name + FS_MAX_FNAME_LEN  ; r3 = fs_name + FS_MAX_FNAME_LEN
+    load r5, FS_MAX_FNAME_LEN            ; r5 = FS_MAX_FNAME_LEN
+    inc r4                               ; fs_path++
+    jmp fs_component_char                ; goto fs_component_char
 
+fs_final_component:
+    load r0, & fs_directory_mode         ; select file or directory leaf lookup
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_file_scan_start               ; if equal, goto fs_file_scan_start
+    store & fs_final_directory, word 1   ; NUL ends this directory name
+fs_dir_scan_start:
+    cmp r5, 0                            ; compare r5 with 0
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    cmp r5, FS_MAX_DIRNAME_LEN           ; compare r5 with FS_MAX_DIRNAME_LEN
+    jgr fs_open_bad                      ; if greater, goto fs_open_bad
+    load r0, & fs_dot                    ; r0 = *(fs_dot)
+    cmp r0, 0                            ; compare r0 with 0
+    jne fs_open_bad                      ; if not equal, goto fs_open_bad
+    load r0, & fs_final_directory        ; do not advance past the final NUL
+    cmp r0, 0                            ; compare r0 with 0
+    jne fs_dir_cursor                    ; if not equal, goto fs_dir_cursor
+    inc r4                               ; r4++
+fs_dir_cursor:
+    store & fs_path_cursor, r4           ; *(fs_path_cursor) = r4
+    load r4, 1                           ; r4 = 1
+    load r5, FS_DIRECTORY_OFFSET         ; r5 = FS_DIRECTORY_OFFSET
+fs_dir_scan:
+    tran r1, r5                          ; r1 = r5
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, & fs_parent                  ; compare r1 with *(fs_parent)
+    jne fs_dir_next                      ; if not equal, goto fs_dir_next
+    tran r2, r5                          ; r2 = r5
+    inc r2                               ; r2++
+    load r3, fs_name                     ; r3 = fs_name
+    load r6, FS_MAX_DIRNAME_LEN          ; r6 = FS_MAX_DIRNAME_LEN
+    phbp                                 ; save BP before pointer/helper use
+    call fs_match                        ; fs_match()
+    pobp                                 ; restore the saved BP
+    cmp r7, 0                            ; compare r7 with 0
+    jeq fs_dir_found                     ; if equal, goto fs_dir_found
+fs_dir_next:
+    inc r4                               ; r4++
+    add r5, FS_DIRECTORY_BYTES           ; r5 += FS_DIRECTORY_BYTES
+    cmp r4, FS_DIRECTORY_COUNT + 1       ; compare r4 with FS_DIRECTORY_COUNT + 1
+    jne fs_dir_scan                      ; if not equal, goto fs_dir_scan
+    load r0, & fs_final_directory        ; missing parent is never creatable
+    store & fs_missing_final, r0         ; *(fs_missing_final) = r0
+    jmp fs_open_missing                  ; goto fs_open_missing
+fs_dir_found:
+    store & fs_parent, r4                ; *(fs_parent) = r4
+    load r0, & fs_final_directory        ; r0 = *(fs_final_directory)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_dir_continue                  ; if equal, goto fs_dir_continue
+    tran r6, r4                          ; return the final directory ID
+    load r7, FS_SUCCESS                  ; status = successr7 = FS_SUCCESS
+    jmp fs_open_finish                   ; goto fs_open_finish
+fs_dir_continue:
+    load r4, & fs_path_cursor            ; r4 = *(fs_path_cursor)
+    jmp fs_component                     ; goto fs_component
+fs_file_scan_start:
+    cmp r5, 0                            ; compare r5 with 0
+    jeq fs_open_bad                      ; if equal, goto fs_open_bad
+    load r0, & fs_dot                    ; r0 = *(fs_dot)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_file_name_ready               ; if equal, goto fs_file_name_ready
+    cmp r5, FS_MAX_FNAME_LEN             ; compare r5 with FS_MAX_FNAME_LEN
+    jeq fs_open_bad                      ; a dot must be followed by an extension byte
+fs_file_name_ready:
+    load r4, 1                           ; r4 = 1
+fs_file_scan:
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    load r0, & fs_parent                 ; r0 = *(fs_parent)
+    shl r0, 8                            ; r0 <<= 8
+    or r0, 1                             ; r0 |= 1
+    cmp r1, r0                           ; compare r1 with r0
+    jne fs_file_next                     ; if not equal, goto fs_file_next
+    store & fs_cluster, r4               ; *(fs_cluster) = r4
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_address              ; fs_cluster_address()
+    pobp                                 ; restore the saved BP
+    tran r2, r1                          ; r2 = r1
+    load r3, fs_name                     ; r3 = fs_name
+    load r6, FS_NAME_FIELDS              ; r6 = FS_NAME_FIELDS
+    phbp                                 ; save BP before pointer/helper use
+    call fs_match                        ; fs_match()
+    pobp                                 ; restore the saved BP
+    cmp r7, 0                            ; compare r7 with 0
+    jeq fs_file_found                    ; if equal, goto fs_file_found
+fs_file_next:
+    inc r4                               ; r4++
+    cmp r4, FS_CLUSTER_COUNT + 1         ; compare r4 with FS_CLUSTER_COUNT + 1
+    jne fs_file_scan                     ; if not equal, goto fs_file_scan
+    store & fs_missing_final, word 1     ; all parents exist; only the file is absent
+    jmp fs_open_missing                  ; goto fs_open_missing
+fs_file_found:
+    store & fs_head, r4                  ; *(fs_head) = r4
+    phbp                                 ; save BP before pointer/helper use
+    call fs_validate                     ; fs_validate()
+    pobp                                 ; restore the saved BP
+    cmp r7, 0                            ; compare r7 with 0
+    jne fs_open_finish                   ; if not equal, goto fs_open_finish
+    phbp                                 ; save BP before pointer/helper use
+    call fs_rewind                       ; fs_rewind()
+    pobp                                 ; restore the saved BP
+    jmp fs_open_finish                   ; goto fs_open_finish
+fs_open_bad:
+    load r7, FS_INVALID_INPUT            ; status = FS_INVALID_INPUT
+    jmp fs_open_finish                   ; goto fs_open_finish
+fs_open_device:
+    load r7, 2                           ; r7 = 2
+    jmp fs_open_finish                   ; goto fs_open_finish
+fs_open_missing:
+    load r7, 3                           ; r7 = 3
+fs_open_finish:
+    cmp r7, FS_SUCCESS                   ; if status == FS_SUCCESS
+    jeq fs_open_keep                     ; then goto fs_open_keep
+    store & fs_head, word 0              ; else *fs_head = 0
+fs_open_keep:
+    pobp                                 ; restore the bp
+    ret                                  ; return status
+
+; _______________________________________________________________________
 ; Compare R6 bytes at chip R2 with kernel R3. Preserve scan registers R4/R5.
 fs_match:
-    phbp
+    phbp                                 ; save BP before pointer/helper use
 fs_match_loop:
-    tran r1, r2
-    phbp
-    call disk_byte
-    pobp
-    ldbp r3
-    load r0, 0
-    load l0, & bp + 0
-    cmp r0, r1
-    jne fs_match_no
-    inc r2
-    inc r3
-    dec r6
-    jne fs_match_loop
-    load r7, 0
-    pobp
-    ret
+    tran r1, r2                          ; r1 = r2
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    load r0, 0                           ; r0 = 0
+    load l0, & bp + 0                    ; l0 = *(bp + 0)
+    cmp r0, r1                           ; compare r0 with r1
+    jne fs_match_no                      ; if not equal, goto fs_match_no
+    inc r2                               ; r2++
+    inc r3                               ; r3++
+    dec r6                               ; r6--
+    jne fs_match_loop                    ; if not equal, goto fs_match_loop
+    load r7, 0                           ; r7 = 0
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 fs_match_no:
-    load r7, 3
-    pobp
-    ret
+    load r7, 3                           ; r7 = 3
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 
 ; Cluster IDs 1..196 -> offset 2185 + (id-1)*323, using shifts/adds.
 ; Return in R1, preserve R0/R2 so callers retain the scan state.
 fs_cluster_address:
-    push r0
-    push r2
-    load r0, & fs_cluster
-    dec r0
-    tran r1, r0
-    shl r1, 8
-    tran r2, r0
-    shl r2, 6
-    add r1, r2
-    add r1, r0
-    shl r0, 1
-    add r1, r0
-    add r1, 2185
-    pop r2
-    pop r0
-    ret
+    push r0                              ; save r0 on the upward-growing stack
+    push r2                              ; save r2 on the upward-growing stack
+    load r0, & fs_cluster                ; r0 = *(fs_cluster)
+    dec r0                               ; r0--
+    tran r1, r0                          ; r1 = r0
+    shl r1, 8                            ; r1 <<= 8
+    tran r2, r0                          ; r2 = r0
+    shl r2, 6                            ; r2 <<= 6
+    add r1, r2                           ; r1 += r2
+    add r1, r0                           ; r1 += r0
+    shl r0, 1                            ; r0 <<= 1
+    add r1, r0                           ; r1 += r0
+    add r1, FS_CLUSTER_OFFSET            ; r1 += FS_CLUSTER_OFFSET
+    pop r2                               ; restore r2 from the stack
+    pop r0                               ; restore r0 from the stack
+    ret                                  ; return through this routine's CALL frame
 
 ; Read the current cluster header. Sets data pointer, payload length and next ID.
 fs_cluster_info:
-    phbp
-    call fs_cluster_address
-    pobp
-    store & fs_base, r1
-    load r0, & fs_cluster
-    cmp r0, & fs_head
-    jne fs_cont_info
-    add r1, 20
-    phbp
-    call disk_byte
-    pobp
-    store & fs_next, r1
-    load r1, & fs_base
-    add r1, 21
-    phbp
-    call disk_word
-    pobp
-    store & fs_remaining, r1
-    load r1, & fs_base
-    add r1, 23
-    store & fs_offset, r1
-    ret
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_address              ; fs_cluster_address()
+    pobp                                 ; restore the saved BP
+    store & fs_base, r1                  ; *(fs_base) = r1
+    load r0, & fs_cluster                ; r0 = *(fs_cluster)
+    cmp r0, & fs_head                    ; compare r0 with *(fs_head)
+    jne fs_cont_info                     ; if not equal, goto fs_cont_info
+    add r1, FS_NAME_FIELDS               ; r1 += FS_NAME_FIELDS
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    store & fs_next, r1                  ; *(fs_next) = r1
+    load r1, & fs_base                   ; r1 = *(fs_base)
+    add r1, FS_HEAD_LENGTH               ; r1 += FS_HEAD_LENGTH
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    store & fs_remaining, r1             ; *(fs_remaining) = r1
+    load r1, & fs_base                   ; r1 = *(fs_base)
+    add r1, FS_HEAD_DATA                 ; r1 += FS_HEAD_DATA
+    store & fs_offset, r1                ; *(fs_offset) = r1
+    ret                                  ; return through this routine's CALL frame
 fs_cont_info:
-    phbp
-    call disk_byte
-    pobp
-    store & fs_next, r1
-    load r1, & fs_base
-    inc r1
-    phbp
-    call disk_word
-    pobp
-    store & fs_remaining, r1
-    load r1, & fs_base
-    add r1, 3
-    store & fs_offset, r1
-    ret
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    store & fs_next, r1                  ; *(fs_next) = r1
+    load r1, & fs_base                   ; r1 = *(fs_base)
+    inc r1                               ; r1++
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    store & fs_remaining, r1             ; *(fs_remaining) = r1
+    load r1, & fs_base                   ; r1 = *(fs_base)
+    add r1, 3                            ; r1 += 3
+    store & fs_offset, r1                ; *(fs_offset) = r1
+    ret                                  ; return through this routine's CALL frame
 
 ; Validate the complete file chain before exposing it: IDs/types/parent/length,
 ; a per-ID bitmap detects cycles. A corrupt chain never becomes a descriptor.
 fs_validate:
-    phbp
-    load r3, fs_seen
-    load r4, 196
+    phbp                                 ; save BP before pointer/helper use
+    load r3, fs_seen                     ; r3 = fs_seen
+    load r4, FS_CLUSTER_COUNT            ; r4 = FS_CLUSTER_COUNT
 fs_seen_clear:
-    ldbp r3
-    store & bp + 0, byte 0
-    inc r3
-    dec r4
-    jne fs_seen_clear
-    store & fs_size, word 0
-    load r0, & fs_head
-    store & fs_cluster, r0
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, byte 0               ; *(bp + 0) = 0
+    inc r3                               ; r3++
+    dec r4                               ; r4--
+    jne fs_seen_clear                    ; if not equal, goto fs_seen_clear
+    store & fs_size, word 0              ; *(fs_size) = 0
+    load r0, & fs_head                   ; r0 = *(fs_head)
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
 fs_validate_loop:
-    load r0, & fs_cluster
-    cmp r0, 1
-    jls fs_corrupt
-    cmp r0, 196
-    jgr fs_corrupt
-    tran r3, r0
-    add r3, fs_seen - 1
-    ldbp r3
-    load l1, & bp + 0
-    cmp l1, 0
-    jne fs_corrupt
-    store & bp + 0, byte 1
-    tran r1, r0
-    dec r1
-    shl r1, 1
-    add r1, 257
-    phbp
-    call disk_word
-    pobp
-    load r2, & fs_parent
-    shl r2, 8
-    load r0, & fs_cluster
-    cmp r0, & fs_head
-    jne fs_validate_cont
-    or r2, 1
-    load r4, 300
-    jmp fs_validate_meta
+    load r0, & fs_cluster                ; r0 = *(fs_cluster)
+    cmp r0, 1                            ; compare r0 with 1
+    jls fs_corrupt                       ; if less, goto fs_corrupt
+    cmp r0, FS_CLUSTER_COUNT             ; compare r0 with FS_CLUSTER_COUNT
+    jgr fs_corrupt                       ; if greater, goto fs_corrupt
+    tran r3, r0                          ; r3 = r0
+    add r3, fs_seen - 1                  ; r3 += fs_seen - 1
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    load l1, & bp + 0                    ; l1 = *(bp + 0)
+    cmp l1, 0                            ; compare l1 with 0
+    jne fs_corrupt                       ; if not equal, goto fs_corrupt
+    store & bp + 0, byte 1               ; *(bp + 0) = 1
+    tran r1, r0                          ; r1 = r0
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    load r2, & fs_parent                 ; r2 = *(fs_parent)
+    shl r2, 8                            ; r2 <<= 8
+    load r0, & fs_cluster                ; r0 = *(fs_cluster)
+    cmp r0, & fs_head                    ; compare r0 with *(fs_head)
+    jne fs_validate_cont                 ; if not equal, goto fs_validate_cont
+    or r2, 1                             ; r2 |= 1
+    load r4, FS_HEAD_CAPACITY            ; r4 = FS_HEAD_CAPACITY
+    jmp fs_validate_meta                 ; goto fs_validate_meta
 fs_validate_cont:
-    or r2, 2
-    load r4, 320
+    or r2, 2                             ; r2 |= 2
+    load r4, FS_CONT_CAPACITY            ; r4 = FS_CONT_CAPACITY
 fs_validate_meta:
-    cmp r1, r2
-    jne fs_corrupt
-    phbp
-    call fs_cluster_info
-    pobp
-    load r0, & fs_remaining
+    cmp r1, r2                           ; compare r1 with r2
+    jne fs_corrupt                       ; if not equal, goto fs_corrupt
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_info                 ; fs_cluster_info()
+    pobp                                 ; restore the saved BP
+    load r0, & fs_remaining              ; r0 = *(fs_remaining)
     ; Sizes with a high sign bit are necessarily outside 300/320.
-    cmp r0, 0
-    jls fs_corrupt
-    cmp r0, r4
-    jgr fs_corrupt
-    add r0, & fs_size
-    trsr l1
-    and l1, 1
-    jne fs_corrupt
-    store & fs_size, r0
-    load r0, & fs_next
-    cmp r0, 0
-    jeq fs_valid
-    store & fs_cluster, r0
-    jmp fs_validate_loop
+    cmp r0, 0                            ; compare r0 with 0
+    jls fs_corrupt                       ; if less, goto fs_corrupt
+    cmp r0, r4                           ; compare r0 with r4
+    jgr fs_corrupt                       ; if greater, goto fs_corrupt
+    add r0, & fs_size                    ; r0 += *(fs_size)
+    trsr l1                              ; l1 = SR (inspect flags from the preceding operation)
+    and l1, 1                            ; l1 &= 1
+    jne fs_corrupt                       ; if not equal, goto fs_corrupt
+    store & fs_size, r0                  ; *(fs_size) = r0
+    load r0, & fs_next                   ; r0 = *(fs_next)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_valid                         ; if equal, goto fs_valid
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+    jmp fs_validate_loop                 ; goto fs_validate_loop
 fs_corrupt:
-    load r7, 5
-    pobp
-    ret
+    load r7, 5                           ; r7 = 5
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 fs_valid:
-    load r7, 0
-    pobp
-    ret
+    load r7, 0                           ; r7 = 0
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 
 ; Reset sequential position without reparsing the path.
 fs_rewind:
-    load r0, & fs_head
-    cmp r0, 0
-    jeq fs_no_fd
-    store & fs_cluster, r0
-    phbp
-    call fs_cluster_info
-    pobp
-    load r7, 0
-    ret
+    load r0, & fs_head                   ; r0 = *(fs_head)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_no_fd                         ; if equal, goto fs_no_fd
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_info                 ; fs_cluster_info()
+    pobp                                 ; restore the saved BP
+    load r7, 0                           ; r7 = 0
+    ret                                  ; return through this routine's CALL frame
 fs_no_fd:
-    load r7, 4
-    ret
+    load r7, 4                           ; r7 = 4
+    ret                                  ; return through this routine's CALL frame
 
 ; fs_transfer: R2=physical buffer, R3=count (0..255), R4=0 read / 1 write.
 ; Returns R6=transferred bytes and R7=status. Advances through continuations.
 ; EOF is a successful short transfer. Writes cannot grow a file. Caller must
 ; validate user buffers before calling this system-mode routine.
 fs_transfer:
-    phbp
-    store & fs_buffer, r2
-    store & fs_count, r3
-    store & fs_write, r4
-    load r6, 0
-    load r0, & fs_head
-    cmp r0, 0
-    jeq fs_transfer_no_fd
+    phbp                                 ; save BP before pointer/helper use
+    store & fs_buffer, r2                ; *(fs_buffer) = r2
+    store & fs_count, r3                 ; *(fs_count) = r3
+    store & fs_write, r4                 ; *(fs_write) = r4
+    load r6, 0                           ; r6 = 0
+    load r0, & fs_head                   ; r0 = *(fs_head)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_transfer_no_fd                ; if equal, goto fs_transfer_no_fd
 fs_transfer_loop:
-    load r0, & fs_count
-    cmp r0, 0
-    jeq fs_transfer_done
-    load r0, & fs_remaining
-    cmp r0, 0
-    jne fs_transfer_byte
-    load r0, & fs_next
-    cmp r0, 0
-    jeq fs_transfer_done
-    store & fs_cluster, r0
-    phbp
-    call fs_cluster_info
-    pobp
-    jmp fs_transfer_loop
+    load r0, & fs_count                  ; r0 = *(fs_count)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_transfer_done                 ; if equal, goto fs_transfer_done
+    load r0, & fs_remaining              ; r0 = *(fs_remaining)
+    cmp r0, 0                            ; compare r0 with 0
+    jne fs_transfer_byte                 ; if not equal, goto fs_transfer_byte
+    load r0, & fs_next                   ; r0 = *(fs_next)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq fs_transfer_done                 ; if equal, goto fs_transfer_done
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_info                 ; fs_cluster_info()
+    pobp                                 ; restore the saved BP
+    jmp fs_transfer_loop                 ; goto fs_transfer_loop
 fs_transfer_byte:
-    load r0, & fs_write
-    cmp r0, 0
-    jne fs_transfer_write
-    load r1, & fs_offset
-    phbp
-    call disk_byte
-    pobp
-    load r2, & fs_buffer
-    ldbp r2
-    store & bp + 0, l1
-    jmp fs_transfer_advance
+    load r0, & fs_write                  ; r0 = *(fs_write)
+    cmp r0, 0                            ; compare r0 with 0
+    jne fs_transfer_write                ; if not equal, goto fs_transfer_write
+    load r1, & fs_offset                 ; r1 = *(fs_offset)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    load r2, & fs_buffer                 ; r2 = *(fs_buffer)
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, l1                   ; *(bp + 0) = l1
+    jmp fs_transfer_advance              ; goto fs_transfer_advance
 fs_transfer_write:
-    load r2, & fs_buffer
-    ldbp r2
-    load l0, & bp + 0
-    load r1, & fs_offset
-    phbp
-    call disk_write_byte
-    pobp
+    load r2, & fs_buffer                 ; r2 = *(fs_buffer)
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    load l0, & bp + 0                    ; l0 = *(bp + 0)
+    load r1, & fs_offset                 ; r1 = *(fs_offset)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; disk_write_byte()
+    pobp                                 ; restore the saved BP
 fs_transfer_advance:
-    load r0, & fs_buffer
-    inc r0
-    store & fs_buffer, r0
-    load r0, & fs_offset
-    inc r0
-    store & fs_offset, r0
-    load r0, & fs_remaining
-    dec r0
-    store & fs_remaining, r0
-    load r0, & fs_count
-    dec r0
-    store & fs_count, r0
-    inc r6
-    jmp fs_transfer_loop
+    load r0, & fs_buffer                 ; r0 = *(fs_buffer)
+    inc r0                               ; r0++
+    store & fs_buffer, r0                ; *(fs_buffer) = r0
+    load r0, & fs_offset                 ; r0 = *(fs_offset)
+    inc r0                               ; r0++
+    store & fs_offset, r0                ; *(fs_offset) = r0
+    load r0, & fs_remaining              ; r0 = *(fs_remaining)
+    dec r0                               ; r0--
+    store & fs_remaining, r0             ; *(fs_remaining) = r0
+    load r0, & fs_count                  ; r0 = *(fs_count)
+    dec r0                               ; r0--
+    store & fs_count, r0                 ; *(fs_count) = r0
+    inc r6                               ; r6++
+    jmp fs_transfer_loop                 ; goto fs_transfer_loop
 fs_transfer_no_fd:
-    load r7, 4
-    pobp
-    ret
+    load r7, 4                           ; r7 = 4
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 fs_transfer_done:
-    load r7, 0
-    pobp
-    ret
+    load r7, 0                           ; r7 = 0
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
 
 ; Private filesystem state. Interrupts are masked; no reentrant operations.
+; fs_head is the descriptor's head ID; fs_cluster is the current chain ID.
+; fs_base/next/remaining/offset describe the selected cluster's payload window.
+; fs_parent is a directory ID, not a chip offset. fs_seen is a per-ID cycle map.
+; fs_path/fs_name own the bounded path and its zero-padded 17+3-byte leaf name.
+fs_directory_mode:
+    word 0
+fs_final_directory:
+    word 0
+fs_missing_final:
+    word 0
 fs_head:
     word 0
 fs_parent:
@@ -488,11 +596,13 @@ fs_count:
 fs_write:
     word 0
 fs_path:
-    reserve 256
+    reserve FS_MAX_PATH + 1
 fs_name:
-    reserve 20
+    reserve FS_NAME_FIELDS
 fs_seen:
-    reserve 196
+    reserve FS_CLUSTER_COUNT
 
 fs_mounted:
     word 0
+
+import "fs_namespace.anc216"

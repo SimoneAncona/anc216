@@ -51,6 +51,11 @@ namespace ANC216
         void preprocessor()
         {
             std::map<std::string, Token> defines;
+            preprocessor(defines);
+        }
+
+        void preprocessor(std::map<std::string, Token> &defines)
+        {
             while (tokenizer.get_current_token().type != END)
             {
                 if (tokenizer.get_current_token().type == KEYWORD || tokenizer.get_current_token().type == IDENTIFIER || tokenizer.get_current_token().type == TYPE)
@@ -77,7 +82,7 @@ namespace ANC216
 
                 if (tokenizer.get_current_token() == "import")
                 {
-                    import();
+                    import(defines);
                     continue;
                 }
 
@@ -125,7 +130,7 @@ namespace ANC216
             defines.insert({id, sub});
         }
 
-        void import()
+        void import(std::map<std::string, Token> &defines)
         {
             tokenizer.remove_current_token();
             std::string filename;
@@ -186,7 +191,9 @@ namespace ANC216
             std::string file_string = ss.str();
             modules.push_back(long_filename);
             Parser parser(file_string, long_filename, asm_flags, modules);
-            parser.preprocessor();
+            // Imports form one source unit: ABI aliases are shared with callers
+            // and sibling libraries rather than disappearing at file boundaries.
+            parser.preprocessor(defines);
             tokenizer.unshift_tokens(parser._get_tokens());
             auto errors = parser.get_error_stack();
             for (auto e : errors)

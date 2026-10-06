@@ -1,0 +1,431 @@
+; AFS directory and allocation helpers. Imported by fs.anc216; all pointers
+; are physical kernel pointers. Namespace operations close the single descriptor.
+; R7 uses FS_* statuses. Interrupts stay masked, so scan state is nonreentrant.
+
+; _______________________________________________________________________
+; fs_list(R1=path, R2=length, R3=24-byte output, R4=cursor): R6=next cursor.
+; Cursor 0 begins a directory; 1..96 scan directories, 97..292 scan file heads.
+; Output is kind byte (1 directory, 2 file), then a NUL-terminated display name.
+; EOF returns R6=0 and kind=0. A continuation cluster is never listed as a file.
+fs_list:
+    store & ns_output, r3                ; save the caller's output across path lookup
+    store & ns_cursor, r4                ; caller resumes after the previous entry
+    phbp                                 ; save BP before pointer/helper use
+    call fs_directory                    ; fs_directory()
+    pobp                                 ; restore the saved BP
+    cmp r7, FS_SUCCESS                   ; compare r7 with FS_SUCCESS
+    jne ns_return                        ; if not equal, goto ns_return
+    store & ns_parent, r6                ; resolve the directory once for this scan
+    load r4, & ns_cursor                 ; r4 = *(ns_cursor)
+    cmp r4, 0                            ; compare r4 with 0
+    jls ns_invalid                       ; cursors are small nonnegative values
+    cmp r4, FS_DIRECTORY_COUNT + FS_CLUSTER_COUNT ; compare r4 with FS_DIRECTORY_COUNT + FS_CLUSTER_COUNT
+    jgr ns_invalid                       ; if greater, goto ns_invalid
+    load r3, & ns_output                 ; r3 = *(ns_output)
+    phbp                                 ; save BP before pointer/helper use
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, byte 0               ; clear kind now, including the EOF case
+    pobp                                 ; restore the saved BP
+ns_list_next:
+    cmp r4, FS_DIRECTORY_COUNT + FS_CLUSTER_COUNT ; compare r4 with FS_DIRECTORY_COUNT + FS_CLUSTER_COUNT
+    jeq ns_list_eof                      ; if equal, goto ns_list_eof
+    inc r4                               ; cursor identifies the candidate being tested
+    cmp r4, FS_DIRECTORY_COUNT           ; compare r4 with FS_DIRECTORY_COUNT
+    jgr ns_list_file                     ; if greater, goto ns_list_file
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 4                            ; r1 <<= 4
+    add r1, FS_DIRECTORY_OFFSET          ; directory offset = table + (ID-1)*16
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, & ns_parent                  ; compare r1 with *(ns_parent)
+    jne ns_list_next                     ; if not equal, goto ns_list_next
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    inc r1                               ; r1++
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, 0                            ; an empty name marks a free directory slot
+    jeq ns_list_next                     ; if equal, goto ns_list_next
+    load r0, FS_ENTRY_DIRECTORY          ; r0 = FS_ENTRY_DIRECTORY
+    load r5, FS_MAX_DIRNAME_LEN          ; r5 = FS_MAX_DIRNAME_LEN
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    inc r1                               ; r1++
+    jmp ns_list_copy                     ; goto ns_list_copy
+ns_list_file:
+    tran r0, r4                          ; r0 = r4
+    sub r0, FS_DIRECTORY_COUNT           ; convert the combined cursor to a cluster ID
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+    tran r1, r0                          ; r1 = r0
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    load r0, & ns_parent                 ; r0 = *(ns_parent)
+    shl r0, 8                            ; r0 <<= 8
+    or r0, FS_HEAD_TYPE                  ; r0 |= FS_HEAD_TYPE
+    cmp r1, r0                           ; only file heads belonging to this directory
+    jne ns_list_next                     ; if not equal, goto ns_list_next
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_address              ; fs_cluster_address()
+    pobp                                 ; restore the saved BP
+    load r0, FS_ENTRY_FILE               ; r0 = FS_ENTRY_FILE
+    load r5, FS_MAX_FNAME_LEN            ; r5 = FS_MAX_FNAME_LEN
+ns_list_copy:
+    store & ns_disk_pointer, r1          ; disk source is separate from output pointer
+    store & ns_entry_kind, r0            ; *(ns_entry_kind) = r0
+    load r3, & ns_output                 ; r3 = *(ns_output)
+    phbp                                 ; save BP before pointer/helper use
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, l0                   ; entry[0] = kind
+    inc r3                               ; r3++
+ns_list_name:
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, 0                            ; compare r1 with 0
+    jeq ns_list_base_done                ; if equal, goto ns_list_base_done
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, l1                   ; append one base-name byte
+    inc r3                               ; r3++
+    load r0, & ns_disk_pointer           ; r0 = *(ns_disk_pointer)
+    inc r0                               ; r0++
+    store & ns_disk_pointer, r0          ; *(ns_disk_pointer) = r0
+    dec r5                               ; r5--
+    jne ns_list_name                     ; if not equal, goto ns_list_name
+ns_list_base_done:
+    load r0, & ns_entry_kind             ; r0 = *(ns_entry_kind)
+    cmp r0, FS_ENTRY_DIRECTORY           ; compare r0 with FS_ENTRY_DIRECTORY
+    jeq ns_list_terminate                ; if equal, goto ns_list_terminate
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_address              ; fs_cluster_address()
+    pobp                                 ; restore the saved BP
+    add r1, FS_MAX_FNAME_LEN             ; extension starts at its fixed field offset
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, 0                            ; compare r1 with 0
+    jeq ns_list_terminate                ; if equal, goto ns_list_terminate
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, byte FS_EXT_DOT_CHAR ; *(bp + 0) = FS_EXT_DOT_CHAR
+    inc r3                               ; r3++
+    load r5, FS_NAME_FIELDS - FS_MAX_FNAME_LEN ; r5 = FS_NAME_FIELDS - FS_MAX_FNAME_LEN
+ns_list_extension:
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, 0                            ; compare r1 with 0
+    jeq ns_list_terminate                ; if equal, goto ns_list_terminate
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, l1                   ; *(bp + 0) = l1
+    inc r3                               ; r3++
+    load r0, & ns_disk_pointer           ; r0 = *(ns_disk_pointer)
+    inc r0                               ; r0++
+    store & ns_disk_pointer, r0          ; *(ns_disk_pointer) = r0
+    dec r5                               ; r5--
+    jne ns_list_extension                ; if not equal, goto ns_list_extension
+ns_list_terminate:
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, byte 0               ; display names always have a terminator
+    pobp                                 ; restore the saved BP
+    tran r6, r4                          ; resume after this candidate on the next call
+    load r7, FS_SUCCESS                  ; r7 = FS_SUCCESS
+    ret                                  ; return through this routine's CALL frame
+ns_list_eof:
+    load r6, 0                           ; r6 = 0
+    load r7, FS_SUCCESS                  ; r7 = FS_SUCCESS
+    ret                                  ; return through this routine's CALL frame
+
+; _______________________________________________________________________
+; fs_touch/fs_mkdir(R1=absolute path, R2=length): create an empty object.
+; Existing files make touch succeed without truncation. mkdir reports EXISTS.
+; Resolve all parents first; never create intermediate directories implicitly.
+fs_touch:
+    store & ns_create_directory, word 0  ; *(ns_create_directory) = 0
+    jmp ns_create                        ; goto ns_create
+fs_mkdir:
+    store & ns_create_directory, word 1  ; *(ns_create_directory) = 1
+ns_create:
+    store & ns_path_pointer, r1          ; *(ns_path_pointer) = r1
+    store & ns_path_length, r2           ; *(ns_path_length) = r2
+    phbp                                 ; save BP before pointer/helper use
+    call fs_open                         ; fs_open()
+    pobp                                 ; restore the saved BP
+    cmp r7, FS_SUCCESS                   ; compare r7 with FS_SUCCESS
+    jeq ns_existing_file                 ; if equal, goto ns_existing_file
+    cmp r7, FS_NOT_FOUND                 ; compare r7 with FS_NOT_FOUND
+    jne ns_return                        ; if not equal, goto ns_return
+    load r0, & fs_missing_final          ; r0 = *(fs_missing_final)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq ns_return                        ; a missing parent is not an allocatable leaf
+    load r1, & ns_path_pointer           ; r1 = *(ns_path_pointer)
+    load r2, & ns_path_length            ; r2 = *(ns_path_length)
+    phbp                                 ; save BP before pointer/helper use
+    call fs_directory                    ; fs_directory()
+    pobp                                 ; restore the saved BP
+    cmp r7, FS_SUCCESS                   ; compare r7 with FS_SUCCESS
+    jeq ns_exists                        ; directory and file names share one namespace
+    cmp r7, FS_NOT_FOUND                 ; compare r7 with FS_NOT_FOUND
+    jeq ns_allocate                      ; if equal, goto ns_allocate
+    cmp r7, FS_INVALID_INPUT             ; compare r7 with FS_INVALID_INPUT
+    jne ns_return                        ; if not equal, goto ns_return
+    load r0, & ns_create_directory       ; r0 = *(ns_create_directory)
+    cmp r0, 0                            ; compare r0 with 0
+    jne ns_return                        ; directory names must fit the 15-byte field
+    ; File names with extensions/16..17-byte bases cannot name directories.
+    ; fs_directory parsed the same fields, so fs_name/fs_parent remain valid.
+ns_allocate:
+    load r0, & ns_create_directory       ; r0 = *(ns_create_directory)
+    cmp r0, 0                            ; compare r0 with 0
+    jne ns_allocate_directory            ; if not equal, goto ns_allocate_directory
+    load r4, 1                           ; r4 = 1
+ns_find_cluster:
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    store & ns_meta_pointer, r1          ; *(ns_meta_pointer) = r1
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    and r1, 0xff                         ; cluster type zero means free
+    jeq ns_cluster_free                  ; if equal, goto ns_cluster_free
+    inc r4                               ; r4++
+    cmp r4, FS_CLUSTER_COUNT + 1         ; compare r4 with FS_CLUSTER_COUNT + 1
+    jne ns_find_cluster                  ; if not equal, goto ns_find_cluster
+    jmp ns_capacity                      ; goto ns_capacity
+ns_cluster_free:
+    store & fs_cluster, r4               ; *(fs_cluster) = r4
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_address              ; fs_cluster_address()
+    pobp                                 ; restore the saved BP
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    load r3, fs_name                     ; r3 = fs_name
+    load r5, FS_NAME_FIELDS              ; r5 = FS_NAME_FIELDS
+    phbp                                 ; save BP before pointer/helper use
+    call ns_write_name                   ; ns_write_name()
+    pobp                                 ; restore the saved BP
+    ; Initialize next ID and two-byte payload length before publishing the head.
+    load r5, FS_HEAD_DATA - FS_NAME_FIELDS ; r5 = FS_HEAD_DATA - FS_NAME_FIELDS
+    phbp                                 ; save BP before pointer/helper use
+    call ns_zero_disk                    ; ns_zero_disk()
+    pobp                                 ; restore the saved BP
+    load r0, & fs_parent                 ; r0 = *(fs_parent)
+    load r1, & ns_meta_pointer           ; r1 = *(ns_meta_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; head owner = resolved parent
+    pobp                                 ; restore the saved BP
+    inc r1                               ; r1++
+    load r0, FS_HEAD_TYPE                ; r0 = FS_HEAD_TYPE
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; publish type last, after complete metadata
+    pobp                                 ; restore the saved BP
+    jmp ns_created                       ; goto ns_created
+ns_allocate_directory:
+    load r4, 1                           ; r4 = 1
+ns_find_directory:
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 4                            ; r1 <<= 4
+    add r1, FS_DIRECTORY_OFFSET          ; r1 += FS_DIRECTORY_OFFSET
+    store & ns_meta_pointer, r1          ; *(ns_meta_pointer) = r1
+    inc r1                               ; r1++
+    phbp                                 ; save BP before pointer/helper use
+    call disk_byte                       ; disk_byte()
+    pobp                                 ; restore the saved BP
+    cmp r1, 0                            ; compare r1 with 0
+    jeq ns_directory_free                ; if equal, goto ns_directory_free
+    inc r4                               ; r4++
+    cmp r4, FS_DIRECTORY_COUNT + 1       ; compare r4 with FS_DIRECTORY_COUNT + 1
+    jne ns_find_directory                ; if not equal, goto ns_find_directory
+    jmp ns_capacity                      ; goto ns_capacity
+ns_directory_free:
+    load r1, & ns_meta_pointer           ; r1 = *(ns_meta_pointer)
+    inc r1                               ; r1++
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    load r3, fs_name                     ; r3 = fs_name
+    load r5, FS_MAX_DIRNAME_LEN          ; r5 = FS_MAX_DIRNAME_LEN
+    phbp                                 ; save BP before pointer/helper use
+    call ns_write_name                   ; fixed-width name is already zero-padded
+    pobp                                 ; restore the saved BP
+    load r0, & fs_parent                 ; r0 = *(fs_parent)
+    load r1, & ns_meta_pointer           ; r1 = *(ns_meta_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; disk_write_byte()
+    pobp                                 ; restore the saved BP
+ns_created:
+    store & fs_head, word 0              ; namespace operations leave no descriptor open
+    load r7, FS_SUCCESS                  ; r7 = FS_SUCCESS
+    ret                                  ; return through this routine's CALL frame
+ns_existing_file:
+    load r0, & ns_create_directory       ; r0 = *(ns_create_directory)
+    cmp r0, 0                            ; compare r0 with 0
+    jne ns_exists                        ; if not equal, goto ns_exists
+    jmp ns_created                       ; touch preserves all existing file contents
+ns_exists:
+    load r7, FS_EXISTS                   ; r7 = FS_EXISTS
+    ret                                  ; return through this routine's CALL frame
+ns_capacity:
+    load r7, FS_DISK_CAPACITY            ; r7 = FS_DISK_CAPACITY
+    ret                                  ; return through this routine's CALL frame
+ns_invalid:
+    load r7, FS_INVALID_INPUT            ; r7 = FS_INVALID_INPUT
+ns_return:
+    ret                                  ; return through this routine's CALL frame
+
+; _______________________________________________________________________
+; ns_write_name: R3=zero-padded source, R5=count, ns_disk_pointer=destination.
+; BP is restored; R0/R1/R3/R5 are scratch. Metadata is written one byte at a time.
+ns_write_name:
+    phbp                                 ; save BP before pointer/helper use
+ns_write_name_loop:
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    load l0, & bp + 0                    ; l0 = *(bp + 0)
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; disk_write_byte()
+    pobp                                 ; restore the saved BP
+    inc r3                               ; r3++
+    inc r1                               ; r1++
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    dec r5                               ; r5--
+    jne ns_write_name_loop               ; if not equal, goto ns_write_name_loop
+    pobp                                 ; restore the saved BP
+    ret                                  ; return through this routine's CALL frame
+ns_zero_disk:
+    load r0, 0                           ; r0 = 0
+ns_zero_disk_loop:
+    load r1, & ns_disk_pointer           ; r1 = *(ns_disk_pointer)
+    phbp                                 ; save BP before pointer/helper use
+    call disk_write_byte                 ; disk_write_byte()
+    pobp                                 ; restore the saved BP
+    inc r1                               ; r1++
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    dec r5                               ; r5--
+    jne ns_zero_disk_loop                ; if not equal, goto ns_zero_disk_loop
+    ret                                  ; return through this routine's CALL frame
+
+; _______________________________________________________________________
+; fs_remove(R1=path, R2=length): delete a validated file or an empty directory.
+; Root and nonempty directories cannot be removed. File chains are validated
+; before the first write, so cycles/corrupt links cannot cause partial deletion.
+fs_remove:
+    store & ns_path_pointer, r1          ; *(ns_path_pointer) = r1
+    store & ns_path_length, r2           ; *(ns_path_length) = r2
+    phbp                                 ; save BP before pointer/helper use
+    call fs_open                         ; fs_open()
+    pobp                                 ; restore the saved BP
+    cmp r7, FS_SUCCESS                   ; compare r7 with FS_SUCCESS
+    jeq ns_remove_file                   ; if equal, goto ns_remove_file
+    cmp r7, FS_NOT_FOUND                 ; compare r7 with FS_NOT_FOUND
+    jeq ns_remove_try_directory          ; if equal, goto ns_remove_try_directory
+    cmp r7, FS_INVALID_INPUT             ; root is not a valid file path
+    jne ns_return                        ; if not equal, goto ns_return
+ns_remove_try_directory:
+    load r1, & ns_path_pointer           ; r1 = *(ns_path_pointer)
+    load r2, & ns_path_length            ; r2 = *(ns_path_length)
+    phbp                                 ; save BP before pointer/helper use
+    call fs_directory                    ; fs_directory()
+    pobp                                 ; restore the saved BP
+    cmp r7, FS_SUCCESS                   ; compare r7 with FS_SUCCESS
+    jne ns_return                        ; if not equal, goto ns_return
+    cmp r6, 0                            ; compare r6 with 0
+    jeq ns_invalid                       ; never remove root
+    store & ns_parent, r6                ; *(ns_parent) = r6
+    load r4, 1                           ; r4 = 1
+ns_remove_dir_children:
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 4                            ; r1 <<= 4
+    add r1, FS_DIRECTORY_OFFSET          ; r1 += FS_DIRECTORY_OFFSET
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    tran r0, r1                          ; r0 = r1
+    shr r0, 8                            ; r0 >>= 8
+    cmp r0, & ns_parent                  ; compare r0 with *(ns_parent)
+    jne ns_remove_dir_next               ; if not equal, goto ns_remove_dir_next
+    and r1, 0xff                         ; r1 &= 0xff
+    jne ns_not_empty                     ; matching parent and nonempty name
+ns_remove_dir_next:
+    inc r4                               ; r4++
+    cmp r4, FS_DIRECTORY_COUNT + 1       ; compare r4 with FS_DIRECTORY_COUNT + 1
+    jne ns_remove_dir_children           ; if not equal, goto ns_remove_dir_children
+    load r4, 1                           ; r4 = 1
+ns_remove_file_children:
+    tran r1, r4                          ; r1 = r4
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    phbp                                 ; save BP before pointer/helper use
+    call disk_word                       ; disk_word()
+    pobp                                 ; restore the saved BP
+    load r0, & ns_parent                 ; r0 = *(ns_parent)
+    shl r0, 8                            ; r0 <<= 8
+    or r0, FS_HEAD_TYPE                  ; r0 |= FS_HEAD_TYPE
+    cmp r1, r0                           ; compare r1 with r0
+    jeq ns_not_empty                     ; if equal, goto ns_not_empty
+    inc r4                               ; r4++
+    cmp r4, FS_CLUSTER_COUNT + 1         ; compare r4 with FS_CLUSTER_COUNT + 1
+    jne ns_remove_file_children          ; if not equal, goto ns_remove_file_children
+    load r1, & ns_parent                 ; r1 = *(ns_parent)
+    dec r1                               ; r1--
+    shl r1, 4                            ; r1 <<= 4
+    add r1, FS_DIRECTORY_OFFSET          ; r1 += FS_DIRECTORY_OFFSET
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    load r5, FS_DIRECTORY_BYTES          ; r5 = FS_DIRECTORY_BYTES
+    phbp                                 ; save BP before pointer/helper use
+    call ns_zero_disk                    ; clear parent and name of the empty directory
+    pobp                                 ; restore the saved BP
+    jmp ns_created                       ; goto ns_created
+ns_remove_file:
+    load r0, & fs_head                   ; r0 = *(fs_head)
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+ns_remove_chain:
+    phbp                                 ; save BP before pointer/helper use
+    call fs_cluster_info                 ; capture next before clearing this allocation
+    pobp                                 ; restore the saved BP
+    load r1, & fs_cluster                ; r1 = *(fs_cluster)
+    dec r1                               ; r1--
+    shl r1, 1                            ; r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; r1 += FS_TABLE_OFFSET
+    store & ns_disk_pointer, r1          ; *(ns_disk_pointer) = r1
+    load r5, 2                           ; r5 = 2
+    phbp                                 ; save BP before pointer/helper use
+    call ns_zero_disk                    ; release owner/type; stale payload is unreachable
+    pobp                                 ; restore the saved BP
+    load r0, & fs_next                   ; r0 = *(fs_next)
+    cmp r0, 0                            ; compare r0 with 0
+    jeq ns_created                       ; if equal, goto ns_created
+    store & fs_cluster, r0               ; *(fs_cluster) = r0
+    jmp ns_remove_chain                  ; goto ns_remove_chain
+ns_not_empty:
+    load r7, FS_NOT_EMPTY                ; r7 = FS_NOT_EMPTY
+    ret                                  ; return through this routine's CALL frame
+
+; Private scan state; no user pointers are kept after syscall return.
+ns_output:
+    word 0
+ns_cursor:
+    word 0
+ns_parent:
+    word 0
+ns_disk_pointer:
+    word 0
+ns_meta_pointer:
+    word 0
+ns_entry_kind:
+    word 0
+ns_create_directory:
+    word 0
+ns_path_pointer:
+    word 0
+ns_path_length:
+    word 0

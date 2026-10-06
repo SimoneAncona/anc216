@@ -20,10 +20,6 @@ entry:
     write & 0xfffd, word 0x07ff
     write & 0xfffd, word 0x0800
     write & 0xfffd, word 0x0500
-    load r2, banner
-    phbp
-    call puts
-    pobp
     store & 0x00f0, word 0x2160
     ; Try the conventional boot volume. An absent/unformatted chip is optional.
     load r1, 0x0200
@@ -72,10 +68,6 @@ shutdown_handler:
 panic:
     store & 0x00f0, word 0xffff
     kill
-banner:
-    "AOS2", 10
-    "SYSTEM MODE - AVC64 CONSOLE", 10
-    "MPME / AFS / UALF", 10, 0
 init_path:
     "/bin/init"
 

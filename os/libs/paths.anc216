@@ -1,0 +1,184 @@
+; Absolute path builder for user programs. Imports abi/strings through its caller.
+; path_absolute(R0=input, R1=length): R1=path_result, R2=length, R7=status.
+; Relative paths use the kernel cwd. Repeated '/', '.' and '..' are normalized;
+; '..' at root stays at root. This helper does not check whether a path exists.
+; Scratch registers and flags change; the original input is never modified.
+path_absolute:
+    store & path_input, r0               ; preserve input across the getcwd syscall
+    store & path_input_length, r1        ; *(path_input_length) = r1
+    load r0, SYS_GETCWD                  ; r0 = SYS_GETCWD
+    load r1, path_work                   ; r1 = path_work
+    load r2, OS_PATH_CAPACITY            ; r2 = OS_PATH_CAPACITY
+    syscall                              ; invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
+    jne path_return                      ; if not equal, goto path_return
+    store & path_work_length, r6         ; *(path_work_length) = r6
+    load r0, & path_input                ; r0 = *(path_input)
+    load r1, & path_input_length         ; r1 = *(path_input_length)
+    cmp r1, 0                            ; compare r1 with 0
+    jeq path_use_cwd                     ; if equal, goto path_use_cwd
+    tili r5                              ; r5 = MTU IMEM base
+    add r0, r5                           ; r0 += r5
+    phbp                                 ; save BP before pointer/helper use
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; l3 = *(bp + 0)
+    pobp                                 ; restore the saved BP
+    cmp l3, ASCII_SLASH                  ; compare l3 with ASCII_SLASH
+    jne path_relative                    ; if not equal, goto path_relative
+    store & path_work_length, word 0     ; an absolute input replaces cwd
+    jmp path_append_input                ; goto path_append_input
+path_relative:
+    load r2, & path_work_length          ; r2 = *(path_work_length)
+    cmp r2, 1                            ; compare r2 with 1
+    jeq path_append_input                ; root already ends with a slash
+    cmp r2, OS_PATH_CAPACITY - 1         ; compare r2 with OS_PATH_CAPACITY - 1
+    jge path_bad                         ; if greater or equal, goto path_bad
+    load r3, path_work                   ; r3 = path_work
+    add r3, r5                           ; r3 += r5
+    add r3, r2                           ; r3 += r2
+    phbp                                 ; save BP before pointer/helper use
+    ldbp r3                              ; BP = r3 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_SLASH     ; *(bp + 0) = ASCII_SLASH
+    pobp                                 ; restore the saved BP
+    inc r2                               ; r2++
+    store & path_work_length, r2         ; *(path_work_length) = r2
+path_append_input:
+    load r2, & path_work_length          ; r2 = *(path_work_length)
+    add r2, r1                           ; r2 += r1
+    cmp r2, OS_PATH_CAPACITY             ; compare r2 with OS_PATH_CAPACITY
+    jge path_bad                         ; if greater or equal, goto path_bad
+    load r2, path_work                   ; r2 = path_work
+    add r2, r5                           ; r2 += r5
+    add r2, & path_work_length           ; r2 += *(path_work_length)
+    phbp                                 ; save BP before pointer/helper use
+path_append_loop:
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; l3 = *(bp + 0)
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, l3                   ; *(bp + 0) = l3
+    inc r0                               ; r0++
+    inc r2                               ; r2++
+    dec r1                               ; r1--
+    jne path_append_loop                 ; if not equal, goto path_append_loop
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_NUL       ; *(bp + 0) = ASCII_NUL
+    pobp                                 ; restore the saved BP
+path_use_cwd:
+    ; The combined source is absolute. Build a canonical result separately.
+    tili r5                              ; r5 = MTU IMEM base
+    load r0, path_work                   ; r0 = path_work
+    add r0, r5                           ; r0 += r5
+    load r2, path_result                 ; r2 = path_result
+    add r2, r5                           ; r2 += r5
+    store & path_result_length, word 1   ; *(path_result_length) = 1
+    phbp                                 ; save BP before pointer/helper use
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_SLASH     ; *(bp + 0) = ASCII_SLASH
+    inc r0                               ; skip the source's leading slash
+path_component:
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; l3 = *(bp + 0)
+    cmp l3, ASCII_NUL                    ; compare l3 with ASCII_NUL
+    jeq path_done                        ; if equal, goto path_done
+    cmp l3, ASCII_SLASH                  ; compare l3 with ASCII_SLASH
+    jne path_component_start             ; if not equal, goto path_component_start
+    inc r0                               ; r0++
+    jmp path_component                   ; goto path_component
+path_component_start:
+    store & path_component_pointer, r0   ; *(path_component_pointer) = r0
+    load r1, 0                           ; r1 = 0
+path_measure:
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; l3 = *(bp + 0)
+    cmp l3, ASCII_NUL                    ; compare l3 with ASCII_NUL
+    jeq path_measured                    ; if equal, goto path_measured
+    cmp l3, ASCII_SLASH                  ; compare l3 with ASCII_SLASH
+    jeq path_measured                    ; if equal, goto path_measured
+    inc r0                               ; r0++
+    inc r1                               ; r1++
+    jmp path_measure                     ; goto path_measure
+path_measured:
+    store & path_cursor, r0              ; *(path_cursor) = r0
+    load r0, & path_component_pointer    ; r0 = *(path_component_pointer)
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; l3 = *(bp + 0)
+    cmp l3, ASCII_DOT                    ; compare l3 with ASCII_DOT
+    jne path_keep_component              ; if not equal, goto path_keep_component
+    cmp r1, 1                            ; compare r1 with 1
+    jeq path_resume                      ; '.' leaves the current result unchanged
+    cmp r1, 2                            ; compare r1 with 2
+    jne path_keep_component              ; if not equal, goto path_keep_component
+    load l3, & bp + 1                    ; l3 = *(bp + 1)
+    cmp l3, ASCII_DOT                    ; compare l3 with ASCII_DOT
+    jne path_keep_component              ; if not equal, goto path_keep_component
+    load r3, & path_result_length        ; r3 = *(path_result_length)
+path_parent_loop:
+    cmp r3, 1                            ; compare r3 with 1
+    jeq path_parent_done                 ; root has no parent above it
+    dec r3                               ; r3--
+    load r2, path_result                 ; r2 = path_result
+    add r2, r5                           ; r2 += r5
+    add r2, r3                           ; r2 += r3
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    load l4, & bp + 0                    ; l4 = *(bp + 0)
+    cmp l4, ASCII_SLASH                  ; compare l4 with ASCII_SLASH
+    jne path_parent_loop                 ; if not equal, goto path_parent_loop
+path_parent_done:
+    store & path_result_length, r3       ; *(path_result_length) = r3
+    jmp path_resume                      ; goto path_resume
+path_keep_component:
+    load r3, & path_result_length        ; r3 = *(path_result_length)
+    load r2, path_result                 ; r2 = path_result
+    add r2, r5                           ; r2 += r5
+    add r2, r3                           ; r2 += r3
+    cmp r3, 1                            ; compare r3 with 1
+    jeq path_copy_component              ; if equal, goto path_copy_component
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_SLASH     ; *(bp + 0) = ASCII_SLASH
+    inc r2                               ; r2++
+    inc r3                               ; r3++
+path_copy_component:
+    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
+    load l4, & bp + 0                    ; l4 = *(bp + 0)
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, l4                   ; *(bp + 0) = l4
+    inc r0                               ; r0++
+    inc r2                               ; r2++
+    inc r3                               ; r3++
+    dec r1                               ; r1--
+    jne path_copy_component              ; if not equal, goto path_copy_component
+    store & path_result_length, r3       ; *(path_result_length) = r3
+path_resume:
+    load r0, & path_cursor               ; r0 = *(path_cursor)
+    jmp path_component                   ; goto path_component
+path_done:
+    load r2, path_result                 ; r2 = path_result
+    add r2, r5                           ; r2 += r5
+    add r2, & path_result_length         ; r2 += *(path_result_length)
+    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_NUL       ; *(bp + 0) = ASCII_NUL
+    pobp                                 ; restore the saved BP
+    load r1, path_result                 ; r1 = path_result
+    load r2, & path_result_length        ; r2 = *(path_result_length)
+    load r7, OS_SUCCESS                  ; r7 = OS_SUCCESS
+path_return:
+    ret                                  ; return through this routine's CALL frame
+path_bad:
+    load r7, OS_INVALID                  ; r7 = OS_INVALID
+    ret                                  ; return through this routine's CALL frame
+path_input:
+    word 0
+path_input_length:
+    word 0
+path_work_length:
+    word 0
+path_component_pointer:
+    word 0
+path_cursor:
+    word 0
+path_result_length:
+    word 0
+path_work:
+    reserve OS_PATH_CAPACITY
+path_result:
+    reserve OS_PATH_CAPACITY

@@ -1,5 +1,8 @@
 # Executable ANC216 reference profile
 
+The collected PDF corrections, clarifications and pending changes are in
+[ANC216_DIFFERENCES.md](ANC216_DIFFERENCES.md).
+
 This file records decisions needed to resolve gaps in the original PDFs. It describes the tools in this repository, rather than silently changing the PDFs or claiming these choices were already specified there. `common/encoding.hh` is the shared executable encoding reference.
 
 ## CPU
@@ -73,7 +76,7 @@ READ is synchronous. Put a request word in R1, then `read & 0xfffc`; the respons
 
 When I is enabled and the external IRQ vector at `0x0002` is installed, the CPU delivers one pending event at an instruction boundary through the ordinary EINR procedure. **R0=`0xfffc`, R1=event word, L2=1**. Delivery consumes that event exactly once, so do not READ again to obtain the same IRQ payload. The CPU saves the old R0/R1/L2 above the usual PC/SR frame and masks I/T; handlers must restore them and the saved physical SP/BP before returning. Further queued keys wait while I is masked. REQ/HREQ should not be used for keyboard polling, as their generic request behavior would consume an event and generate a separate device response.
 
-The OS keeps I masked during user programs and polls the queue in `getl`. In kernel idle it enables I and handles keyboard IRQs, records the payload at IMEM `0x00f6`, and consumes events silently. Only an active `getl` call echoes input. It uses a separate interrupt stack at `0x3100` to protect its ordinary CALL stack.
+The OS keeps I masked during user programs and polls the queue in `getl`. In kernel idle it enables I and handles keyboard IRQs, records the payload at IMEM `0x00f6`, and consumes events silently. Only an active `getl` call echoes input; it provides visual backspace and a 500 ms blinking underline cursor by polling the kernel timer with T masked. It uses a separate interrupt stack at `0x3100` to protect its ordinary CALL stack.
 
 Host controls are applied at instruction boundaries, independently of I/T:
 
@@ -91,7 +94,7 @@ The guest OS, MPME/AFS driver, UALf loader, syscall ABI and limits are documente
 
 ## Assembler and disassembler
 
-The supported assembly language is ANC216.1, including labels, imports/defines/conditional preprocessing, sections, origins, structures, BP-local variables, expressions, byte/word casts, strings and reserves. ANC216.2 preview is rejected explicitly. Output paths are resolved against the invocation directory; imports are resolved relative to their source file and configured import directories.
+The supported assembly language is ANC216.1, including labels, imports/defines/conditional preprocessing (imports share `use … as` aliases with callers and sibling modules), sections, origins, structures, BP-local variables, expressions, byte/word casts, strings and reserves. ANC216.2 preview is rejected explicitly. Output paths are resolved against the invocation directory; imports are resolved relative to their source file and configured import directories.
 
 UALf's base header is 11 bytes. Entry points and symbol offset addresses include the final header size. `-h=ualf` requires `_code`; `-s` includes public symbols and requires that header option. Symbol records are zero-terminated names followed by real address and file offset, both words. The disassembler strips an explicitly selected UALf header and disassembles the payload. It does not reconstruct original source sections, macros, symbol names, or metadata. For raw binary it preserves bytes: unsupported/truncated headers are emitted as byte data, and operand widths are explicit.
 

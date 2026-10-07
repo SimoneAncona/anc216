@@ -1,4 +1,4 @@
-use SYS_TABLE_ENTRIES as 32                ; IDs 00..1f, including explicit unsupported slots
+use SYS_TABLE_ENTRIES as 33                ; IDs 00..1f, including explicit unsupported slots
 
 
 ; One dispatch table and one permission policy replace the comparison ladder.
@@ -55,3 +55,4 @@ syscall_table: ; C: syscall_table: (routine, branch target or data symbol)
     word syscall_directory, syscall_list, syscall_touch, syscall_mkdir ; C: uint16_t data[] = { syscall_directory, syscall_list, syscall_touch, syscall_mkdir };
     word syscall_remove, syscall_fstat, syscall_run, syscall_getcwd ; C: uint16_t data[] = { syscall_remove, syscall_fstat, syscall_run, syscall_getcwd };
     word syscall_chdir, syscall_poweroff, syscall_video, syscall_getk ; C: uint16_t data[] = { syscall_chdir, syscall_poweroff, syscall_video };
+    word syscall_redct

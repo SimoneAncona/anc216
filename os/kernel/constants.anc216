@@ -12,7 +12,7 @@ use RETURN_STUB as 0x7ff0                  ; POSR, then POPC, inside user execut
 use RETURN_STUB_PC as 0x7ff2               ; address of the POPC instruction
 use RETURN_POSR_WORD as 0x000b             ; encoded implied POSR header
 use RETURN_POPC_WORD as 0x0009             ; encoded implied POPC header
-use BOOT_DEVICE as 0x3000                  ; MPME containing /bin/init and commands
+use BOOT_DEVICE as 0x4000                  ; MPME containing /bin/init and commands
 use BOOT_PC as 0xff00                      ; firmware restart address
 use VECTOR_RESET as 0x0000                 ; reset handler word
 use VECTOR_IRQ as 0x0002                   ; external interrupt handler word

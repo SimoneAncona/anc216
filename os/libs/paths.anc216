@@ -86,7 +86,7 @@ path_component:
     jmp path_component                   ; C: goto path_component; | goto path_component
 path_component_start:
     store & path_component_pointer, r0   ; C: *(path_component_pointer) = r0; | *(path_component_pointer) = r0
-    load r1, 0                           ; C: r1 = 0; | r1 = 0
+    xor r1, r1                           ; C: r1 = 0; | r1 = 0
 path_measure:
     ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
@@ -160,7 +160,7 @@ path_done:
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     load r1, path_result                 ; C: r1 = path_result; | r1 = path_result
     load r2, & path_result_length        ; C: r2 = *(path_result_length); | r2 = *(path_result_length)
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = OS_SUCCESS
+    xor r7, r7                  ; C: r7 = OS_SUCCESS; | r7 = OS_SUCCESS
 path_return:
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 path_bad:

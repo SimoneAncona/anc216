@@ -16,7 +16,7 @@ app_print_unsigned:
 number_position:
     ldbp r2                              ; C: BP = r2;
     load r4, & bp + 0                    ; C: r4 = *(bp + 0);
-    load r5, 0                           ; C: r5 = 0;
+    xor r5, r5                           ; C: r5 = 0;
 number_subtract:
     load r0, & number_remaining          ; C: r0 = *(number_remaining);
     cmp r0, r4                           ; C: flags = compare(r0, r4);

@@ -10,7 +10,7 @@ org FIRMWARE_ORIGIN ; linker places the following bytes at this physical origin
     clrt                                 ; C: SR.T = 0;
     careq                                ; C: SR.A = 0;
     ldsp FIRMWARE_STACK                  ; C: SP = FIRMWARE_STACK;
-    load r1, 0                           ; C: r1 = 0;
+    xor r1, r1                           ; C: r1 = 0;
     read & FIRMWARE_ROM_BASE           ; C: r1 = emem_read_word(FIRMWARE_ROM_BASE);
     tran r4, r1                          ; C: r4 = r1;
     cmp r4, 0                            ; C: flags = compare(r4, 0);

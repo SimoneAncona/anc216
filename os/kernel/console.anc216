@@ -53,12 +53,12 @@ putc: ; C: putc: (routine, branch target or data symbol)
     cmp r5, 256                          ; C: flags = compare(r5, 256);
     jne putc_done                        ; C: if (!Z) goto putc_done;
 newline: ; C: newline: (routine, branch target or data symbol)
-    load r5, 0                           ; C: r5 = 0;
+    xor r5, r5                           ; C: r5 = 0;
     add r6, 8                            ; C: r6 += 8;
     cmp r6, 224                          ; C: flags = compare(r6, 224);
     jne putc_done                        ; C: if (!Z) goto putc_done;
     write & GPU_ADDRESS, word GPU_CLEAR  ; C: device_write(GPU_ADDRESS, GPU_CLEAR);
-    load r6, 0                           ; C: r6 = 0;
+    xor r6, r6                           ; C: r6 = 0;
 putc_done: ; C: putc_done: (routine, branch target or data symbol)
     store & console_x, r5                ; C: *(console_x) = r5;
     store & console_y, r6                ; C: *(console_y) = r6;
@@ -117,14 +117,14 @@ console_cursor_show: ; C: console_cursor_show: (routine, branch target or data s
     add r6, CONSOLE_CURSOR_ROW           ; C: r6 += CONSOLE_CURSOR_ROW;
     or r6, AVC_SET_Y                     ; C: r6 |= AVC_SET_Y;
     write & CONSOLE_GPU, r6              ; C: device_write(CONSOLE_GPU, r6);
-    load r4, 0                           ; C: r4 = 0;
+    xor r4, r4                           ; C: r4 = 0;
     phbp                                 ; C: push(BP);
 console_cursor_save_loop: ; C: console_cursor_save_loop: (routine, branch target or data symbol)
     tran r3, r5                          ; C: r3 = r5;
     add r3, r4                           ; C: r3 += r4;
     or r3, AVC_SET_X                     ; C: r3 |= AVC_SET_X;
     write & CONSOLE_GPU, r3              ; C: device_write(CONSOLE_GPU, r3);
-    load r1, 0                           ; C: r1 = 0; | READ operation 0 returns the selected pixel
+    xor r1, r1                           ; C: r1 = 0; | READ operation 0 returns the selected pixel
     read & CONSOLE_GPU                   ; C: r1 = device_read(CONSOLE_GPU, r1);
     load r2, console_cursor_pixels       ; C: r2 = console_cursor_pixels;
     add r2, r4                           ; C: r2 += r4;
@@ -148,7 +148,7 @@ console_cursor_hide: ; C: console_cursor_hide: (routine, branch target or data s
     add r6, CONSOLE_CURSOR_ROW           ; C: r6 += CONSOLE_CURSOR_ROW;
     or r6, AVC_SET_Y                     ; C: r6 |= AVC_SET_Y;
     write & CONSOLE_GPU, r6              ; C: device_write(CONSOLE_GPU, r6);
-    load r4, 0                           ; C: r4 = 0;
+    xor r4, r4                           ; C: r4 = 0;
     phbp                                 ; C: push(BP);
 console_cursor_restore_loop: ; C: console_cursor_restore_loop: (routine, branch target or data symbol)
     tran r3, r5                          ; C: r3 = r5;
@@ -158,7 +158,7 @@ console_cursor_restore_loop: ; C: console_cursor_restore_loop: (routine, branch 
     load r2, console_cursor_pixels       ; C: r2 = console_cursor_pixels;
     add r2, r4                           ; C: r2 += r4;
     ldbp r2                              ; C: BP = r2;
-    load r0, 0                           ; C: r0 = 0;
+    xor r0, r0                           ; C: r0 = 0;
     load l0, & bp + 0                    ; C: l0 = *(bp + 0);
     or r0, AVC_SET_COLOR                 ; C: r0 |= AVC_SET_COLOR;
     write & CONSOLE_GPU, r0              ; C: device_write(CONSOLE_GPU, r0);

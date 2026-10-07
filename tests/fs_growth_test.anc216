@@ -1,0 +1,355 @@
+; Called by os_integration: exercise real fwrite/print growth and validate by reopening.
+import "../os/libs/abi.anc216"
+fs_growth_test:
+    store & 0x2000, word 17
+    load r0, SYS_TOUCH
+    load r1, growth_path
+    load r2, sizeof growth_path
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_OPEN
+    load r3, growth_fd
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    ; No-op writes must keep an empty file empty.
+    load r0, SYS_WRITE
+    load r1, 1
+    load r2, 0x8000
+    load r3, growth_buffer
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 0
+    jne fail
+    load r0, SYS_SIZE
+    syscall
+    cmp r6, 0
+    jne fail
+    ; Three distinct blocks cross the head boundary (300) and continuation (620).
+    load r4, 65
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_write
+    pobp
+    load r4, 66
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_write
+    pobp
+    load r4, 67
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_write
+    pobp
+    load r0, SYS_SIZE
+    syscall
+    cmp r6, 765
+    jne fail
+    ; Overwriting existing data after rewind must leave the size unchanged.
+    load r0, SYS_REWIND
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_WRITE
+    load r2, 0x8001
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 1
+    jne fail
+    load r0, SYS_SIZE
+    syscall
+    cmp r6, 765
+    jne fail
+    ; Reopen to verify persisted lengths, links and continuation ownership.
+    load r0, SYS_OPEN
+    load r1, growth_path
+    load r2, sizeof growth_path
+    load r3, growth_fd
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r4, 65
+    phbp
+    call growth_read
+    pobp
+    load l5, & growth_buffer
+    cmp l5, 67
+    jne fail
+    store & growth_buffer, byte 65
+    phbp
+    call growth_verify
+    pobp
+    load r4, 66
+    phbp
+    call growth_read
+    pobp
+    phbp
+    call growth_verify
+    pobp
+    load r4, 67
+    phbp
+    call growth_read
+    pobp
+    phbp
+    call growth_verify
+    pobp
+    ; Append to a previously existing continuation after reading to EOF.
+    load r0, SYS_WRITE
+    load r1, 1
+    load r2, 0x8005
+    load r3, growth_buffer
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 5
+    jne fail
+    load r0, SYS_SIZE
+    syscall
+    cmp r6, 770
+    jne fail
+    ; A redirected print uses the same growth path, preserving this descriptor.
+    load r0, SYS_TOUCH
+    load r1, redirect_growth_path
+    load r2, sizeof redirect_growth_path
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_OPEN
+    load r1, growth_path
+    load r2, sizeof growth_path
+    load r3, growth_fd
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_REDCT
+    load r1, redirect_growth_path
+    load r2, sizeof redirect_growth_path
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r4, 68
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_print
+    pobp
+    ; A forced-console print in the middle must not alter the file or its cursor.
+    load r0, SYS_PRINT
+    load r1, growth_console_text
+    load r2, PRINT_BYPASS_REDIRECT + sizeof growth_console_text
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, sizeof growth_console_text
+    jne fail
+    load r4, 69
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_print
+    pobp
+    load r4, 70
+    phbp
+    call growth_fill
+    pobp
+    phbp
+    call growth_print
+    pobp
+    ; The ordinary file's cursor stayed at its first byte and size stayed 770.
+    load r0, SYS_READ
+    load r1, 1
+    load r2, 1
+    load r3, growth_buffer
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load l5, & growth_buffer
+    cmp l5, 67
+    jne fail
+    load r0, SYS_SIZE
+    syscall
+    cmp r6, 770
+    jne fail
+    load r0, SYS_REDCT
+    xor r1, r1
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_OPEN
+    load r1, redirect_growth_path
+    load r2, sizeof redirect_growth_path
+    load r3, growth_fd
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r0, SYS_SIZE
+    load r1, 1
+    syscall
+    cmp r6, 765
+    jne fail
+    load r4, 68
+    phbp
+    call growth_read
+    pobp
+    phbp
+    call growth_verify
+    pobp
+    load r4, 69
+    phbp
+    call growth_read
+    pobp
+    phbp
+    call growth_verify
+    pobp
+    load r4, 70
+    phbp
+    call growth_read
+    pobp
+    phbp
+    call growth_verify
+    pobp
+    load r0, SYS_READ
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 0
+    jne fail
+    load r0, SYS_FSTAT
+    load r1, redirect_growth_path
+    load r2, sizeof redirect_growth_path
+    load r3, growth_stat
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r5, & growth_stat + 2
+    cmp r5, 765
+    jne fail
+    load r5, & growth_stat + 4
+    cmp r5, 969
+    jne fail
+    ; Remove the test files so soft reset can repeat the checks on the same disk.
+    load r0, SYS_REMOVE
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    load r1, growth_path
+    load r2, sizeof growth_path
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    ret
+
+growth_check_status:
+    cmp r7, OS_SUCCESS
+    jne fail
+    ret
+
+growth_fill:
+    load r5, growth_buffer + OS_USER_BASE
+    load r2, 255
+    phbp
+growth_fill_loop:
+    ldbp r5
+    store & bp + 0, l4
+    inc r5
+    dec r2
+    jne growth_fill_loop
+    pobp
+    ret
+
+growth_write:
+    load r0, SYS_WRITE
+    load r1, 1
+    load r2, 0x80ff
+    load r3, growth_buffer
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 255
+    jne fail
+    ret
+
+growth_print:
+    load r0, SYS_PRINT
+    load r1, growth_buffer
+    load r2, 255
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 255
+    jne fail
+    ret
+
+growth_read:
+    load r0, SYS_READ
+    load r1, 1
+    load r2, 255
+    load r3, growth_buffer
+    syscall
+    phbp
+    call growth_check_status
+    pobp
+    cmp r6, 255
+    jne fail
+    ret
+
+growth_verify:
+    load r5, growth_buffer + OS_USER_BASE
+    load r2, 255
+    phbp
+growth_verify_loop:
+    ldbp r5
+    xor r3, r3
+    load l3, & bp + 0
+    cmp r3, r4
+    jne fail
+    inc r5
+    dec r2
+    jne growth_verify_loop
+    pobp
+    ret
+
+growth_path:
+    "/data/growth.txt"
+redirect_growth_path:
+    "/data/redirect.txt"
+growth_fd:
+    byte 0
+growth_stat:
+    reserve OS_STAT_BYTES
+growth_buffer:
+    reserve 255
+
+growth_console_text:
+    "CONSOLE ONLY", ASCII_NEWLINE

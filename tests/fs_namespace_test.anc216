@@ -14,7 +14,7 @@ _code:
     load r1, data_path
     load r2, sizeof data_path
     load r3, entry
-    load r4, 0
+    xor r4, r4
     syscall
     cmp r7, OS_SUCCESS
     jne test_failure
@@ -54,7 +54,7 @@ _code:
     load r1, data_path
     load r2, sizeof data_path
     load r3, 0x3ff0
-    load r4, 0
+    xor r4, r4
     syscall
     cmp r7, OS_INVALID
     jne test_failure

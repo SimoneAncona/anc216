@@ -20,7 +20,7 @@ keyboard_irq_return: ; C: keyboard_irq_return: (routine, branch target or data s
     pop l2                               ; C: l2 = pop();
     pop r1                               ; C: r1 = pop();
     pop r0                               ; C: r0 = pop();
-    load r3, 0                           ; C: r3 = 0;
+    xor r3, r3                           ; C: r3 = 0;
     pop l3                               ; C: l3 = pop();
     pop r4                               ; C: r4 = pop();
     ldsp & SAVED_SP                      ; C: SP = *(SAVED_SP);

@@ -1,34 +1,61 @@
 This is a list of standard cli
 utils
+
 cat FILE
 print content of file
+
 cd DIR
 change directory
+
 clear
 clear screen
+
 echo ARG
 print on screen
+
+fstat [PATH]
+show file/directory disk usage
+
 help
 print this message
+
 ls
 list objects in a directory
+
 lscpu
 cpu info
+
+lsbus
+list devices
+
 mkdir DIRNAME
 create a directory
+
 more
 print contet of a file with scroll
+
 mount ADDR (integer)
 mount a disk from address
+
 poweroff
 powroff the system
+
 pwd
 print working directory
+
+redct [FILE]
+redirect the output to a file
+if no file specified, reset
+redirect
+
 rm
 remove file or directory
+
 sh
 start a new shell
-stat
-show file or directory disk usage
+
 touch
 create a new file
+
+version
+print os version

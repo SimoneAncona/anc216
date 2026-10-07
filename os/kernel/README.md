@@ -25,7 +25,7 @@ appear above routines. `use ... as` defines assembler aliases, not storage.
 | `fs_constants.anc216` | AFS format offsets, dimensions and errors |
 | `fs_lookup.anc216` | Mount, absolute-path traversal and file lookup |
 | `fs_chain.anc216` | Cluster address/header decoding, complete validation and rewind |
-| `fs_transfer.anc216` | Sequential reads and bounded overwrite-only writes |
+| `fs_transfer.anc216` | Sequential reads and writes with payload/chain growth |
 | `fs_namespace.anc216` | Directory enumeration, allocation and removal |
 | `fs_stat.anc216` | Payload/allocated usage and bounded recursive parent membership |
 | `fs_state.anc216` | Single descriptor, path/header scratch and chain bitmap |

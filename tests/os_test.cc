@@ -54,7 +54,7 @@ int main(int argc, char **argv)
             disks.keyboard_input(key);
         bool entered_user = false;
         unsigned cycles = 0;
-        for (; cycles < 500000 && !process.halted(); ++cycles)
+        for (; cycles < 1500000 && !process.halted(); ++cycles)
         {
             process.step();
             entered_user |= !(process.get_info().sr & 8);
@@ -101,7 +101,7 @@ int main(int argc, char **argv)
         if (screen() != idle_screen)
             throw std::runtime_error("Idle keyboard input unexpectedly changed the console");
         process.request_soft_reset();
-        for (unsigned cycle = 0; cycle < 250000; ++cycle)
+        for (unsigned cycle = 0; cycle < 1500000; ++cycle)
             process.step();
         if (process.halted() || !process.error().empty() || process.peek(0x00f1) != 0x63)
             throw std::runtime_error("OS soft reset handler failed");

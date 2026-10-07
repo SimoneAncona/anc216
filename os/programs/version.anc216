@@ -1,0 +1,14 @@
+import "../libs/abi.anc216"
+
+_code:
+    load r0, SYS_PRINT
+    load r1, os_version
+    load r2, sizeof os_version
+    syscall
+    load r0, SYS_EXIT
+    load r1, 0
+    syscall
+
+os_version:
+    "AOS 0.2 (SYS_REDCT)", 10
+    "utils pack version 0.1"

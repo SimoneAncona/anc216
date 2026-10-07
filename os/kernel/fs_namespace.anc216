@@ -136,11 +136,11 @@ ns_list_terminate: ; C: ns_list_terminate: (routine, branch target or data symbo
     store & bp + 0, byte 0               ; C: *(bp + 0) = 0; | display names always have a terminator
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     tran r6, r4                          ; C: r6 = r4; | resume after this candidate on the next call
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
+    xor r7, r7                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 ns_list_eof: ; C: ns_list_eof: (routine, branch target or data symbol)
-    load r6, 0                           ; C: r6 = 0; | r6 = 0
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
+    xor r6, r6                           ; C: r6 = 0; | r6 = 0
+    xor r7, r7                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 
 ; _______________________________________________________________________
@@ -262,7 +262,7 @@ ns_directory_free: ; C: ns_directory_free: (routine, branch target or data symbo
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
 ns_created: ; C: ns_created: (routine, branch target or data symbol)
     store & fs_head, word 0              ; C: *(fs_head) = 0; | namespace operations leave no descriptor open
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
+    xor r7, r7                  ; C: r7 = FS_SUCCESS; | r7 = FS_SUCCESS
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 ns_existing_file: ; C: ns_existing_file: (routine, branch target or data symbol)
     load r0, & ns_create_directory       ; C: r0 = *(ns_create_directory); | r0 = *(ns_create_directory)
@@ -300,7 +300,7 @@ ns_write_name_loop: ; C: ns_write_name_loop: (routine, branch target or data sym
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 ns_zero_disk: ; C: ns_zero_disk: (routine, branch target or data symbol)
-    load r0, 0                           ; C: r0 = 0; | r0 = 0
+    xor r0, r0                           ; C: r0 = 0; | r0 = 0
 ns_zero_disk_loop: ; C: ns_zero_disk_loop: (routine, branch target or data symbol)
     load r1, & ns_disk_pointer           ; C: r1 = *(ns_disk_pointer); | r1 = *(ns_disk_pointer)
     phbp                                 ; C: push(BP); | save BP before pointer/helper use

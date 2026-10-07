@@ -33,7 +33,7 @@ _code:
     cmp r1, 11
     jne test_failure
     load r0, SYS_VIDEO
-    load r1, 0
+    xor r1, r1
     syscall
     cmp r7, OS_SUCCESS
     jne test_failure

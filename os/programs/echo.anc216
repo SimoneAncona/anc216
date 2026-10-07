@@ -2,12 +2,21 @@
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
 import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    call app_print                       ; C: app_print(); | print arguments verbatim, including spaces
-    pobp                                 ; C: BP = pop_word(); | restore the saved BP
-    phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    call app_newline                     ; C: app_newline(); | app_newline()
-    pobp                                 ; C: BP = pop_word(); | restore the saved BP
-    jmp app_exit                         ; C: goto app_exit; | goto app_exit
-
-import "../libs/io.anc216" ; C: #include "../libs/io.anc216"
+    load r0, SYS_PRINT
+    syscall
+    cmp r7, OS_SUCCESS
+    jne echo_failed
+    load r0, SYS_PRINT
+    load r1, new_line
+    load r2, 1
+    syscall
+    cmp r7, OS_SUCCESS
+    jne echo_failed
+    xor r0, r0
+    xor r1, r1
+    syscall
+echo_failed:
+    xor r0, r0
+    tran r1, r7
+    syscall
+new_line: 10

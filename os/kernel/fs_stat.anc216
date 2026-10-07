@@ -118,7 +118,7 @@ stat_publish: ; C: stat_publish: (routine, branch target or data symbol)
     pobp                                 ; C: BP = pop_word();
     load r6, & stat_logical              ; C: r6 = *(stat_logical);
     store & fs_head, word 0              ; C: *(fs_head) = 0;
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+    xor r7, r7                  ; C: r7 = FS_SUCCESS;
 stat_return: ; C: stat_return: (routine, branch target or data symbol)
     store & fs_head, word 0              ; C: *(fs_head) = 0; | close the descriptor on success and failure
     ret                                  ; C: return; // restore CALL PC/SR and discard frame
@@ -153,7 +153,7 @@ stat_count_next: ; C: stat_count_next: (routine, branch target or data symbol)
     dec r5                               ; C: r5--;
     jne stat_count_clusters              ; C: if (!Z) goto stat_count_clusters;
     pobp                                 ; C: BP = pop_word();
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+    xor r7, r7                  ; C: r7 = FS_SUCCESS;
     ret                                  ; C: return; // restore CALL PC/SR and discard frame
 stat_corrupt: ; C: stat_corrupt: (routine, branch target or data symbol)
     load r7, FS_CORRUPT_CHAIN            ; C: r7 = FS_CORRUPT_CHAIN;
@@ -198,16 +198,16 @@ stat_parent_walk: ; C: stat_parent_walk: (routine, branch target or data symbol)
 stat_parent_free: ; C: stat_parent_free: (routine, branch target or data symbol)
     cmp r0, & stat_candidate             ; C: flags = compare(r0, *(stat_candidate));
     jne stat_parent_bad                  ; C: if (!Z) goto stat_parent_bad;
-    load r6, 0                           ; C: r6 = 0;
+    xor r6, r6                           ; C: r6 = 0;
     jmp stat_parent_done                 ; C: goto stat_parent_done;
 stat_parent_root: ; C: stat_parent_root: (routine, branch target or data symbol)
-    load r6, 0                           ; C: r6 = 0;
+    xor r6, r6                           ; C: r6 = 0;
     cmp r0, & stat_root                  ; C: flags = compare(r0, *(stat_root));
     jne stat_parent_done                 ; C: if (!Z) goto stat_parent_done;
 stat_parent_yes: ; C: stat_parent_yes: (routine, branch target or data symbol)
     load r6, 1                           ; C: r6 = 1;
 stat_parent_done: ; C: stat_parent_done: (routine, branch target or data symbol)
-    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+    xor r7, r7                  ; C: r7 = FS_SUCCESS;
     pop r5                               ; C: r5 = pop();
     pop r4                               ; C: r4 = pop();
     ret                                  ; C: return; // restore CALL PC/SR and discard frame

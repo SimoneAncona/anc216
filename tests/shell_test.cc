@@ -54,6 +54,11 @@ int main(int argc, char **argv)
             display->cpu_write(0x0400 | y, false);
             return display->cpu_read(0, false);
         };
+        // Capture the initial prompt pixels, excluding the blinking cursor row.
+        std::vector<uint16_t> prompt_pixels;
+        for (unsigned y = 0; y < 7; ++y)
+            for (unsigned x = 0; x < 24; ++x)
+                prompt_pixels.push_back(pixel(x, y));
         auto steps = [&](unsigned count)
         {
             for (unsigned i = 0; i < count && !cpu.halted(); ++i)
@@ -155,6 +160,49 @@ int main(int argc, char **argv)
                         ((font.at(at + y) & (0x80 >> x)) ? 0xff : 0))
                         throw std::runtime_error("more rendered an incorrect glyph: " + std::string(1, ch) + " column=" + std::to_string(column) + " row=" + std::to_string(row));
         };
+        // Prompts stay visible and never enter the redirected file, even across reloads.
+        command("touch /prompt-test.txt");
+        const unsigned prompt_file = file_id(0, "prompt-test.txt");
+        if (!prompt_file)
+            throw std::runtime_error("Missing prompt redirection target");
+        const unsigned prompt_base = 2185 + (prompt_file - 1) * 323;
+        command("redct /prompt-test.txt");
+        command("clear");
+        for (unsigned y = 0; y < 7; ++y)
+            for (unsigned x = 0; x < 24; ++x)
+                if (pixel(x, y) != prompt_pixels.at(y * 24 + x))
+                    throw std::runtime_error("Redirected shell prompt disappeared from the console");
+        if (devices.read(prompt_base + 21, 0x3000) != 0)
+            throw std::runtime_error("Shell prompt entered the redirected file");
+        command("");
+        if (devices.read(prompt_base + 21, 0x3000) != 0)
+            throw std::runtime_error("Repeated prompt entered the redirected file");
+        command("pwd");
+        if (devices.read(prompt_base + 21, 0x3000) != 2 ||
+            disk_byte(prompt_base + 23) != '/' || disk_byte(prompt_base + 24) != '\n')
+            throw std::runtime_error("Prompt bypass disturbed command redirection");
+        command("redct");
+        command("rm /prompt-test.txt");
+        // Echo intentionally has console permission only; redct authorized the file.
+        command("touch test.txt");
+        const unsigned echo_file = file_id(0, "test.txt");
+        if (!echo_file)
+            throw std::runtime_error("Missing echo redirection target");
+        const unsigned echo_base = 2185 + (echo_file - 1) * 323;
+        command("redct test.txt");
+        command("echo ciao");
+        command("echo hello");
+        const std::string expected_echo = "ciao\nhello\n";
+        if (devices.read(echo_base + 21, 0x3000) != expected_echo.size())
+            throw std::runtime_error("Redirected echo wrote an incorrect file length");
+        for (unsigned i = 0; i < expected_echo.size(); ++i)
+            if (disk_byte(echo_base + 23 + i) != unsigned(expected_echo[i]))
+                throw std::runtime_error("Redirected echo lost its arguments or newline");
+        command("redct");
+        command("cat test.txt");
+        if (devices.read(echo_base + 21, 0x3000) != expected_echo.size())
+            throw std::runtime_error("Stopping redirection changed the file");
+        command("rm test.txt");
         command("more", 1);
         command("more /missing", 3);
         command("more /more-exact.txt"); // EOF needs no extra Enter.

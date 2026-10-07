@@ -10,8 +10,8 @@ Services 00–06 use the original PDF's numbering. The fwrite packing below reso
 | 01 | fopen | R1 absolute path, L2 length, R3 descriptor-byte pointer | Writes descriptor 1, R6=1 |
 | 02 | fclose | R1 descriptor 1 | Closes file |
 | 03 | fread | R1 descriptor, L2 count, R3 destination | R6 bytes read, zero at EOF |
-| 04 | fwrite | R1 descriptor, R2=`8000 OR count`, R3 source | R6 overwritten bytes; no growth |
-| 05 | print | R1 text, L2 count, R3 stream 0/1 | R6 printed bytes |
+| 04 | fwrite | R1 descriptor, R2=`8000 OR count`, R3 source | R6 bytes written; grows the file at EOF |
+| 05 | print | R1 text, L2 count, R2 bit 8 bypasses redirection | R6 printed bytes |
 | 06 | getl | R1 capacity 1–255 including NUL, R2 destination | R6 length excluding newline/NUL, in R2 the string captured from input |
 | 07 | clear | No arguments | Clear display and reset text position |
 | 10 | mount | R1 MPME EMEM address | Selects AFS volume; closes open file |
@@ -30,8 +30,9 @@ Services 00–06 use the original PDF's numbering. The fwrite packing below reso
 | 1d | poweroff | none | Poweroff the system |
 | 1e | video | R1=1 grant, R1=0 revoke | R6=`fffd` on grant, zero on revoke |
 | 1f | getk | none | R6=key code |
+| 20 | redct | R1 absolute path (null to stop redirect), L2 length | Redirect all console stream to the specified file |
 
-Print/getl/clear/video require UALf flag 80. Filesystem services require flag 20. Exit and poweroff are always allowed. Missing services, including listenkey, sleep and malloc, return error 8. Streams 0/1 currently use the same console.
+Print/getl/clear/video require UALf flag 80. Filesystem services, including `redct`, require flag 20. Once a redirect target is authorized, console programs can print to it without filesystem permission. Exit and poweroff are always allowed. Missing services, including listenkey, sleep and malloc, return error 8. `print` normally follows the active redirection. Set R2 to `PRINT_BYPASS_REDIRECT OR count` (`0100 OR count`) to send just that call to the console, leaving redirection and its file cursor intact. The shell uses this flag for both the cwd and `> ` prompt; `app_print_console` is the user helper. Redirection persists across commands: run `redct` without arguments to stop it before displaying a file with `cat`.
 
 Getl waits for Enter, NUL-terminates the buffer and omits the newline from its result. Backspace removes a buffered byte and erases its glyph, restoring the previous cell across row wraps. An underline cursor blinks every 500 ms while waiting; it is removed on Enter. Characters beyond capacity are ignored until Enter. An absent keyboard returns error 2.
 
@@ -42,14 +43,14 @@ Getl waits for Enter, NUL-terminates the buffer and omits the newline from its r
 | 3 | Path not found |
 | 4 | Invalid/closed descriptor |
 | 5 | Corrupt selected file chain |
-| 6 | No free file-head cluster or directory slot |
+| 6 | No free cluster or directory slot |
 | 7 | Invalid, unsupported, or oversized UALf |
 | 8 | Unsupported syscall |
 | 9 | UALf permission denied |
 | 10 | A file/directory already occupies the requested name |
 | 11 | Directory is not empty |
 
-A successful short read/write is not an error; inspect R6. Mount selects any MPME address, allowing programs to access many independent 64 KiB volumes. Only one file descriptor is currently supported; opening replaces it. MPME writes update and flush the attached host file immediately. Rebuilding generated cards replaces their contents; use separate copies for personal data.
+Reads stop successfully at EOF. Writes overwrite from the current cursor and grow the file at EOF, allocating continuation clusters as needed. A full volume returns error 6; R6 reports bytes written before capacity was exhausted. A zero-byte write does not allocate storage. Mount selects any MPME address, allowing programs to access many independent 64 KiB volumes. Only one file descriptor is currently supported; opening replaces it. MPME writes update and flush the attached host file immediately. Rebuilding generated cards replaces their contents; use separate copies for personal data.
 
 ```asm
 load r0, 5

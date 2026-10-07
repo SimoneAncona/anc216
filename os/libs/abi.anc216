@@ -23,6 +23,8 @@ use SYS_CHDIR as 0x1c                      ; syscall chdir ID = 0x1c
 use SYS_POWEROFF as 0x1d                   ; syscall poweroff ID = 0x1d
 use SYS_VIDEO as 0x1e                      ; syscall video ID = 0x1e
 use SYS_GETK as 0x1f                       ; syscall getk ID = 0x1f
+use SYS_REDCT as 0x20                      ; syscall redct ID
+use PRINT_BYPASS_REDIRECT as 0x0100        ; R2 flag: print directly to the console
 use OS_STAT_BYTES as 8                     ; os stat bytes = 8
 use OS_SUCCESS as 0                        ; os success = 0
 use OS_INVALID as 1                        ; os invalid = 1

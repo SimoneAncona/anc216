@@ -63,7 +63,7 @@ more_keep_printing:
     tili r5
     add r3, r5
     ldbp r3
-    load r1, 0
+    xor r1, r1
     load l1, & bp + 0
     pobp
     ; The kernel wraps immediately after column 32. Print every byte once.
@@ -96,7 +96,7 @@ more_print_ch:
     add r1, r4
     load r0, SYS_PRINT
     load r2, 1
-    load r3, 0
+    xor r3, r3
     syscall
     cmp r7, OS_SUCCESS
     jne app_error
@@ -151,7 +151,7 @@ more_redraw:
     add r1, more_screen
     load r0, SYS_PRINT
     load r2, CONSOLE_W
-    load r3, 0
+    xor r3, r3
     syscall
     cmp r7, OS_SUCCESS
     jne app_error

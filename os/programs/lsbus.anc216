@@ -5,21 +5,35 @@ _code:
     syscall
     load r1, lower_index
     load r2, sizeof lower_index
+    phbp
     call app_print
+    pobp
     teli r1
     push r1
+    phbp
     call app_print_unsigned
+    pobp
+    phbp
     call app_newline
+    pobp
     load r1, upper_index
     load r2, sizeof upper_index
+    phbp
     call app_print
+    pobp
     tehi r1
     push r1
+    phbp
     call app_print_unsigned
+    pobp
+    phbp
     call app_newline
+    pobp
     load r1, scanning_devices
     load r2, sizeof scanning_devices
+    phbp
     call app_print
+    pobp
     pop r1  ; upper index
     pop r0  ; lower index
 device_scan:
@@ -29,40 +43,56 @@ device_scan:
     push r1
     ireq r0
     push r0
+    phbp
     call app_print_unsigned
+    pobp
     load r1, space
     load r2, sizeof space
+    phbp
     call app_print
+    pobp
     pop r0
     tran r1, r0
     push r1
+    phbp
     call app_print_unsigned
+    pobp
     load r1, space
     load r2, sizeof space
+    phbp
     call app_print
+    pobp
     pop r1
     cmp r1, 0x0201
     jne noavc64
     load r1, avc64_msg
     load r2, sizeof avc64_msg
+    phbp
     call app_print
+    pobp
     jmp continue
 noavc64:
     cmp r1, 0x0102
     jne unknown
     load r1, mpme216_msg
     load r2, sizeof mpme216_msg
+    phbp
     call app_print
+    pobp
     jmp continue
 unknown:
     load r1, unknown_msg
     load r2, sizeof unknown_msg
+    phbp
     call app_print
+    pobp
 continue:
     pop r1
     pop r0
     inc r0
+    phbp
     call app_newline
+    pobp
     jmp device_scan
 exit:
     call app_exit

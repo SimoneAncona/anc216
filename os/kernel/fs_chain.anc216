@@ -136,7 +136,7 @@ fs_corrupt: ; C: fs_corrupt: (routine, branch target or data symbol)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 fs_valid: ; C: fs_valid: (routine, branch target or data symbol)
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = 0
+    xor r7, r7                  ; C: r7 = OS_SUCCESS; | r7 = 0
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 
@@ -149,7 +149,7 @@ fs_rewind: ; C: fs_rewind: (routine, branch target or data symbol)
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
     call fs_cluster_info                 ; C: fs_cluster_info(); | fs_cluster_info()
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = 0
+    xor r7, r7                  ; C: r7 = OS_SUCCESS; | r7 = 0
     ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 fs_no_fd: ; C: fs_no_fd: (routine, branch target or data symbol)
     load r7, FS_NO_DESCRIPTOR            ; C: r7 = FS_NO_DESCRIPTOR; | r7 = 4

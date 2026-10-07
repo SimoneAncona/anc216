@@ -1,0 +1,26 @@
+import "../libs/abi.anc216"
+_code:
+    tran r0, r1
+    tran r1, r2
+    cmp r1, 0
+    jeq redct_none
+    phbp
+    call path_absolute
+    pobp
+    cmp r7, OS_SUCCESS
+    jne app_error
+    load r0, SYS_REDCT
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    jmp app_exit
+redct_none:
+    load r0, SYS_REDCT
+    xor r1, r1
+    xor r2, r2
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    jmp app_exit
+import "../libs/io.anc216"
+import "../libs/paths.anc216"

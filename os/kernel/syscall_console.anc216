@@ -1,15 +1,10 @@
 ; Checked console output and blocking line input.
-; print(05): R1 buffer, L2 count, R3 stream 0/1. Requires console flag 80.
+; print(05): R1 buffer, L2 count, R2 bit 8 bypasses redirection. Requires flag 80.
 ; Length is authoritative, so this service never scans an unbounded string.
 syscall_print: ; C: syscall_print: (routine, branch target or data symbol)
     load r0, & process_flags             ; C: r0 = *(process_flags);
     and r0, PERMISSION_CONSOLE           ; C: r0 &= PERMISSION_CONSOLE;
     jeq syscall_denied                   ; C: if (Z) goto syscall_denied;
-    load r0, & arg3                      ; C: r0 = *(arg3);
-    cmp r0, 0                            ; C: flags = compare(r0, 0);
-    jls syscall_invalid                  ; C: if (N != O) goto syscall_invalid;
-    cmp r0, 1                            ; C: flags = compare(r0, 1);
-    jgr syscall_invalid                  ; C: if (N == O && !Z) goto syscall_invalid;
     load r1, & arg1                      ; C: r1 = *(arg1);
     load r2, & arg2                      ; C: r2 = *(arg2);
     and r2, BYTE_MASK                    ; C: r2 &= BYTE_MASK;
@@ -20,6 +15,12 @@ syscall_print: ; C: syscall_print: (routine, branch target or data symbol)
     jne syscall_return                   ; C: if (!Z) goto syscall_return;
     store & print_pointer, r1            ; C: *(print_pointer) = r1;
     store & print_count, r2              ; C: *(print_count) = r2;
+    load r0, & arg2
+    and r0, PRINT_BYPASS_REDIRECT
+    jne syscall_print_loop              ; bypass only this print; keep the redirect cursor
+    load l0, & syscall_path_redirect_cnt
+    cmp l0, 0
+    jne syscall_print_redirect_mode
 syscall_print_loop: ; C: syscall_print_loop: (routine, branch target or data symbol)
     load r0, & print_count               ; C: r0 = *(print_count);
     cmp r0, 0                            ; C: flags = compare(r0, 0);
@@ -39,10 +40,33 @@ syscall_print_loop: ; C: syscall_print_loop: (routine, branch target or data sym
     dec r0                               ; C: r0--;
     store & print_count, r0              ; C: *(print_count) = r0;
     jmp syscall_print_loop               ; C: goto syscall_print_loop;
+syscall_print_redirect_mode:
+    ; redct already authorized this target with filesystem permission.
+    ; Console programs can write the selected stream without opening files themselves.
+    load r0, & fs_device
+    cmp r0, & syscall_redirect_device
+    jne syscall_print_redirect_device_error
+    phbp
+    call syscall_redirect_swap_state
+    pobp
+    load r2, & print_pointer             ; physical buffer, already checked by user_buffer
+    load r3, & print_count
+    load r4, 1                          ; write and grow the file, advancing the redirect cursor
+    phbp
+    call fs_transfer
+    pobp
+    phbp
+    call syscall_redirect_swap_state    ; keep redirect cursor, restore the user's descriptor
+    pobp
+    jmp syscall_return                  ; return actual count/status, including short writes
+syscall_print_redirect_device_error:
+    load r7, FS_BAD_DEVICE
+    jmp syscall_return
+
 syscall_print_done: ; C: syscall_print_done: (routine, branch target or data symbol)
     load r6, & arg2                      ; C: r6 = *(arg2);
     and r6, BYTE_MASK                    ; C: r6 &= BYTE_MASK;
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+    xor r7, r7                  ; C: r7 = OS_SUCCESS;
     jmp syscall_return                   ; C: goto syscall_return;
 
 ; Check if the keyboard is reachable, this is a routine, can be called
@@ -87,7 +111,7 @@ syscall_getl_loop: ; C: syscall_getl_loop: (routine, branch target or data symbo
     phbp                                 ; C: push(BP);
     call console_cursor_tick             ; C: console_cursor_tick(); | blink even when the input queue is empty
     pobp                                 ; C: BP = pop_word();
-    load r1, 0                           ; C: r1 = 0;
+    xor r1, r1                           ; C: r1 = 0;
     read & KEYBOARD_ADDRESS              ; C: r1 = device_read(KEYBOARD_ADDRESS, r1);
     cmp r1, 0                            ; C: flags = compare(r1, 0);
     jeq syscall_getl_loop                ; C: if (Z) goto syscall_getl_loop;
@@ -186,7 +210,7 @@ syscall_getl_done: ; C: syscall_getl_done: (routine, branch target or data symbo
     call putc                            ; C: putc();
     pobp                                 ; C: BP = pop_word();
     load r6, & input_length              ; C: r6 = *(input_length);
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+    xor r7, r7                  ; C: r7 = OS_SUCCESS;
     jmp syscall_return                   ; C: goto syscall_return;
 
 ; getk(): Get single key press from the keyboard
@@ -197,12 +221,12 @@ syscall_getk:
     and r0, PERMISSION_CONSOLE           ; C: r0 &= PERMISSION_CONSOLE;
     jeq syscall_denied                   ; C: if (Z) goto syscall_denied;
 syscall_getk_loop:
-    load r1, 0                           ; select and consume the next keyboard event
+    xor r1, r1                           ; select and consume the next keyboard event
     read & KEYBOARD_ADDRESS
     cmp r1, 0
     jeq syscall_getk_loop
     tran r6, r1
-    load r7, OS_SUCCESS
+    xor r7, r7
     jmp syscall_return
 
 
@@ -259,3 +283,109 @@ syscall_video_revoke: ; C: syscall_video_revoke: (routine, branch target or data
 syscall_video_absent: ; C: syscall_video_absent: (routine, branch target or data symbol)
     load r7, FS_BAD_DEVICE               ; C: r7 = FS_BAD_DEVICE;
     jmp syscall_return                   ; C: goto syscall_return;
+
+syscall_path_redirect:
+    reserve OS_PATH_CAPACITY
+syscall_path_redirect_cnt:
+    byte 0
+
+; redirect out stream to an existing file (R1=absolute path, L2=size).
+; Null R1 disables redirection. Opening a new target starts at its first byte.
+; Keep a private descriptor cursor so printing does not disturb fopen/fread.
+syscall_redct:
+    load r1, & arg1
+    cmp r1, 0
+    jeq syscall_redct_clear_redct
+    load r2, & arg2
+    and r2, BYTE_MASK
+    cmp r2, 1
+    jls syscall_invalid
+    phbp
+    call user_buffer
+    pobp
+    cmp r7, 0
+    jne syscall_return
+    store & print_pointer, r1
+    store & print_count, r2
+    ; Save the current descriptor on the interrupt stack before fs_open replaces it.
+    load r1, fs_head
+    load r2, 9
+syscall_redct_save_descriptor:
+    phbp
+    ldbp r1
+    load r0, & bp + 0
+    pobp
+    push r0
+    add r1, 2
+    dec r2
+    jne syscall_redct_save_descriptor
+    load r1, & print_pointer
+    load r2, & print_count
+    phbp
+    call fs_open                        ; validates the full absolute path and file chain
+    pobp
+    cmp r7, 0
+    jne syscall_redct_restore_descriptor
+    load r1, fs_head
+    load r2, syscall_redirect_state
+    load r3, 9
+syscall_redct_copy_descriptor:
+    phbp
+    ldbp r1
+    load r0, & bp + 0
+    ldbp r2
+    store & bp + 0, r0
+    pobp
+    add r1, 2
+    add r2, 2
+    dec r3
+    jne syscall_redct_copy_descriptor
+    load r0, & fs_device
+    store & syscall_redirect_device, r0
+    load r0, & print_count
+    store & syscall_path_redirect_cnt, l0
+syscall_redct_restore_descriptor:
+    load r1, fs_size
+    load r2, 9
+syscall_redct_restore_descriptor_loop:
+    pop r0
+    phbp
+    ldbp r1
+    store & bp + 0, r0
+    pobp
+    sub r1, 2
+    dec r2
+    jne syscall_redct_restore_descriptor_loop
+    xor r6, r6
+    jmp syscall_return
+syscall_redct_clear_redct:
+    store & syscall_path_redirect_cnt, byte 0
+    xor r6, r6
+    xor r7, r7
+    jmp syscall_return
+
+; Swap the nine contiguous descriptor words fs_head..fs_size with the redirect cursor.
+; Preserve R6/R7 so fs_transfer's byte count and error survive restoration.
+syscall_redirect_swap_state:
+    load r1, fs_head
+    load r2, syscall_redirect_state
+    load r3, 9
+syscall_redirect_swap_state_loop:
+    phbp
+    ldbp r1
+    load r0, & bp + 0
+    ldbp r2
+    load r4, & bp + 0
+    store & bp + 0, r0
+    ldbp r1
+    store & bp + 0, r4
+    pobp
+    add r1, 2
+    add r2, 2
+    dec r3
+    jne syscall_redirect_swap_state_loop
+    ret
+syscall_redirect_state:
+    reserve 18
+syscall_redirect_device:
+    word 0

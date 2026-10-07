@@ -6,11 +6,11 @@ _code:
     jeq app_error                        ; C: if (Z) goto app_error; | if equal, goto app_error
     tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
     add r1, r5                           ; C: r1 += r5; | r1 += r5
-    load r4, 0                           ; C: r4 = 0; | decimal EMEM chip address accumulator
+    xor r4, r4                           ; C: r4 = 0; | decimal EMEM chip address accumulator
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
 mount_digit:
     ldbp r1                              ; C: BP = r1; | BP = r1 (physical pointer or saved frame)
-    load r0, 0                           ; C: r0 = 0; | r0 = 0
+    xor r0, r0                           ; C: r0 = 0; | r0 = 0
     load l0, & bp + 0                    ; C: l0 = *(bp + 0); | l0 = *(bp + 0)
     cmp r0, ASCII_DIGIT_ZERO             ; C: flags = compare(r0, ASCII_DIGIT_ZERO); | compare r0 with ASCII_DIGIT_ZERO
     jls mount_bad                        ; C: if (N != O) goto mount_bad; | if less, goto mount_bad

@@ -5,7 +5,7 @@ _code:
     load r0, 5
     load r1, 0xffff
     load r2, 4
-    load r3, 0
+    xor r3, r3
     syscall
     cmp r7, 1
     jne fail
@@ -16,7 +16,7 @@ _code:
     load r0, 5
     load r1, greeting
     load r2, sizeof greeting
-    load r3, 0
+    xor r3, r3
     ; Progress marker for boot/debug tests (logical scratch offset 2000).
     store & 0x2000, word 1
     syscall
@@ -110,6 +110,9 @@ initial_byte_ok:
     ; Progress marker for boot/debug tests (logical scratch offset 2000).
     store & 0x2000, word 12
     syscall
+    phbp
+    call fs_growth_test
+    pobp
     ; A bad executable must return an error without replacing this process.
     load r0, 0x11
     load r1, bad_path
@@ -148,7 +151,7 @@ initial_byte_ok:
     load r0, 5
     load r1, 0x1000
     tran r2, r6
-    load r3, 0
+    xor r3, r3
     ; Progress marker for boot/debug tests (logical scratch offset 2000).
     store & 0x2000, word 16
     syscall
@@ -169,7 +172,7 @@ initial_byte_ok:
 fail:
     store & 0x2002, r7
     store & 0x2004, r6
-    load r0, 0
+    xor r0, r0
     load r1, 1
     ; Progress marker for boot/debug tests (logical scratch offset 2000).
     syscall
@@ -186,3 +189,5 @@ echo_path:
 fd:
     byte 0
 
+
+import "fs_growth_test.anc216"

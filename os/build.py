@@ -52,7 +52,9 @@ def main():
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
     # Shell and commands are real user executables; grants follow their services.
-    programs = ('sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'stat', 'poweroff', 'lscpu', 'more', 'lsbus')
+    programs = ['sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'fstat', 'poweroff', 'lscpu', 'more', 'lsbus', 'redct', 'version']
+    programs = sorted(programs)
+    print("Building user-space utils")
     for name in programs:
         application = args.output / f'{name}.ual'
         subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),
@@ -61,6 +63,7 @@ def main():
         data[7] = 0x80 if name in ('echo', 'clear') else 0xa0
         if len(data) > 0x0e00:
             raise ValueError(f"{name} exceeds the 3584-byte executable staging region")
+        print(f"{name}:\t{len(data)} bytes")
         application.write_bytes(data)
     cardreader = str(args.cardreader.resolve())
     def card(*arguments):

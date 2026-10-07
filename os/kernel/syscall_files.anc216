@@ -45,7 +45,7 @@ syscall_check_fd: ; C: syscall_check_fd: (routine, branch target or data symbol)
     load r0, & fs_head                   ; C: r0 = *(fs_head);
     cmp r0, 0                            ; C: flags = compare(r0, 0);
     jeq syscall_no_fd                    ; C: if (Z) goto syscall_no_fd;
-    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+    xor r7, r7                  ; C: r7 = OS_SUCCESS;
     ret                                  ; C: return; // restore CALL PC/SR and discard frame
 syscall_no_fd: ; C: syscall_no_fd: (routine, branch target or data symbol)
     load r7, FS_NO_DESCRIPTOR            ; C: r7 = FS_NO_DESCRIPTOR;

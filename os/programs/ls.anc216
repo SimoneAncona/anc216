@@ -35,7 +35,7 @@ ls_next:
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
     call app_print                       ; C: app_print(); | app_print()
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
-    load r0, 0                           ; C: r0 = 0; | r0 = 0
+    xor r0, r0                           ; C: r0 = 0; | r0 = 0
     load l0, & ls_entry                  ; C: l0 = *(ls_entry); | l0 = *(ls_entry)
     cmp r0, OS_ENTRY_DIRECTORY           ; C: flags = compare(r0, OS_ENTRY_DIRECTORY); | compare r0 with OS_ENTRY_DIRECTORY
     jne ls_newline                       ; C: if (!Z) goto ls_newline; | if not equal, goto ls_newline

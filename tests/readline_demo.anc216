@@ -11,7 +11,7 @@ _code:
     load r0, 5
     load r1, prompt
     load r2, sizeof prompt
-    load r3, 0
+    xor r3, r3
     syscall
     cmp r7, 0
     jne failed
@@ -24,14 +24,14 @@ _code:
     tran r2, r6
     load r0, 5
     load r1, 0x1000
-    load r3, 0
+    xor r3, r3
     syscall
     cmp r7, 0
     jne failed
-    load r0, 0
-    load r1, 0
+    xor r0, r0
+    xor r1, r1
     syscall
 failed:
-    load r0, 0
+    xor r0, r0
     load r1, 2
     syscall

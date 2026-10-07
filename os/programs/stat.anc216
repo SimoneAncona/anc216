@@ -34,6 +34,11 @@ _code:
     phbp                                 ; C: push(BP);
     call app_print_unsigned              ; C: app_print_unsigned();
     pobp                                 ; C: BP = pop_word();
+    load r1, stat_disk_outof
+    load r2, sizeof stat_disk_outof
+    phbp
+    call app_print
+    pobp
     phbp                                 ; C: push(BP);
     call app_newline                     ; C: app_newline();
     pobp                                 ; C: BP = pop_word();
@@ -46,6 +51,11 @@ _code:
     phbp                                 ; C: push(BP);
     call app_print_unsigned              ; C: app_print_unsigned();
     pobp                                 ; C: BP = pop_word();
+    load r1, stat_units_outof
+    load r2, sizeof stat_units_outof
+    phbp
+    call app_print
+    pobp
     phbp                                 ; C: push(BP);
     call app_newline                     ; C: app_newline();
     pobp                                 ; C: BP = pop_word();
@@ -58,6 +68,10 @@ stat_disk_text:
     "allocated bytes: "                  ; C: const char text[];
 stat_units_text:
     "allocation units: "                 ; C: const char text[];
+stat_disk_outof:
+    "/64k"
+stat_units_outof:
+    "/196"
 import "../libs/strings.anc216" ; C: #include "../libs/strings.anc216"
 import "../libs/paths.anc216" ; C: #include "../libs/paths.anc216"
 import "../libs/numbers.anc216" ; C: #include "../libs/numbers.anc216"

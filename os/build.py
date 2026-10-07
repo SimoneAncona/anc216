@@ -71,6 +71,7 @@ def main():
     card('--format', disk0)
     card(disk0, 'mkdir', '/bin')
     card(disk0, 'mkdir', '/data')
+    card(disk0, 'mkdir', '/home')
     for name in programs:
         card(disk0, 'put', '/bin/' + name, args.output / f'{name}.ual')
     card(disk0, 'put', '/bin/init', args.output / 'sh.ual')

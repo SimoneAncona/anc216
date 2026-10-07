@@ -4,41 +4,41 @@
 ; All helpers preserve other registers, so callers can keep traversal state.
 
 ; disk_word: R1 = chip byte offset -> R1 = big-endian word.
-disk_word:
-    push r0
-    phbp
-    load r0, & fs_device
-    ldbp r0
-    careq
-    read & bp + 0
-    pobp
-    pop r0
-    ret
+disk_word: ; C: disk_word: (routine, branch target or data symbol)
+    push r0                              ; C: push(r0);
+    phbp                                 ; C: push(BP);
+    load r0, & fs_device                 ; C: r0 = *(fs_device);
+    ldbp r0                              ; C: BP = r0;
+    careq                                ; C: SR.A = 0;
+    read & bp + 0                        ; C: r1 = device_read(bp + 0, r1);
+    pobp                                 ; C: BP = pop_word();
+    pop r0                               ; C: r0 = pop();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; disk_byte: R1 = offset -> R1 = unsigned byte. READ is a word operation;
 ; the first byte is the high byte, including the final byte at offset ffff.
-disk_byte:
-    phbp
-    call disk_word
-    pobp
-    shr r1, 8
-    ret
+disk_byte: ; C: disk_byte: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP);
+    call disk_word                       ; C: disk_word();
+    pobp                                 ; C: BP = pop_word();
+    shr r1, 8                            ; C: r1 >>= 8;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; disk_write_byte: R1 = chip offset, L0 = new byte. Byte width matters: a
 ; word write would corrupt the following byte. Volumes must be writable MPME.
-disk_write_byte:
-    push r2
-    phbp
-    load r2, & fs_device
-    ldbp r2
-    careq
-    write & bp + 0, r1
-    pareq
-    write & bp + 0, l0
-    careq
-    pobp
-    pop r2
-    ret
+disk_write_byte: ; C: disk_write_byte: (routine, branch target or data symbol)
+    push r2                              ; C: push(r2);
+    phbp                                 ; C: push(BP);
+    load r2, & fs_device                 ; C: r2 = *(fs_device);
+    ldbp r2                              ; C: BP = r2;
+    careq                                ; C: SR.A = 0;
+    write & bp + 0, r1                   ; C: device_write(bp + 0, r1);
+    pareq                                ; C: SR.A = 1;
+    write & bp + 0, l0                   ; C: device_write(bp + 0, l0);
+    careq                                ; C: SR.A = 0;
+    pobp                                 ; C: BP = pop_word();
+    pop r2                               ; C: r2 = pop();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
-fs_device:
-    word 0
+fs_device: ; C: fs_device: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };

@@ -198,7 +198,14 @@ uint16_t CPU::mapped(uint16_t a, bool external) const
 {
     if (sr & S)
         return a;
-    unsigned index = external ? 2 : 0;
+    if (external)
+    {
+        // EMEM operands always name physical device addresses, including user IO.
+        if (a < mtu[2] || a > mtu[3])
+            throw Fault{3};
+        return a;
+    }
+    unsigned index = 0;
     unsigned physical = unsigned(mtu[index]) + a;
     if (physical > mtu[index + 1] || physical >= MAX_MEM)
         throw Fault{external ? 3 : 2};
@@ -476,10 +483,15 @@ void CPU::execute(bool honor_breakpoints)
             data = e.width == 1 ? uint8_t(reg[e.reg]) : uint16_t(reg[e.reg]);
         else if (has_address && !(op >= JMP && op <= JNN) && op != CALL && !io && !(op >= STSR && op <= STBP))
             data = read(address, op == LDSR ? 1 : e.width);
-        if (io && has_address)
+        if (io)
         {
-            if (!(sr & S) && (address < mtu[2] || address > mtu[3]))
+            // Validate every addressing family, including register and relative IO.
+            // IO devices use one selector; flat ROM words span two EMEM cells.
+            address = mapped(has_address ? address : data, true);
+            if (!(sr & S) && emem && emem->is_rom(address) &&
+                unsigned(address) + e.width - 1 > mtu[3])
                 throw Fault{3};
+            has_address = true;
         }
         auto assign = [&](uint16_t v)
         {

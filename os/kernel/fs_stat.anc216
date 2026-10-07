@@ -1,0 +1,242 @@
+; fs_stat(R1=absolute path, R2=length, R3=8-byte physical result).
+; Result words: kind (1 directory/2 file), payload bytes, allocated bytes,
+; allocation units (file clusters + non-root directory records).
+; Directories include all descendants; root owns no directory record itself.
+; Logical size excludes metadata/slack. Disk size includes complete 323-byte
+; file clusters and 16-byte directory records, but not global fixed tables.
+; Closes the single descriptor and validates every included file chain.
+fs_stat: ; C: fs_stat: (routine, branch target or data symbol)
+    store & stat_output, r3              ; C: *(stat_output) = r3;
+    store & stat_path_length, r2         ; C: *(stat_path_length) = r2;
+    store & stat_path_pointer, r1        ; C: *(stat_path_pointer) = r1;
+    phbp                                 ; C: push(BP);
+    call fs_open                         ; C: fs_open();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jeq stat_file                        ; C: if (Z) goto stat_file;
+    cmp r7, FS_NOT_FOUND                 ; C: flags = compare(r7, FS_NOT_FOUND);
+    jeq stat_try_directory               ; C: if (Z) goto stat_try_directory;
+    cmp r7, FS_INVALID_INPUT             ; C: flags = compare(r7, FS_INVALID_INPUT);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+stat_try_directory: ; C: stat_try_directory: (routine, branch target or data symbol)
+    load r1, & stat_path_pointer         ; C: r1 = *(stat_path_pointer);
+    load r2, & stat_path_length          ; C: r2 = *(stat_path_length);
+    phbp                                 ; C: push(BP);
+    call fs_directory                    ; C: fs_directory();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+    store & stat_root, r6                ; C: *(stat_root) = r6;
+    store & stat_logical, word 0         ; C: *(stat_logical) = 0;
+    store & stat_disk, word 0            ; C: *(stat_disk) = 0;
+    store & stat_units, word 0           ; C: *(stat_units) = 0;
+    store & stat_kind, word FS_ENTRY_DIRECTORY ; C: *(stat_kind) = FS_ENTRY_DIRECTORY;
+    load r4, 1                           ; C: r4 = 1;
+stat_directory_loop: ; C: stat_directory_loop: (routine, branch target or data symbol)
+    tran r0, r4                          ; C: r0 = r4;
+    phbp                                 ; C: push(BP);
+    call stat_descendant                 ; C: stat_descendant();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+    cmp r6, 0                            ; C: flags = compare(r6, 0);
+    jeq stat_directory_next              ; C: if (Z) goto stat_directory_next;
+    load r0, & stat_disk                 ; C: r0 = *(stat_disk);
+    add r0, FS_DIRECTORY_BYTES           ; C: r0 += FS_DIRECTORY_BYTES;
+    store & stat_disk, r0                ; C: *(stat_disk) = r0;
+    load r0, & stat_units                ; C: r0 = *(stat_units);
+    inc r0                               ; C: r0++;
+    store & stat_units, r0               ; C: *(stat_units) = r0;
+stat_directory_next: ; C: stat_directory_next: (routine, branch target or data symbol)
+    inc r4                               ; C: r4++;
+    cmp r4, FS_DIRECTORY_COUNT + 1       ; C: flags = compare(r4, FS_DIRECTORY_COUNT + 1);
+    jne stat_directory_loop              ; C: if (!Z) goto stat_directory_loop;
+    load r4, 1                           ; C: r4 = 1;
+stat_files_loop: ; C: stat_files_loop: (routine, branch target or data symbol)
+    tran r1, r4                          ; C: r1 = r4;
+    dec r1                               ; C: r1--;
+    shl r1, 1                            ; C: r1 <<= 1;
+    add r1, FS_TABLE_OFFSET              ; C: r1 += FS_TABLE_OFFSET;
+    phbp                                 ; C: push(BP);
+    call disk_word                       ; C: disk_word();
+    pobp                                 ; C: BP = pop_word();
+    tran r0, r1                          ; C: r0 = r1;
+    and r1, BYTE_MASK                    ; C: r1 &= BYTE_MASK;
+    cmp r1, FS_HEAD_TYPE                 ; C: flags = compare(r1, FS_HEAD_TYPE);
+    jne stat_file_next                   ; C: if (!Z) goto stat_file_next;
+    shr r0, 8                            ; C: r0 >>= 8;
+    store & stat_owner, r0               ; C: *(stat_owner) = r0;
+    phbp                                 ; C: push(BP);
+    call stat_descendant                 ; C: stat_descendant();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+    cmp r6, 0                            ; C: flags = compare(r6, 0);
+    jeq stat_file_next                   ; C: if (Z) goto stat_file_next;
+    store & stat_cursor, r4              ; C: *(stat_cursor) = r4;
+    store & fs_head, r4                  ; C: *(fs_head) = r4;
+    load r0, & stat_owner                ; C: r0 = *(stat_owner);
+    store & fs_parent, r0                ; C: *(fs_parent) = r0;
+    phbp                                 ; C: push(BP);
+    call fs_validate                     ; C: fs_validate();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+    phbp                                 ; C: push(BP);
+    call stat_add_file                   ; C: stat_add_file();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+    load r4, & stat_cursor               ; C: r4 = *(stat_cursor);
+stat_file_next: ; C: stat_file_next: (routine, branch target or data symbol)
+    inc r4                               ; C: r4++;
+    cmp r4, FS_CLUSTER_COUNT + 1         ; C: flags = compare(r4, FS_CLUSTER_COUNT + 1);
+    jne stat_files_loop                  ; C: if (!Z) goto stat_files_loop;
+    jmp stat_publish                     ; C: goto stat_publish;
+stat_file: ; C: stat_file: (routine, branch target or data symbol)
+    store & stat_logical, word 0         ; C: *(stat_logical) = 0;
+    store & stat_disk, word 0            ; C: *(stat_disk) = 0;
+    store & stat_units, word 0           ; C: *(stat_units) = 0;
+    store & stat_kind, word FS_ENTRY_FILE ; C: *(stat_kind) = FS_ENTRY_FILE;
+    phbp                                 ; C: push(BP);
+    call stat_add_file                   ; C: stat_add_file();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne stat_return                      ; C: if (!Z) goto stat_return;
+stat_publish: ; C: stat_publish: (routine, branch target or data symbol)
+    load r3, & stat_output               ; C: r3 = *(stat_output);
+    phbp                                 ; C: push(BP);
+    ldbp r3                              ; C: BP = r3;
+    load r0, & stat_kind                 ; C: r0 = *(stat_kind);
+    store & bp + 0, r0                   ; C: *(bp + 0) = r0;
+    load r0, & stat_logical              ; C: r0 = *(stat_logical);
+    store & bp + 2, r0                   ; C: *(bp + 2) = r0;
+    load r0, & stat_disk                 ; C: r0 = *(stat_disk);
+    store & bp + 4, r0                   ; C: *(bp + 4) = r0;
+    load r0, & stat_units                ; C: r0 = *(stat_units);
+    store & bp + 6, r0                   ; C: *(bp + 6) = r0;
+    pobp                                 ; C: BP = pop_word();
+    load r6, & stat_logical              ; C: r6 = *(stat_logical);
+    store & fs_head, word 0              ; C: *(fs_head) = 0;
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+stat_return: ; C: stat_return: (routine, branch target or data symbol)
+    store & fs_head, word 0              ; C: *(fs_head) = 0; | close the descriptor on success and failure
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+
+; Add the validated chain's totals. Count marked IDs instead of dividing by 323.
+stat_add_file: ; C: stat_add_file: (routine, branch target or data symbol)
+    load r0, & stat_logical              ; C: r0 = *(stat_logical);
+    add r0, & fs_size                    ; C: r0 += *(fs_size);
+    trsr l1                              ; C: l1 = SR;
+    and l1, 1                            ; C: l1 &= 1;
+    jne stat_corrupt                     ; C: if (!Z) goto stat_corrupt;
+    store & stat_logical, r0             ; C: *(stat_logical) = r0;
+    load r0, & stat_disk                 ; C: r0 = *(stat_disk);
+    add r0, & fs_allocated               ; C: r0 += *(fs_allocated);
+    trsr l1                              ; C: l1 = SR;
+    and l1, 1                            ; C: l1 &= 1;
+    jne stat_corrupt                     ; C: if (!Z) goto stat_corrupt;
+    store & stat_disk, r0                ; C: *(stat_disk) = r0;
+    load r3, fs_seen                     ; C: r3 = fs_seen;
+    load r5, FS_CLUSTER_COUNT            ; C: r5 = FS_CLUSTER_COUNT;
+    phbp                                 ; C: push(BP);
+stat_count_clusters: ; C: stat_count_clusters: (routine, branch target or data symbol)
+    ldbp r3                              ; C: BP = r3;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    cmp l0, 0                            ; C: flags = compare(l0, 0);
+    jeq stat_count_next                  ; C: if (Z) goto stat_count_next;
+    load r0, & stat_units                ; C: r0 = *(stat_units);
+    inc r0                               ; C: r0++;
+    store & stat_units, r0               ; C: *(stat_units) = r0;
+stat_count_next: ; C: stat_count_next: (routine, branch target or data symbol)
+    inc r3                               ; C: r3++;
+    dec r5                               ; C: r5--;
+    jne stat_count_clusters              ; C: if (!Z) goto stat_count_clusters;
+    pobp                                 ; C: BP = pop_word();
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+stat_corrupt: ; C: stat_corrupt: (routine, branch target or data symbol)
+    load r7, FS_CORRUPT_CHAIN            ; C: r7 = FS_CORRUPT_CHAIN;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+
+; R0 candidate directory ID -> R6 bool belongs to stat_root, R7 status.
+; Free slots return false. Walk at most 96 parents; reject broken IDs/cycles.
+; Preserve R4/R5 so directory/file scans can call this predicate directly.
+stat_descendant: ; C: stat_descendant: (routine, branch target or data symbol)
+    push r4                              ; C: push(r4);
+    push r5                              ; C: push(r5);
+    store & stat_candidate, r0           ; C: *(stat_candidate) = r0;
+    load r5, FS_DIRECTORY_COUNT          ; C: r5 = FS_DIRECTORY_COUNT;
+stat_parent_walk: ; C: stat_parent_walk: (routine, branch target or data symbol)
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq stat_parent_root                 ; C: if (Z) goto stat_parent_root;
+    cmp r0, FS_DIRECTORY_COUNT           ; C: flags = compare(r0, FS_DIRECTORY_COUNT);
+    jgr stat_parent_bad                  ; C: if (N == O && !Z) goto stat_parent_bad;
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jls stat_parent_bad                  ; C: if (N != O) goto stat_parent_bad;
+    tran r1, r0                          ; C: r1 = r0;
+    dec r1                               ; C: r1--;
+    shl r1, 4                            ; C: r1 <<= 4;
+    add r1, FS_DIRECTORY_OFFSET          ; C: r1 += FS_DIRECTORY_OFFSET;
+    store & stat_directory_address, r1   ; C: *(stat_directory_address) = r1;
+    inc r1                               ; C: r1++;
+    phbp                                 ; C: push(BP);
+    call disk_byte                       ; C: disk_byte();
+    pobp                                 ; C: BP = pop_word();
+    cmp r1, 0                            ; C: flags = compare(r1, 0);
+    jeq stat_parent_free                 ; C: if (Z) goto stat_parent_free;
+    cmp r0, & stat_root                  ; C: flags = compare(r0, *(stat_root));
+    jeq stat_parent_yes                  ; C: if (Z) goto stat_parent_yes;
+    load r1, & stat_directory_address    ; C: r1 = *(stat_directory_address);
+    phbp                                 ; C: push(BP);
+    call disk_byte                       ; C: disk_byte();
+    pobp                                 ; C: BP = pop_word();
+    tran r0, r1                          ; C: r0 = r1;
+    dec r5                               ; C: r5--;
+    jne stat_parent_walk                 ; C: if (!Z) goto stat_parent_walk;
+    jmp stat_parent_bad                  ; C: goto stat_parent_bad;
+stat_parent_free: ; C: stat_parent_free: (routine, branch target or data symbol)
+    cmp r0, & stat_candidate             ; C: flags = compare(r0, *(stat_candidate));
+    jne stat_parent_bad                  ; C: if (!Z) goto stat_parent_bad;
+    load r6, 0                           ; C: r6 = 0;
+    jmp stat_parent_done                 ; C: goto stat_parent_done;
+stat_parent_root: ; C: stat_parent_root: (routine, branch target or data symbol)
+    load r6, 0                           ; C: r6 = 0;
+    cmp r0, & stat_root                  ; C: flags = compare(r0, *(stat_root));
+    jne stat_parent_done                 ; C: if (!Z) goto stat_parent_done;
+stat_parent_yes: ; C: stat_parent_yes: (routine, branch target or data symbol)
+    load r6, 1                           ; C: r6 = 1;
+stat_parent_done: ; C: stat_parent_done: (routine, branch target or data symbol)
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS;
+    pop r5                               ; C: r5 = pop();
+    pop r4                               ; C: r4 = pop();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+stat_parent_bad: ; C: stat_parent_bad: (routine, branch target or data symbol)
+    load r7, FS_CORRUPT_CHAIN            ; C: r7 = FS_CORRUPT_CHAIN;
+    pop r5                               ; C: r5 = pop();
+    pop r4                               ; C: r4 = pop();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+stat_output: ; C: stat_output: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_path_length: ; C: stat_path_length: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_root: ; C: stat_root: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_kind: ; C: stat_kind: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_logical: ; C: stat_logical: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_disk: ; C: stat_disk: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_units: ; C: stat_units: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_owner: ; C: stat_owner: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_cursor: ; C: stat_cursor: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_candidate: ; C: stat_candidate: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_directory_address: ; C: stat_directory_address: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+stat_path_pointer: ; C: stat_path_pointer: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };

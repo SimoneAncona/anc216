@@ -1,0 +1,200 @@
+; Keep 27 visible rows; Enter scrolls up one row and reveals one more.
+import "../libs/abi.anc216"
+use CONSOLE_W as 32
+use MORE_VISIBLE_ROWS as 27
+_code:
+    tran r0, r1
+    tran r1, r2
+    cmp r1, 0
+    jeq more_invalid
+    phbp
+    call path_absolute
+    pobp
+    cmp r7, OS_SUCCESS
+    jne app_error
+    load r0, SYS_OPEN
+    load r3, more_fd
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    load r0, SYS_CLEAR
+    syscall
+    store & more_current_col, word 0
+    store & more_current_line, word 0
+    ; Blank cells let short lines be redrawn without their newline bytes.
+    load r2, more_screen
+    tili r5
+    add r2, r5
+    load r3, CONSOLE_W * MORE_VISIBLE_ROWS
+    phbp
+more_blank_screen:
+    ldbp r2
+    store & bp + 0, byte 32
+    inc r2
+    dec r3
+    jne more_blank_screen
+    pobp
+
+more_read:
+    load r0, SYS_READ
+    load r1, 1
+    load r2, OS_PATH_CAPACITY
+    load r3, more_buffer
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    cmp r6, 0
+    jeq more_close
+    store & more_buffer_size, r6
+    store & more_index, word 0
+
+more_keep_printing:
+    load r4, & more_index
+    load r6, & more_buffer_size
+    cmp r4, r6
+    jge more_read
+    ; Pause only when another byte exists, including across read boundaries.
+    load r3, & more_current_line
+    cmp r3, MORE_VISIBLE_ROWS
+    jge more_hit_console_limit
+    tran r3, r4
+    add r3, more_buffer
+    phbp
+    tili r5
+    add r3, r5
+    ldbp r3
+    load r1, 0
+    load l1, & bp + 0
+    pobp
+    ; The kernel wraps immediately after column 32. Print every byte once.
+    cmp r1, ASCII_NEWLINE
+    jeq more_new_line
+    ; Retain the visible character for redraw after scrolling.
+    load r3, & more_current_line
+    shl r3, 5
+    add r3, & more_current_col
+    add r3, more_screen
+    tili r5
+    add r3, r5
+    phbp
+    ldbp r3
+    store & bp + 0, l1
+    pobp
+    load r3, & more_current_col
+    inc r3
+    cmp r3, CONSOLE_W
+    jeq more_new_line
+    store & more_current_col, r3
+    jmp more_print_ch
+more_new_line:
+    store & more_current_col, word 0
+    load r3, & more_current_line
+    inc r3
+    store & more_current_line, r3
+more_print_ch:
+    load r1, more_buffer
+    add r1, r4
+    load r0, SYS_PRINT
+    load r2, 1
+    load r3, 0
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    load r4, & more_index
+    inc r4
+    store & more_index, r4
+    jmp more_keep_printing
+
+more_hit_console_limit:
+    load r1, more_enter_msg
+    load r2, sizeof more_enter_msg
+    phbp
+    call app_print
+    pobp
+more_wait_enter_key:
+    load r0, SYS_GETK
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    cmp r6, ASCII_NEWLINE
+    jne more_wait_enter_key
+    ; Shift retained text up one row, then blank the newly exposed row.
+    phbp
+    tili r5
+    load r2, more_screen
+    add r2, r5
+    load r3, CONSOLE_W * (MORE_VISIBLE_ROWS - 1)
+more_shift_row:
+    tran r5, r2
+    add r5, CONSOLE_W
+    ldbp r5
+    load l1, & bp + 0
+    ldbp r2
+    store & bp + 0, l1
+    inc r2
+    dec r3
+    jne more_shift_row
+    load r3, CONSOLE_W
+more_blank_row:
+    ldbp r2
+    store & bp + 0, byte 32
+    inc r2
+    dec r3
+    jne more_blank_row
+    pobp
+    load r0, SYS_CLEAR
+    syscall
+    store & more_redraw_row, word 0
+more_redraw:
+    load r1, & more_redraw_row
+    shl r1, 5
+    add r1, more_screen
+    load r0, SYS_PRINT
+    load r2, CONSOLE_W
+    load r3, 0
+    syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    load r1, & more_redraw_row
+    inc r1
+    store & more_redraw_row, r1
+    cmp r1, MORE_VISIBLE_ROWS - 1
+    jne more_redraw
+    store & more_current_col, word 0
+    store & more_current_line, word MORE_VISIBLE_ROWS - 1
+    jmp more_keep_printing
+
+more_close:
+    load r0, SYS_CLOSE
+    load r1, 1
+    syscall
+    phbp
+    call app_newline
+    pobp
+    jmp app_exit
+more_invalid:
+    load r7, OS_INVALID
+    jmp app_error
+
+more_buffer:
+    reserve OS_PATH_CAPACITY
+more_screen:
+    reserve CONSOLE_W * MORE_VISIBLE_ROWS
+more_redraw_row:
+    word 0
+more_fd:
+    byte 0
+more_current_col:
+    word 0
+more_current_line:
+    word 0
+more_buffer_size:
+    word 0
+more_index:
+    word 0
+more_enter_msg:
+    "PRESS ENTER TO SCROLL DOWN:"
+
+import "../libs/strings.anc216"
+import "../libs/paths.anc216"
+import "../libs/io.anc216"

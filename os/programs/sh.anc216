@@ -1,181 +1,181 @@
 ; Init shell: line editing belongs to getl; every command lives in /bin as UALf.
 ; The run syscall replaces this process and reloads /bin/init when a command exits.
 ; Cwd is kernel session state, so command transitions do not lose it.
-import "../libs/abi.anc216"
-use SH_LINE as 0x1000
-use SH_EXEC_PATH as 0x1100
-use SH_READY as 0x2200
-use SH_READY_VALUE as 0x5348
-use SH_COMMAND_CAPACITY as 64
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
+use SH_LINE as 0x1000                      ; sh line: 0x1000
+use SH_EXEC_PATH as 0x1100                 ; sh exec path: 0x1100
+use SH_READY as 0x2200                     ; sh ready: 0x2200
+use SH_READY_VALUE as 0x5348               ; sh ready value: 0x5348
+use SH_COMMAND_CAPACITY as 64              ; sh command capacity: 64
 
 _code:
 sh_loop:
-    load r0, SYS_GETCWD                  ; r0 = SYS_GETCWD
-    load r1, SH_EXEC_PATH                ; r1 = SH_EXEC_PATH
-    load r2, OS_PATH_CAPACITY            ; r2 = OS_PATH_CAPACITY
-    syscall                              ; invoke the OS service selected by L0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne sh_error                         ; if not equal, goto sh_error
-    tran r2, r6                          ; print cwd without its trailing NUL
-    load r0, SYS_PRINT                   ; r0 = SYS_PRINT
-    load r3, 0                           ; r3 = 0
-    syscall                              ; invoke the OS service selected by L0
-    load r1, sh_prompt_str               ; r1 = sh_prompt_str
-    load r2, sizeof sh_prompt_str        ; r2 = sizeof sh_prompt_str
-    phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; app_print()
-    pobp                                 ; restore the saved BP
-    store & SH_READY, word SH_READY_VALUE ; debugger/tests: shell waits for a line
-    load r0, SYS_GETL                    ; r0 = SYS_GETL
-    load r1, OS_PATH_CAPACITY            ; r1 = OS_PATH_CAPACITY
-    load r2, SH_LINE                     ; r2 = SH_LINE
-    syscall                              ; invoke the OS service selected by L0
-    store & SH_READY, word 0             ; *(SH_READY) = 0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne sh_error                         ; if not equal, goto sh_error
-    store & sh_remaining, r6             ; *(sh_remaining) = r6
-    load r0, SH_LINE                     ; r0 = SH_LINE
-    tili r5                              ; r5 = MTU IMEM base
-    add r0, r5                           ; parser walks physical bytes via BP
+    load r0, SYS_GETCWD                  ; C: r0 = SYS_GETCWD; | r0 = SYS_GETCWD
+    load r1, SH_EXEC_PATH                ; C: r1 = SH_EXEC_PATH; | r1 = SH_EXEC_PATH
+    load r2, OS_PATH_CAPACITY            ; C: r2 = OS_PATH_CAPACITY; | r2 = OS_PATH_CAPACITY
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne sh_error                         ; C: if (!Z) goto sh_error; | if not equal, goto sh_error
+    tran r2, r6                          ; C: r2 = r6; | print cwd without its trailing NUL
+    load r0, SYS_PRINT                   ; C: r0 = SYS_PRINT; | r0 = SYS_PRINT
+    load r3, 0                           ; C: r3 = 0; | r3 = 0
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    load r1, sh_prompt_str               ; C: r1 = sh_prompt_str; | r1 = sh_prompt_str
+    load r2, sizeof sh_prompt_str        ; C: r2 = sizeof sh_prompt_str; | r2 = sizeof sh_prompt_str
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_print                       ; C: app_print(); | app_print()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    store & SH_READY, word SH_READY_VALUE ; C: *(SH_READY) = SH_READY_VALUE; | debugger/tests: shell waits for a line
+    load r0, SYS_GETL                    ; C: r0 = SYS_GETL; | r0 = SYS_GETL
+    load r1, OS_PATH_CAPACITY            ; C: r1 = OS_PATH_CAPACITY; | r1 = OS_PATH_CAPACITY
+    load r2, SH_LINE                     ; C: r2 = SH_LINE; | r2 = SH_LINE
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    store & SH_READY, word 0             ; C: *(SH_READY) = 0; | *(SH_READY) = 0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne sh_error                         ; C: if (!Z) goto sh_error; | if not equal, goto sh_error
+    store & sh_remaining, r6             ; C: *(sh_remaining) = r6; | *(sh_remaining) = r6
+    load r0, SH_LINE                     ; C: r0 = SH_LINE; | r0 = SH_LINE
+    tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
+    add r0, r5                           ; C: r0 += r5; | parser walks physical bytes via BP
 sh_skip_space:
-    load r4, & sh_remaining              ; r4 = *(sh_remaining)
-    cmp r4, 0                            ; compare r4 with 0
-    jeq sh_loop                          ; blank lines are harmless
-    phbp                                 ; save BP before pointer/helper use
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l3, & bp + 0                    ; l3 = *(bp + 0)
-    pobp                                 ; restore the saved BP
-    cmp l3, ASCII_SPACE                  ; compare l3 with ASCII_SPACE
-    jne sh_command_start                 ; if not equal, goto sh_command_start
-    inc r0                               ; r0++
-    dec r4                               ; r4--
-    store & sh_remaining, r4             ; *(sh_remaining) = r4
-    jmp sh_skip_space                    ; goto sh_skip_space
+    load r4, & sh_remaining              ; C: r4 = *(sh_remaining); | r4 = *(sh_remaining)
+    cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
+    jeq sh_loop                          ; C: if (Z) goto sh_loop; | blank lines are harmless
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
+    jne sh_command_start                 ; C: if (!Z) goto sh_command_start; | if not equal, goto sh_command_start
+    inc r0                               ; C: r0++; | r0++
+    dec r4                               ; C: r4--; | r4--
+    store & sh_remaining, r4             ; C: *(sh_remaining) = r4; | *(sh_remaining) = r4
+    jmp sh_skip_space                    ; C: goto sh_skip_space; | goto sh_skip_space
 sh_command_start:
-    tran r2, r0                          ; r2 = r0
-    sub r2, r5                           ; r2 -= r5
-    store & sh_command_pointer, r2       ; *(sh_command_pointer) = r2
-    load r1, 0                           ; r1 = 0
+    tran r2, r0                          ; C: r2 = r0; | r2 = r0
+    sub r2, r5                           ; C: r2 -= r5; | r2 -= r5
+    store & sh_command_pointer, r2       ; C: *(sh_command_pointer) = r2; | *(sh_command_pointer) = r2
+    load r1, 0                           ; C: r1 = 0; | r1 = 0
 sh_command_measure:
-    cmp r4, 0                            ; compare r4 with 0
-    jeq sh_command_done                  ; if equal, goto sh_command_done
-    phbp                                 ; save BP before pointer/helper use
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l3, & bp + 0                    ; l3 = *(bp + 0)
-    pobp                                 ; restore the saved BP
-    cmp l3, ASCII_SPACE                  ; compare l3 with ASCII_SPACE
-    jeq sh_command_done                  ; if equal, goto sh_command_done
-    inc r0                               ; r0++
-    inc r1                               ; r1++
-    dec r4                               ; r4--
-    jmp sh_command_measure               ; goto sh_command_measure
+    cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
+    jeq sh_command_done                  ; C: if (Z) goto sh_command_done; | if equal, goto sh_command_done
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
+    jeq sh_command_done                  ; C: if (Z) goto sh_command_done; | if equal, goto sh_command_done
+    inc r0                               ; C: r0++; | r0++
+    inc r1                               ; C: r1++; | r1++
+    dec r4                               ; C: r4--; | r4--
+    jmp sh_command_measure               ; C: goto sh_command_measure; | goto sh_command_measure
 sh_command_done:
-    cmp r1, SH_COMMAND_CAPACITY          ; compare r1 with SH_COMMAND_CAPACITY
-    jge sh_error                         ; if greater or equal, goto sh_error
-    store & sh_command_length, r1        ; *(sh_command_length) = r1
+    cmp r1, SH_COMMAND_CAPACITY          ; C: flags = compare(r1, SH_COMMAND_CAPACITY); | compare r1 with SH_COMMAND_CAPACITY
+    jge sh_error                         ; C: if (N == O) goto sh_error; | if greater or equal, goto sh_error
+    store & sh_command_length, r1        ; C: *(sh_command_length) = r1; | *(sh_command_length) = r1
 sh_argument_spaces:
-    cmp r4, 0                            ; compare r4 with 0
-    jeq sh_arguments_done                ; if equal, goto sh_arguments_done
-    phbp                                 ; save BP before pointer/helper use
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l3, & bp + 0                    ; l3 = *(bp + 0)
-    pobp                                 ; restore the saved BP
-    cmp l3, ASCII_SPACE                  ; compare l3 with ASCII_SPACE
-    jne sh_arguments_done                ; if not equal, goto sh_arguments_done
-    inc r0                               ; r0++
-    dec r4                               ; r4--
-    jmp sh_argument_spaces               ; goto sh_argument_spaces
+    cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
+    jeq sh_arguments_done                ; C: if (Z) goto sh_arguments_done; | if equal, goto sh_arguments_done
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
+    jne sh_arguments_done                ; C: if (!Z) goto sh_arguments_done; | if not equal, goto sh_arguments_done
+    inc r0                               ; C: r0++; | r0++
+    dec r4                               ; C: r4--; | r4--
+    jmp sh_argument_spaces               ; C: goto sh_argument_spaces; | goto sh_argument_spaces
 sh_arguments_done:
-    sub r0, r5                           ; r0 -= r5
-    store & sh_argument_pointer, r0      ; *(sh_argument_pointer) = r0
-    store & sh_argument_length, r4       ; *(sh_argument_length) = r4
+    sub r0, r5                           ; C: r0 -= r5; | r0 -= r5
+    store & sh_argument_pointer, r0      ; C: *(sh_argument_pointer) = r0; | *(sh_argument_pointer) = r0
+    store & sh_argument_length, r4       ; C: *(sh_argument_length) = r4; | *(sh_argument_length) = r4
     ; A command containing '/' is an explicit path; otherwise prepend /bin/.
-    load r0, & sh_command_pointer        ; r0 = *(sh_command_pointer)
-    add r0, r5                           ; r0 += r5
-    load r1, & sh_command_length         ; r1 = *(sh_command_length)
-    load r2, 0                           ; r2 = 0
+    load r0, & sh_command_pointer        ; C: r0 = *(sh_command_pointer); | r0 = *(sh_command_pointer)
+    add r0, r5                           ; C: r0 += r5; | r0 += r5
+    load r1, & sh_command_length         ; C: r1 = *(sh_command_length); | r1 = *(sh_command_length)
+    load r2, 0                           ; C: r2 = 0; | r2 = 0
 sh_find_slash:
-    phbp                                 ; save BP before pointer/helper use
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l3, & bp + 0                    ; l3 = *(bp + 0)
-    pobp                                 ; restore the saved BP
-    cmp l3, ASCII_SLASH                  ; compare l3 with ASCII_SLASH
-    jeq sh_explicit_path                 ; if equal, goto sh_explicit_path
-    inc r0                               ; r0++
-    dec r1                               ; r1--
-    jne sh_find_slash                    ; if not equal, goto sh_find_slash
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp l3, ASCII_SLASH                  ; C: flags = compare(l3, ASCII_SLASH); | compare l3 with ASCII_SLASH
+    jeq sh_explicit_path                 ; C: if (Z) goto sh_explicit_path; | if equal, goto sh_explicit_path
+    inc r0                               ; C: r0++; | r0++
+    dec r1                               ; C: r1--; | r1--
+    jne sh_find_slash                    ; C: if (!Z) goto sh_find_slash; | if not equal, goto sh_find_slash
     ; if the command is exit, then exit the shell
-    load r0, & sh_command_pointer
-    load r1, & sh_command_length
-    load r2, sh_exit_cmd
-    load r3, sizeof sh_exit_cmd
-    phbp                                 ; save BP before pointer/helper use
-    call str_cmp                         ; str_cmp()
-    pobp                                 ; restore the saved BP
-    cmp r7, OS_SUCCESS                   ; if r7 == OS_SUCCESS
-    jeq sh_exit                          ; then goto sh_exit
+    load r0, & sh_command_pointer        ; C: r0 = *(sh_command_pointer);
+    load r1, & sh_command_length         ; C: r1 = *(sh_command_length);
+    load r2, sh_exit_cmd                 ; C: r2 = sh_exit_cmd;
+    load r3, sizeof sh_exit_cmd          ; C: r3 = sizeof sh_exit_cmd;
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call str_cmp                         ; C: str_cmp(); | str_cmp()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | if r7 == OS_SUCCESS
+    jeq sh_exit                          ; C: if (Z) goto sh_exit; | then goto sh_exit
     ; else use SYS_RUN to execute an executable
-    load r0, sh_path                     ; r0 = sh_path
-    load r1, sizeof sh_path              ; r1 = sizeof sh_path
-    load r2, SH_EXEC_PATH                ; r2 = SH_EXEC_PATH
-    load r3, OS_PATH_CAPACITY            ; r3 = OS_PATH_CAPACITY
-    phbp                                 ; save BP before pointer/helper use
-    call str_copy                        ; str_copy()
-    pobp                                 ; restore the saved BP
-    load r0, & sh_command_pointer        ; r0 = *(sh_command_pointer)
-    load r1, & sh_command_length         ; r1 = *(sh_command_length)
-    load r2, SH_EXEC_PATH + sizeof sh_path ; r2 = SH_EXEC_PATH + sizeof sh_path
-    load r3, OS_PATH_CAPACITY - sizeof sh_path ; r3 = OS_PATH_CAPACITY - sizeof sh_path
-    phbp                                 ; save BP before pointer/helper use
-    call str_copy                        ; str_copy()
-    pobp                                 ; restore the saved BP
-    load r1, SH_EXEC_PATH                ; r1 = SH_EXEC_PATH
-    load r2, & sh_command_length         ; r2 = *(sh_command_length)
-    add r2, sizeof sh_path               ; r2 += sizeof sh_path
-    jmp sh_launch                        ; goto sh_launch
+    load r0, sh_path                     ; C: r0 = sh_path; | r0 = sh_path
+    load r1, sizeof sh_path              ; C: r1 = sizeof sh_path; | r1 = sizeof sh_path
+    load r2, SH_EXEC_PATH                ; C: r2 = SH_EXEC_PATH; | r2 = SH_EXEC_PATH
+    load r3, OS_PATH_CAPACITY            ; C: r3 = OS_PATH_CAPACITY; | r3 = OS_PATH_CAPACITY
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call str_copy                        ; C: str_copy(); | str_copy()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    load r0, & sh_command_pointer        ; C: r0 = *(sh_command_pointer); | r0 = *(sh_command_pointer)
+    load r1, & sh_command_length         ; C: r1 = *(sh_command_length); | r1 = *(sh_command_length)
+    load r2, SH_EXEC_PATH + sizeof sh_path ; C: r2 = SH_EXEC_PATH + sizeof sh_path; | r2 = SH_EXEC_PATH + sizeof sh_path
+    load r3, OS_PATH_CAPACITY - sizeof sh_path ; C: r3 = OS_PATH_CAPACITY - sizeof sh_path; | r3 = OS_PATH_CAPACITY - sizeof sh_path
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call str_copy                        ; C: str_copy(); | str_copy()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    load r1, SH_EXEC_PATH                ; C: r1 = SH_EXEC_PATH; | r1 = SH_EXEC_PATH
+    load r2, & sh_command_length         ; C: r2 = *(sh_command_length); | r2 = *(sh_command_length)
+    add r2, sizeof sh_path               ; C: r2 += sizeof sh_path; | r2 += sizeof sh_path
+    jmp sh_launch                        ; C: goto sh_launch; | goto sh_launch
 sh_explicit_path:
-    load r0, & sh_command_pointer        ; r0 = *(sh_command_pointer)
-    load r1, & sh_command_length         ; r1 = *(sh_command_length)
-    phbp                                 ; save BP before pointer/helper use
-    call path_absolute                   ; path_absolute()
-    pobp                                 ; restore the saved BP
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne sh_error                         ; if not equal, goto sh_error
+    load r0, & sh_command_pointer        ; C: r0 = *(sh_command_pointer); | r0 = *(sh_command_pointer)
+    load r1, & sh_command_length         ; C: r1 = *(sh_command_length); | r1 = *(sh_command_length)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call path_absolute                   ; C: path_absolute(); | path_absolute()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne sh_error                         ; C: if (!Z) goto sh_error; | if not equal, goto sh_error
 sh_launch:
-    load r0, SYS_RUN                     ; r0 = SYS_RUN
-    load r3, & sh_argument_pointer       ; r3 = *(sh_argument_pointer)
-    load r4, & sh_argument_length        ; r4 = *(sh_argument_length)
-    syscall                              ; success replaces us; only launch errors return
+    load r0, SYS_RUN                     ; C: r0 = SYS_RUN; | r0 = SYS_RUN
+    load r3, & sh_argument_pointer       ; C: r3 = *(sh_argument_pointer); | r3 = *(sh_argument_pointer)
+    load r4, & sh_argument_length        ; C: r4 = *(sh_argument_length); | r4 = *(sh_argument_length)
+    syscall                              ; C: kernel_service(L0, arguments); | success replaces us; only launch errors return
 sh_error:
-    load r1, sh_error_str                ; r1 = sh_error_str
-    load r2, sizeof sh_error_str         ; r2 = sizeof sh_error_str
-    phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; app_print()
-    pobp                                 ; restore the saved BP
-    jmp sh_loop                          ; goto sh_loop
+    load r1, sh_error_str                ; C: r1 = sh_error_str; | r1 = sh_error_str
+    load r2, sizeof sh_error_str         ; C: r2 = sizeof sh_error_str; | r2 = sizeof sh_error_str
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_print                       ; C: app_print(); | app_print()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp sh_loop                          ; C: goto sh_loop; | goto sh_loop
 sh_exit:
-    load r0, SYS_EXIT
-    load r1, 0
-    syscall
+    load r0, SYS_EXIT                    ; C: r0 = SYS_EXIT;
+    load r1, 0                           ; C: r1 = 0;
+    syscall                              ; C: kernel_service(L0, arguments);
 sh_remaining:
-    word 0
+    word 0                               ; C: uint16_t data[] = { 0 };
 sh_command_pointer:
-    word 0
+    word 0                               ; C: uint16_t data[] = { 0 };
 sh_command_length:
-    word 0
+    word 0                               ; C: uint16_t data[] = { 0 };
 sh_argument_pointer:
-    word 0
+    word 0                               ; C: uint16_t data[] = { 0 };
 sh_argument_length:
-    word 0
+    word 0                               ; C: uint16_t data[] = { 0 };
 sh_path:
-    "/bin/"
+    "/bin/"                              ; C: const char text[];
 sh_prompt_str:
-    "> "
+    "> "                                 ; C: const char text[];
 sh_error_str:
-    "SHELL: COMMAND FAILED", ASCII_NEWLINE
+    "SHELL: COMMAND FAILED", ASCII_NEWLINE ; C: const char text[];
 
 sh_exit_cmd:
-    "exit"
-import "../libs/strings.anc216"
-import "../libs/paths.anc216"
-import "../libs/io.anc216"
+    "exit"                               ; C: const char text[];
+import "../libs/strings.anc216" ; C: #include "../libs/strings.anc216"
+import "../libs/paths.anc216" ; C: #include "../libs/paths.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

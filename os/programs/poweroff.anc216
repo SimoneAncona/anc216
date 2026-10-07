@@ -1,5 +1,5 @@
 ; Poweroff the system
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    load l0, SYS_POWEROFF
-    syscall
+    load l0, SYS_POWEROFF                ; C: l0 = SYS_POWEROFF;
+    syscall                              ; C: kernel_service(L0, arguments);

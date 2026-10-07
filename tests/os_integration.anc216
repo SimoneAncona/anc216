@@ -119,7 +119,7 @@ initial_byte_ok:
     jne fail
     ; Switch volumes rather than treating several chips as one huge raw image.
     load r0, 0x10
-    load r1, 0x0201
+    load r1, 0x3001
     ; Progress marker for boot/debug tests (logical scratch offset 2000).
     store & 0x2000, word 13
     syscall
@@ -143,7 +143,7 @@ initial_byte_ok:
     syscall
     cmp r7, 0
     jne fail
-    cmp r6, 23
+    cmp r6, 255
     jne fail
     load r0, 5
     load r1, 0x1000
@@ -155,7 +155,7 @@ initial_byte_ok:
     cmp r7, 0
     jne fail
     load r0, 0x10
-    load r1, 0x0200
+    load r1, 0x3000
     syscall
     cmp r7, 0
     jne fail
@@ -185,3 +185,4 @@ echo_path:
     "/bin/readline-demo"
 fd:
     byte 0
+

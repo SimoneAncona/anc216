@@ -1,50 +1,50 @@
 ; A standalone user executable. R1 points to argument bytes, R2 is their length.
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    tran r0, r1                          ; r0 = r1
-    tran r1, r2                          ; r1 = r2
-    cmp r1, 0                            ; compare r1 with 0
-    jeq app_error                        ; if equal, goto app_error
-    phbp                                 ; save BP before pointer/helper use
-    call path_absolute                   ; path_absolute()
-    pobp                                 ; restore the saved BP
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
-    load r0, SYS_OPEN                    ; r0 = SYS_OPEN
-    load r3, cat_fd                      ; r3 = cat_fd
-    syscall                              ; invoke the OS service selected by L0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
+    tran r0, r1                          ; C: r0 = r1; | r0 = r1
+    tran r1, r2                          ; C: r1 = r2; | r1 = r2
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
+    jeq app_error                        ; C: if (Z) goto app_error; | if equal, goto app_error
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call path_absolute                   ; C: path_absolute(); | path_absolute()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
+    load r0, SYS_OPEN                    ; C: r0 = SYS_OPEN; | r0 = SYS_OPEN
+    load r3, cat_fd                      ; C: r3 = cat_fd; | r3 = cat_fd
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
 cat_read:
-    load r0, SYS_READ                    ; r0 = SYS_READ
-    load r1, 1                           ; r1 = 1
-    load r2, OS_PATH_CAPACITY            ; r2 = OS_PATH_CAPACITY
-    load r3, cat_buffer                  ; r3 = cat_buffer
-    syscall                              ; invoke the OS service selected by L0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
-    cmp r6, 0                            ; compare r6 with 0
-    jeq cat_close                        ; if equal, goto cat_close
-    load r1, cat_buffer                  ; r1 = cat_buffer
-    tran r2, r6                          ; r2 = r6
-    phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; app_print()
-    pobp                                 ; restore the saved BP
-    jmp cat_read                         ; goto cat_read
+    load r0, SYS_READ                    ; C: r0 = SYS_READ; | r0 = SYS_READ
+    load r1, 1                           ; C: r1 = 1; | r1 = 1
+    load r2, OS_PATH_CAPACITY            ; C: r2 = OS_PATH_CAPACITY; | r2 = OS_PATH_CAPACITY
+    load r3, cat_buffer                  ; C: r3 = cat_buffer; | r3 = cat_buffer
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
+    cmp r6, 0                            ; C: flags = compare(r6, 0); | compare r6 with 0
+    jeq cat_close                        ; C: if (Z) goto cat_close; | if equal, goto cat_close
+    load r1, cat_buffer                  ; C: r1 = cat_buffer; | r1 = cat_buffer
+    tran r2, r6                          ; C: r2 = r6; | r2 = r6
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_print                       ; C: app_print(); | app_print()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp cat_read                         ; C: goto cat_read; | goto cat_read
 cat_close:
-    load r0, SYS_CLOSE                   ; r0 = SYS_CLOSE
-    load r1, 1                           ; r1 = 1
-    syscall                              ; invoke the OS service selected by L0
-    phbp                                 ; save BP before pointer/helper use
-    call app_newline                     ; app_newline()
-    pobp                                 ; restore the saved BP
-    jmp app_exit                         ; goto app_exit
+    load r0, SYS_CLOSE                   ; C: r0 = SYS_CLOSE; | r0 = SYS_CLOSE
+    load r1, 1                           ; C: r1 = 1; | r1 = 1
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_newline                     ; C: app_newline(); | app_newline()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp app_exit                         ; C: goto app_exit; | goto app_exit
 cat_fd:
-    byte 0
+    byte 0                               ; C: uint8_t data[] = { 0 };
 cat_buffer:
-    reserve OS_PATH_CAPACITY
+    reserve OS_PATH_CAPACITY             ; C: uint8_t buffer[OS_PATH_CAPACITY];
 
-import "../libs/strings.anc216"
-import "../libs/paths.anc216"
-import "../libs/io.anc216"
+import "../libs/strings.anc216" ; C: #include "../libs/strings.anc216"
+import "../libs/paths.anc216" ; C: #include "../libs/paths.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

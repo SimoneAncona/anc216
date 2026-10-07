@@ -73,13 +73,121 @@ _code:
     jne test_failure
     cmp r6, 0
     jne test_failure
+    ; fstat distinguishes logical payload from full allocated AFS clusters.
+    load r0, SYS_FSTAT
+    load r1, file_path
+    load r2, sizeof file_path
+    load r3, stat_record
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, & stat_record
+    cmp r0, 2
+    jne test_failure
+    load r0, & stat_record + 2
+    cmp r0, 650
+    jne test_failure
+    load r0, & stat_record + 4
+    cmp r0, 969
+    jne test_failure
+    load r0, & stat_record + 6
+    cmp r0, 3
+    jne test_failure
+    load r0, SYS_FSTAT
+    load r1, data_path
+    load r2, sizeof data_path
+    load r3, stat_record
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, & stat_record
+    cmp r0, 1
+    jne test_failure
+    load r0, & stat_record + 2
+    cmp r0, 650
+    jne test_failure
+    load r0, & stat_record + 4
+    cmp r0, 985
+    jne test_failure
+    load r0, & stat_record + 6
+    cmp r0, 4
+    jne test_failure
+    ; A subtree includes its own record, an empty file's cluster and ancestors.
+    load r0, SYS_MKDIR
+    load r1, nested_path
+    load r2, sizeof nested_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, SYS_TOUCH
+    load r1, empty_path
+    load r2, sizeof empty_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, SYS_FSTAT
+    load r1, nested_path
+    load r2, sizeof nested_path
+    load r3, stat_record
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, 0
+    jne test_failure
+    load r0, & stat_record + 4
+    cmp r0, 339
+    jne test_failure
+    load r0, & stat_record + 6
+    cmp r0, 2
+    jne test_failure
+    load r0, SYS_FSTAT
+    load r1, data_path
+    load r2, sizeof data_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, & stat_record + 2
+    cmp r0, 650
+    jne test_failure
+    load r0, & stat_record + 4
+    cmp r0, 1324
+    jne test_failure
+    load r0, & stat_record + 6
+    cmp r0, 6
+    jne test_failure
+    ; Validate the whole output before touching disk or reserved user memory.
+    load r0, SYS_FSTAT
+    load r3, 0x3fec
+    syscall
+    cmp r7, OS_INVALID
+    jne test_failure
+    load r0, SYS_REMOVE
+    load r1, empty_path
+    load r2, sizeof empty_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    load r0, SYS_REMOVE
+    load r1, nested_path
+    load r2, sizeof nested_path
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
     jmp app_exit
+nested_path:
+    "/namespace-test/nested"
+empty_path:
+    "/namespace-test/nested/empty"
+file_path:
+    "/namespace-test/message.txt"
+stat_record:
+    reserve OS_STAT_BYTES
 cursor:
     word 0
 entry:
     reserve OS_ENTRY_BYTES
 data_path:
-    "/data"
+    "/namespace-test"
 root_path:
     "/"
 expected_name:

@@ -1,22 +1,22 @@
 ; A standalone user executable. R1 points to argument bytes, R2 is their length.
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    tran r0, r1                          ; path_absolute expects R0 pointer/R1 length
-    tran r1, r2                          ; r1 = r2
-    cmp r1, 0                            ; compare r1 with 0
-    jeq app_error                        ; an explicit leaf path is required
-    phbp                                 ; save BP before pointer/helper use
-    call path_absolute                   ; resolve cwd, '.', '..' and repeated slashes
-    pobp                                 ; restore the saved BP
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
-    load r0, SYS_TOUCH                   ; r0 = SYS_TOUCH
-    syscall                              ; invoke the OS service selected by L0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
-    jmp app_exit                         ; goto app_exit
+    tran r0, r1                          ; C: r0 = r1; | path_absolute expects R0 pointer/R1 length
+    tran r1, r2                          ; C: r1 = r2; | r1 = r2
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
+    jeq app_error                        ; C: if (Z) goto app_error; | an explicit leaf path is required
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call path_absolute                   ; C: path_absolute(); | resolve cwd, '.', '..' and repeated slashes
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
+    load r0, SYS_TOUCH                   ; C: r0 = SYS_TOUCH; | r0 = SYS_TOUCH
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
+    jmp app_exit                         ; C: goto app_exit; | goto app_exit
 
-import "../libs/strings.anc216"
-import "../libs/paths.anc216"
-import "../libs/io.anc216"
+import "../libs/strings.anc216" ; C: #include "../libs/strings.anc216"
+import "../libs/paths.anc216" ; C: #include "../libs/paths.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

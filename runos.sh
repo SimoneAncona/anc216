@@ -1,1 +1,9 @@
-./build/emulator/anc216emu -b ./build/os/boot.bin -i 0x0100 ./build/os/system.rom --insert-charmap ./os/charmap.bin --insert-card 0x0200 ./build/os/disk0.afs --insert-card 0x0201 ./build/os/disk1.afs --uncapped $*
+#!/usr/bin/env sh
+set -eu
+cd "$(dirname "$0")"
+exec ./build/production/emulator/anc216emu \
+    --boot ./build/production/os/boot.bin \
+    --insert 0x0100 ./build/production/os/system.rom \
+    --insert-charmap ./build/production/os/charmap.bin \
+    --insert-card 0x3000 ./build/production/os/disk0.afs \
+    --uncapped "$@"

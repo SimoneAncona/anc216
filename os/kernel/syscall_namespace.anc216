@@ -1,0 +1,99 @@
+use SHELL_PATH_CAPACITY as 255             ; shell path capacity: 255
+use SHELL_ENTRY_BYTES as 24                ; shell entry bytes: 24
+
+
+; Shell support stays in kernel syscalls; commands are separate UALf programs.
+
+; _______________________________________________________________________
+; Shared path validation for namespace syscalls: arguments R1 path/R2 length.
+; user_buffer turns the logical address into a checked physical kernel pointer.
+syscall_namespace_path: ; C: syscall_namespace_path: (routine, branch target or data symbol)
+    load r1, & arg1                      ; C: r1 = *(arg1); | r1 = *(arg1)
+    load r2, & arg2                      ; C: r2 = *(arg2); | r2 = *(arg2)
+    and r2, BYTE_MASK                    ; C: r2 &= BYTE_MASK; | r2 &= 0xff
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call user_buffer                     ; C: user_buffer(); | user_buffer()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
+syscall_directory: ; C: syscall_directory: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call syscall_namespace_path          ; C: syscall_namespace_path(); | syscall_namespace_path()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_directory                    ; C: fs_directory(); | fs_directory()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp syscall_return                   ; C: goto syscall_return; | goto syscall_return
+syscall_list: ; C: syscall_list: (routine, branch target or data symbol)
+    load r1, & arg3                      ; C: r1 = *(arg3); | output record must fit before the return stub
+    load r2, SHELL_ENTRY_BYTES           ; C: r2 = SHELL_ENTRY_BYTES; | r2 = SHELL_ENTRY_BYTES
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call user_buffer                     ; C: user_buffer(); | user_buffer()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    store & shell_entry_pointer, r1      ; C: *(shell_entry_pointer) = r1; | *(shell_entry_pointer) = r1
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call syscall_namespace_path          ; C: syscall_namespace_path(); | syscall_namespace_path()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    load r3, & shell_entry_pointer       ; C: r3 = *(shell_entry_pointer); | r3 = *(shell_entry_pointer)
+    load r4, & arg4                      ; C: r4 = *(arg4); | combined directory/file cursor, zero starts
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_list                         ; C: fs_list(); | fs_list()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp syscall_return                   ; C: goto syscall_return; | goto syscall_return
+syscall_touch: ; C: syscall_touch: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call syscall_namespace_path          ; C: syscall_namespace_path(); | syscall_namespace_path()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_touch                        ; C: fs_touch(); | fs_touch()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp syscall_return                   ; C: goto syscall_return; | goto syscall_return
+syscall_mkdir: ; C: syscall_mkdir: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call syscall_namespace_path          ; C: syscall_namespace_path(); | syscall_namespace_path()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_mkdir                        ; C: fs_mkdir(); | fs_mkdir()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp syscall_return                   ; C: goto syscall_return; | goto syscall_return
+syscall_remove: ; C: syscall_remove: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call syscall_namespace_path          ; C: syscall_namespace_path(); | syscall_namespace_path()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | compare r7 with FS_SUCCESS
+    jne syscall_return                   ; C: if (!Z) goto syscall_return; | if not equal, goto syscall_return
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_remove                       ; C: fs_remove(); | fs_remove()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp syscall_return                   ; C: goto syscall_return; | goto syscall_return
+
+
+; SYS_FSTAT: R1 path/L2 length, R3 result record. Check output before traversal.
+syscall_fstat: ; C: syscall_fstat: (routine, branch target or data symbol)
+    load r1, & arg3                      ; C: r1 = *(arg3);
+    load r2, OS_STAT_BYTES               ; C: r2 = OS_STAT_BYTES;
+    phbp                                 ; C: push(BP);
+    call user_buffer                     ; C: user_buffer();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne syscall_return                   ; C: if (!Z) goto syscall_return;
+    store & shell_entry_pointer, r1      ; C: *(shell_entry_pointer) = r1;
+    phbp                                 ; C: push(BP);
+    call syscall_namespace_path          ; C: syscall_namespace_path();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS);
+    jne syscall_return                   ; C: if (!Z) goto syscall_return;
+    load r3, & shell_entry_pointer       ; C: r3 = *(shell_entry_pointer);
+    phbp                                 ; C: push(BP);
+    call fs_stat                         ; C: fs_stat();
+    pobp                                 ; C: BP = pop_word();
+    jmp syscall_return                   ; C: goto syscall_return;

@@ -1,0 +1,50 @@
+; Verify the kernel grant and raw user IO without changing the ISA's IMEM rules.
+import "../os/libs/abi.anc216"
+use TEST_VIDEO_ADDRESS as 0xfffd
+use TEST_VIDEO_X_COMMAND as 0x030b
+_code:
+    teli r0
+    tehi r1
+    cmp r0, 0xffff
+    jne test_failure
+    cmp r1, 0
+    jne test_failure           ; every exec starts with an empty EMEM interval
+    load r0, SYS_VIDEO
+    load r1, 2                ; reject invalid grant arguments without changing bounds
+    syscall
+    cmp r7, OS_INVALID
+    jne test_failure
+    load r0, SYS_VIDEO
+    load r1, 1
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    cmp r6, TEST_VIDEO_ADDRESS
+    jne test_failure
+    teli r0
+    cmp r0, TEST_VIDEO_ADDRESS
+    jne test_failure
+    tehi r0
+    cmp r0, TEST_VIDEO_ADDRESS
+    jne test_failure
+    write & TEST_VIDEO_ADDRESS, word TEST_VIDEO_X_COMMAND
+    load r1, 0x0300
+    read & TEST_VIDEO_ADDRESS
+    cmp r1, 11
+    jne test_failure
+    load r0, SYS_VIDEO
+    load r1, 0
+    syscall
+    cmp r7, OS_SUCCESS
+    jne test_failure
+    teli r0
+    tehi r1
+    cmp r0, 0xffff
+    jne test_failure
+    cmp r1, 0
+    jne test_failure
+    jmp app_exit
+ test_failure:
+    load r7, OS_INVALID
+    jmp app_error
+import "../os/libs/io.anc216"

@@ -7,21 +7,17 @@ The kernel is written in ANC216 assembly and split into imported modules. Firmwa
 From the repository root, with SDL2 development packages installed:
 
 ```sh
-./build.sh
-build/emulator/anc216emu --boot build/os/boot.bin \
-    --insert 0x0100 build/os/system.rom \
-    --insert-card 0x0200 build/os/disk0.afs \
-    --insert-card 0x0201 build/os/disk1.afs \
-    --insert-charmap build/os/charmap.bin --gpu=default --uncapped
+./build-production.sh
+./runos.sh
 ```
 
-The kernel runs `/bin/init` on chip `0x0200`; the build installs the shell there and also at `/bin/sh`. The old syscall demo is retained as `/bin/demo-init`, with its interactive input program at `/bin/readline-demo`. Commands are separate UALf executables in `/bin`, not implementations inside the shell. Type `help` to see them.
+The kernel runs `/bin/init` on chip `0x3000`; the build installs the shell there and also at `/bin/sh`. The old syscall demo and its input fixture exist only on the regression demo card. Production disk0 excludes `/bin/bad`, `/bin/demo-init` and `/data/message.txt`. Commands are separate UALf executables in `/bin`, not implementations inside the shell. Type `help` to see them.
 
 Ctrl+D requests a soft reset. Ctrl+C or closing the SDL window requests guest shutdown. Terminal Ctrl+C requests shutdown during normal execution and pauses in debugger mode. These controls work independently of the keyboard device. See [the keyboard protocol](../doc/IMPLEMENTATION.md#keyboard-and-host-control-pins).
 
 Without cards, the kernel starts its console and idles. Supply your own AFS images using repeated `--insert-card address image`; the mount syscall selects any chip address. Each chip holds its own filesystem, so additional chips increase available storage without changing AFS's 64 KiB image format. There is one selected volume and one open descriptor at a time; files do not span chips.
 
-`os/build.py` regenerates **only its generated cards in the output directory**, replacing previous generated copies. Use separate filenames for personal card images. MPME writes currently last for the emulator session; they do not update host image files.
+`os/build.py` regenerates **only its generated cards in the output directory**, replacing previous generated copies. Use separate filenames for personal card images. MPME writes update and flush the attached host image immediately.
 
 Headless debugging uses the same boot/ROM/card arguments with `--novideo --debug`. `sh info` includes MTU bounds. `start`, `stop`, `soft-reset`, `shutdown`, and `imem watch 0x00f0 8` inspect/control execution. Headless mode has a keyboard device but no SDL text source; the shell waits at `getl`.
 
@@ -34,7 +30,7 @@ Headless debugging uses the same boot/ROM/card arguments with `--novideo --debug
 | `0..1` | Unsigned big-endian kernel payload length, including padding |
 | `2..` | Raw kernel instructions/data, padded to an even byte count |
 
-The loader accepts nonzero even lengths up to `0x2e00`. There is no magic, AFS, or UALf header. Assembler `org` padding is removed. The file is attached as a device at **EMEM `0x0100`**; firmware copies its payload into **IMEM `0x0100`**, then jumps there. These are separate address spaces. Change both firmware READ operands and the emulator's `--insert` address to relocate the ROM device.
+The loader accepts nonzero even lengths up to `0x2e00`. There is no magic, AFS, or UALf header. Assembler `org` padding is removed. The file maps consecutive bytes starting at **EMEM `0x0100`**. Firmware reads its length there, then advances the EMEM address from `0x0102`, copying words into **IMEM `0x0100`** before jumping there. These are separate address spaces. Change `FIRMWARE_ROM_BASE` and the emulator's `--insert` address together to relocate the ROM. The maximum file ends at EMEM `0x2f01`; cards start at `0x3000` and `0x3001`.
 
 ## Source modules and generated files
 
@@ -44,21 +40,25 @@ The loader accepts nonzero even lengths up to `0x2e00`. There is no magic, AFS, 
 | `kernel.anc216` | Entry, vectors, boot application, reset/shutdown/fault handlers, imports |
 | `kernel/console.anc216` | AVC64 character output and persistent cursor |
 | `kernel/storage.anc216` | MPME word/byte reads and byte writes |
-| `kernel/fs.anc216` | Mount, file/directory lookup, chain validation, sequential read/write |
+| `kernel/fs.anc216` | Filesystem module composition; lookup, chain, transfer, state and stat live in separate modules |
 | `kernel/fs_namespace.anc216` | Directory records, empty-file/directory allocation and removal |
-| `kernel/shell_services.anc216` | Command argument handoff, cwd and return to init |
+| `kernel/syscall_session.anc216` | Command argument handoff, cwd and return to init |
 | `kernel/loader.anc216` | UALf header/symbol bounds, user memory setup, process replacement |
-| `kernel/syscalls.anc216` | ABI dispatch, permissions, buffer validation, interrupt return |
+| `kernel/syscalls.anc216` | Saved-register frame, buffer validation and interrupt return; dispatch/files/namespace/console/session are separate modules |
 | `kernel/keyboard.anc216` | Keyboard IRQ register/frame restoration and silent idle input |
 | `programs/init.anc216` | Filesystem/multi-chip/exec demo using actual user syscalls |
 | `programs/sh.anc216` | Init shell, command parsing and executable dispatch |
 | `programs/ls.anc216`, `cat.anc216`, etc. | Separate command executables |
-| `programs/readline-demo.anc216` | Original line-input demo with a nonzero UALf entry offset |
+| `../tests/readline_demo.anc216` | Original line-input demo with a nonzero UALf entry offset |
 | `libs/` | Shared named ABI, bounded byte strings, paths and console helpers |
 | `glyphs.txt`, `charmap.bin` | Original printable ASCII glyph source and ready-to-use AVC64 map |
 | `build.py` | Assemble firmware/kernel/apps, package ROM, grant demo permissions, generate cards/font |
 
-CMake outputs to `build/os`; invoking `python3 os/build.py` directly outputs to `os/build`. The charmap has 95 monochrome 8×8 records with ASCII IDs 32–126; uppercase and lowercase have distinct glyphs. Copy a newly generated map to `os/charmap.bin` after editing the glyph source.
+Production CMake outputs to `build/production/os`; development builds output to
+`build/os`. Invoking `python3 os/build.py` directly outputs to `os/build` and
+generates only disk0, firmware, kernel, commands and font. `--test-fixtures` adds
+the regression cards and sample files; CMake passes this only with
+`BUILD_TESTING=ON`. The charmap has 95 monochrome 8×8 records with ASCII IDs 32–126; uppercase and lowercase have distinct glyphs. Copy a newly generated map to `os/charmap.bin` after editing the glyph source.
 
 ## Memory and application ABI
 
@@ -107,14 +107,15 @@ The shared path helper normalizes repeated `/`, `.` and `..` before a syscall.
 | `cd [directory]` | Change cwd; with no argument, keep the current cwd |
 | `pwd` | Print cwd |
 | `cat file` | Print the contents using sequential reads |
+| `more file` | Keep 27 rows visible; press Enter to scroll up and reveal one more row |
 | `touch file` | Create an empty file; an existing file is left intact |
 | `mkdir directory` | Create one directory; parent must exist |
 | `rm path` | Remove a file and its entire chain, or an empty directory |
 | `echo text` | Print the argument text and newline |
 | `clear` | Clear the display and reset the console position |
-| `mount address` | Select an MPME data volume, decimal address (`512` or `513`) |
+| `mount address` | Select an MPME data volume, decimal address (`12288` or `12289`) |
 
-The kernel loads commands and init from the boot chip `0x0200`, then restores
+The kernel loads commands and init from the boot chip `0x3000`, then restores
 the selected data volume before user execution. Cwd and selected volume survive
 command exit/reload; mounting a volume resets cwd to root. `run` replaces the
 single process, and command exit/fault reloads `/bin/init`. This is not fork/wait:
@@ -123,13 +124,10 @@ remain available. `getl` echoes active input, erases deleted glyphs, and display
 a cursor blinking every 500 ms; idle input stays silent. The cursor borrows the
 kernel timer with T masked and stops it when the line finishes.
 
-`build/os/sh.ual` is the host shell binary, while `build/os/init.ual` remains the
-host demo binary. Disk0 contains both, named `/bin/sh` and `/bin/demo-init`, and
-a shell copy at `/bin/init`. To select the demo as init on your built image:
-
-```sh
-build/cardreader/cardreader build/os/disk0.afs set /bin/init build/os/init.ual
-```
+`build/os/sh.ual` is the host shell binary. Production disk0 installs it as both
+`/bin/sh` and `/bin/init`; `/data` starts empty. The legacy demo is built as
+`build/os/init.ual` for `demo-disk0.afs`, together with its input/data/error fixtures.
+Use that separate test card to run the demo.
 
 Restore the shell with:
 
@@ -138,4 +136,31 @@ build/cardreader/cardreader build/os/disk0.afs set /bin/init build/os/sh.ual
 ```
 
 Restart the emulator after editing the host image. Rebuilding regenerates disk0
-and selects the shell again; guest filesystem edits remain session-only.
+and selects the shell again; guest filesystem edits persist in the attached card files.
+
+## Kernel organization and device grants
+
+See [kernel/README.md](kernel/README.md) for module contracts and control flow.
+Assembly instructions include C-like equivalents alongside intent comments;
+`use ... as` aliases name the physical layout, ABI, device commands and filesystem
+formats. The `stat` command uses SYS_FSTAT to report payload and allocated bytes
+for files or recursively for directories. SYS_VIDEO grants/revokes direct user
+READ/WRITE access to AVC64; new processes start with all direct EMEM access denied.
+See [SYSCALLS.md](SYSCALLS.md) for the exact records and grant lifetime.
+
+## Flat ROM mapping and MPME devices
+
+`--insert 0x0100 system.rom` maps every file byte to a consecutive EMEM address.
+`READ & 0x0100` always reads the same word, regardless of R1. Reading successive
+words requires `READ & 0x0102`, `READ & 0x0104`, etc., or a register containing
+the advancing address. Writes to ROM cells are ignored. The mapper rejects ROM
+ranges that overlap another ROM or an IO device or extend past `0xffff`.
+
+MPME cards differ: one EMEM address selects the card, and its protocol supplies
+an internal byte offset. Disk0 is at `0x3000`; disk1 is at `0x3001`, outside the
+maximum ROM range (`0x0100..0x2f01`). Older launch commands using cards at `0x0200`
+and `0x0201` now correctly fail with an overlap error. `runos.sh` is updated.
+
+Firmware copies the payload into IMEM starting at `0x0100`; this is a separate
+instruction/data space. The external ROM and copied instructions may use the
+same numeric addresses without overlapping each other.

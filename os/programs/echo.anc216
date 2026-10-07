@@ -1,13 +1,13 @@
 ; A standalone user executable. R1 points to argument bytes, R2 is their length.
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; print arguments verbatim, including spaces
-    pobp                                 ; restore the saved BP
-    phbp                                 ; save BP before pointer/helper use
-    call app_newline                     ; app_newline()
-    pobp                                 ; restore the saved BP
-    jmp app_exit                         ; goto app_exit
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_print                       ; C: app_print(); | print arguments verbatim, including spaces
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call app_newline                     ; C: app_newline(); | app_newline()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp app_exit                         ; C: goto app_exit; | goto app_exit
 
-import "../libs/io.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

@@ -1,13 +1,13 @@
 ; A standalone user executable. R1 points to argument bytes, R2 is their length.
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
-    load r0, SYS_CLEAR                   ; r0 = SYS_CLEAR
-    syscall                              ; invoke the OS service selected by L0
-    cmp r7, OS_SUCCESS                   ; compare r7 with OS_SUCCESS
-    jne app_error                        ; if not equal, goto app_error
-    jmp app_exit                         ; goto app_exit
+    load r0, SYS_CLEAR                   ; C: r0 = SYS_CLEAR; | r0 = SYS_CLEAR
+    syscall                              ; C: kernel_service(L0, arguments); | invoke the OS service selected by L0
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS); | compare r7 with OS_SUCCESS
+    jne app_error                        ; C: if (!Z) goto app_error; | if not equal, goto app_error
+    jmp app_exit                         ; C: goto app_exit; | goto app_exit
 
-import "../libs/strings.anc216"
-import "../libs/paths.anc216"
-import "../libs/io.anc216"
+import "../libs/strings.anc216" ; C: #include "../libs/strings.anc216"
+import "../libs/paths.anc216" ; C: #include "../libs/paths.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

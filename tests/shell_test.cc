@@ -3,8 +3,11 @@
 #include <avc64.hh>
 #include <iostream>
 #include <stdexcept>
+#include <filesystem>
 #include <chrono>
 #include <thread>
+#include <fstream>
+#include <vector>
 
 // Drive real SDL-style keyboard events through shell/getl, then execute the
 // separate command UALf on the guest. No host filesystem command implements it.
@@ -20,8 +23,15 @@ int main(int argc, char **argv)
         flags.bootfile = directory + "/boot.bin";
         flags.charmap = directory + "/charmap.bin";
         flags.inserts.emplace_back(0x0100, directory + "/system.rom");
-        flags.cards.emplace_back(0x0200, directory + "/shell-test.afs");
-        flags.cards.emplace_back(0x0201, directory + "/disk1.afs");
+        flags.cards.emplace_back(0x3000, directory + "/shell-test.afs");
+        flags.cards.emplace_back(0x3001, directory + "/disk1.afs");
+        // Persistent guest writes use private copies, never shared build fixtures.
+        for (auto &[address, image] : flags.cards)
+        {
+            const auto copy = directory + "/shell-volume-" + std::to_string(address) + ".afs";
+            std::filesystem::copy_file(image, copy, std::filesystem::copy_options::overwrite_existing);
+            image = copy;
+        }
         ANC216::EmemMapper devices(flags);
         auto gpu = std::make_unique<ANC216::AVC64>(&devices, flags);
         auto *display = gpu.get();
@@ -90,7 +100,7 @@ int main(int argc, char **argv)
         };
         auto disk_byte = [&](unsigned at)
         {
-            return unsigned(devices.read(at, 0x0200) >> 8);
+            return unsigned(devices.read(at, 0x3000) >> 8);
         };
         auto directory_id = [&](const std::string &name)
         {
@@ -109,7 +119,7 @@ int main(int argc, char **argv)
         {
             for (unsigned id = 1; id <= 196; ++id)
             {
-                const unsigned metadata = devices.read(257 + (id - 1) * 2, 0x0200);
+                const unsigned metadata = devices.read(257 + (id - 1) * 2, 0x3000);
                 if (metadata != (parent << 8 | 1))
                     continue;
                 const unsigned at = 2185 + (id - 1) * 323;
@@ -132,9 +142,56 @@ int main(int argc, char **argv)
                 result += char(cpu.peek(at));
             return result;
         };
+
+        // Compare actual console pixels before and after every single-row scroll.
+        std::ifstream font_file(directory + "/charmap.bin", std::ios::binary);
+        const std::vector<unsigned char> font((std::istreambuf_iterator<char>(font_file)), {});
+        auto glyph = [&](char ch, unsigned column, unsigned row)
+        {
+            const unsigned at = (unsigned(ch) - 32) * 14 + 6;
+            for (unsigned y = 0; y < 8; ++y)
+                for (unsigned x = 0; x < 8; ++x)
+                    if (pixel(column * 8 + x, row * 8 + y) !=
+                        ((font.at(at + y) & (0x80 >> x)) ? 0xff : 0))
+                        throw std::runtime_error("more rendered an incorrect glyph: " + std::string(1, ch) + " column=" + std::to_string(column) + " row=" + std::to_string(row));
+        };
+        command("more", 1);
+        command("more /missing", 3);
+        command("more /more-exact.txt"); // EOF needs no extra Enter.
+        for (bool wrapped : {false, true})
+        {
+            const std::string line = wrapped ? "more /more-wrap.txt" : "more /more-lines.txt";
+            for (char ch : line + "\n")
+                devices.keyboard_input(ch);
+            steps(1500000);
+            for (unsigned scroll = 0; scroll <= 27; ++scroll)
+            {
+                if (cpu.halted() || cpu.peek(0x6200) == 0x53)
+                    throw std::runtime_error("more did not wait after one row");
+                for (unsigned row = 0; row < 27; ++row)
+                    for (unsigned col = 0; col < (wrapped ? 32u : 1u); ++col)
+                        glyph(row < 27 - scroll ? 'A' : 'B', col, row);
+                glyph('P', 0, 27);
+                devices.keyboard_input('x');
+                steps(2000);
+                glyph(scroll < 27 ? 'A' : 'B', 0, 0);
+                devices.keyboard_input(10);
+                steps(500000);
+            }
+            ready();
+            for (unsigned row = 0; row < 26; ++row)
+                glyph('B', 0, row);
+            glyph('C', 0, 26); // EOF leaves the scrolled text visible.
+            if (cpu.peek(0x00f3) != 0)
+                throw std::runtime_error("more failed after paging");
+        }
         command("help");
         command("test-strings");
         command("test-fs_namespace");
+        command("test-video");
+        command("lscpu");
+        command("stat /data/message.txt");
+        command("stat /data");
         command("mkdir /work");
         const auto work = directory_id("work");
         if (!work)
@@ -144,7 +201,7 @@ int main(int argc, char **argv)
             throw std::runtime_error("Cwd did not survive reloading init");
         command("touch note.txt");
         const auto note = file_id(work, "note.txt");
-        if (!note || devices.read(2185 + (note - 1) * 323 + 21, 0x0200) != 0)
+        if (!note || devices.read(2185 + (note - 1) * 323 + 21, 0x3000) != 0)
             throw std::runtime_error("touch did not allocate a zero-length file head");
         command("ls");
         command("cat note.txt");
@@ -169,9 +226,9 @@ int main(int argc, char **argv)
             throw std::runtime_error("rm did not release an empty directory");
         command("ls /");
         command("clear");
-        command("mount 513");
+        command("mount 12289");
         command("cat /other.txt");
-        command("mount 512");
+        command("mount 12288");
         command("ls /bin");
         command("touch /Case");
         command("touch /case");

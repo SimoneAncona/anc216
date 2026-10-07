@@ -74,7 +74,22 @@ _code:
     pobp
     cmp r7, OS_INVALID
     jne test_failure
+    load r1, 65535
+    phbp
+    call app_print_unsigned
+    pobp
+    load r0, number_text
+    load r1, 5
+    load r2, expected_decimal
+    load r3, sizeof expected_decimal
+    phbp
+    call str_cmp
+    pobp
+    cmp r7, OS_SUCCESS
+    jne test_failure
     jmp app_exit
+expected_decimal:
+    "65535"
 string_a:
     "abc", byte 88
 string_b:
@@ -89,4 +104,5 @@ test_failure:
     load r7, OS_INVALID        ; an assertion failure always exits nonzero
     jmp app_error
 import "../os/libs/strings.anc216"
+import "../os/libs/numbers.anc216"
 import "../os/libs/io.anc216"

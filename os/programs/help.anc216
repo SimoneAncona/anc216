@@ -1,20 +1,18 @@
 ; A standalone user executable. R1 points to argument bytes, R2 is their length.
 ; Arguments arrive at logical 3000 from run; helpers use checked OS syscalls.
-import "../libs/abi.anc216"
+import "../libs/abi.anc216" ;
 _code:
-    load r1, help_text                   ; r1 = help_text
-    load r2, sizeof help_text            ; r2 = sizeof help_text
-    phbp                                 ; save BP before pointer/helper use
-    call app_print                       ; app_print()
-    pobp                                 ; restore the saved BP
-    jmp app_exit                         ; goto app_exit
-help_text:
-    "ls [DIR]  cd [DIR]  pwd", ASCII_NEWLINE
-    "cat FILE  touch FILE", ASCII_NEWLINE
-    "mkdir DIR  rm PATH", ASCII_NEWLINE
-    "echo TEXT  clear  help", ASCII_NEWLINE
-    "mount CHIP (decimal)", ASCII_NEWLINE
+    load r0, SYS_RUN
+    load r1, more_path
+    load r2, sizeof more_path
+    load r3, data_path
+    load r4, sizeof data_path
+    syscall
+    jmp app_error
 
-import "../libs/strings.anc216"
-import "../libs/paths.anc216"
+more_path:
+    "/bin/more"
+data_path:
+    "/data/help.txt"
+
 import "../libs/io.anc216"

@@ -4,7 +4,7 @@ prompt:
 _code:
     ; This executable has console permission only; FS requests are denied.
     load r0, 0x10
-    load r1, 0x0200
+    load r1, 0x3000
     syscall
     cmp r7, 9
     jne failed

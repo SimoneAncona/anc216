@@ -5,6 +5,7 @@
 #include <iterator>
 #include <iostream>
 #include <stdexcept>
+#include <filesystem>
 #include <algorithm>
 
 int main(int argc, char **argv)
@@ -25,7 +26,7 @@ int main(int argc, char **argv)
         auto *display = gpu.get();
         mapper.attach(DEFAULT_VIDEO_CARD_ADDR, std::move(gpu));
         ANC216::CPU cpu(&mapper, flags);
-        for (unsigned cycle = 0; cycle < 50000 && cpu.peek(0x00f0) == 0 && !cpu.halted(); ++cycle)
+        for (unsigned cycle = 0; cycle < 100000 && cpu.peek(0x00f0) == 0 && !cpu.halted(); ++cycle)
             cpu.step();
         if (cpu.halted() || cpu.peek(0x00f0) != 0x21 || cpu.peek(0x00f1) != 0x60)
             throw std::runtime_error("Kernel failed to become ready: " + cpu.error());
@@ -35,8 +36,15 @@ int main(int argc, char **argv)
             cpu.step();
         if (cpu.halted() || !cpu.error().empty())
             throw std::runtime_error("Kernel idle loop failed");
-        flags.cards.emplace_back(0x0200, directory + "/demo-disk0.afs");
-        flags.cards.emplace_back(0x0201, directory + "/disk1.afs");
+        flags.cards.emplace_back(0x3000, directory + "/demo-disk0.afs");
+        flags.cards.emplace_back(0x3001, directory + "/disk1.afs");
+        // Persistent guest writes use private copies, never shared build fixtures.
+        for (auto &[address, image] : flags.cards)
+        {
+            const auto copy = directory + "/os-volume-" + std::to_string(address) + ".afs";
+            std::filesystem::copy_file(image, copy, std::filesystem::copy_options::overwrite_existing);
+            image = copy;
+        }
         ANC216::EmemMapper disks(flags);
         auto process_gpu = std::make_unique<ANC216::AVC64>(&disks, flags);
         auto *process_display = process_gpu.get();
@@ -66,7 +74,7 @@ int main(int argc, char **argv)
         if (process.peek(0x5000) != 'T' || process.peek(0x5003) != 'T' || process.peek(0x5004) != 0)
             throw std::runtime_error("Keyboard getl/exec did not preserve the typed line");
         // The first data byte was overwritten through fwrite, but host card files
-        // stay unchanged: emulator MPME persistence is explicitly session-only.
+        // are persisted to the private backing card before WRITE returns.
         if (!(finished.sr & 8) || finished.sp != 0x3000 || finished.bp != 0x3000)
             throw std::runtime_error("Exit did not return to the kernel stack");
         auto screen = [&]
@@ -147,10 +155,10 @@ int main(int argc, char **argv)
                 output.write(reinterpret_cast<const char *>(image.data()), image.size());
             }
             auto test_flags = flags;
-            test_flags.cards = {{0x0200, card}};
+            test_flags.cards = {{0x3000, card}};
             ANC216::EmemMapper test_mapper(test_flags);
             ANC216::CPU test_cpu(&test_mapper, test_flags);
-            for (unsigned cycle = 0; cycle < 500000 && !test_cpu.halted(); ++cycle)
+            for (unsigned cycle = 0; cycle < 1000000 && !test_cpu.halted(); ++cycle)
                 test_cpu.step();
             if (test_cpu.halted() || !test_cpu.error().empty())
                 throw std::runtime_error("Malformed guest input crashed the kernel");

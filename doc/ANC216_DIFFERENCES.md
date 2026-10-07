@@ -22,8 +22,9 @@ See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
 
 ## Emulator clarifications and limitations
 
-- **MTU and S:** S=0 rebases absolute operands using the corresponding lower
-  index and enforces user bounds. S=1 uses physical addresses and bypasses user
+- **MTU and S:** S=0 rebases absolute IMEM operands using the IMEM lower
+  index and enforces user bounds. EMEM addresses are physical and bounds checked,
+  without rebasing, in every IO addressing mode. S=1 uses physical addresses and bypasses user
   bounds. PC/SP/BP, PC/BP-relative addresses and stack accesses are physical;
   user accesses still undergo their applicable bounds checks. Interrupt/syscall
   entry sets S; restoring SR with POSR can resume user mode. This explicit
@@ -55,7 +56,7 @@ See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
   High-priority variants have no scheduling distinction without bus arbitration.
 - **Mapped ROM/MPME:** WRITE/HWRITE carry their encoded source data. MPME uses
   A=0 to select its internal address and A=1 to write data, with byte/word transfer
-  width. MPME writes persist only within the emulator session.
+  width. MPME writes update and flush the attached host image immediately.
 - **Keyboard:** the ASCII/scancode queue, polling requests, overflow handling and
   keyboard IRQ payload are an emulator protocol supplement, rather than a
   complete protocol specified by ANC216.pdf. The device is at EMEM `0xfffc`, ID
@@ -66,39 +67,26 @@ See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
 - **Unsupported hardware:** audio, custom script extensions and bus-arbitration
   timing lack complete implemented software contracts.
 
-## Open: user-mode IO and EMEM bounds
+## Accepted revision: user-mode IO and EMEM bounds
 
-The PDF marks READ, WRITE, IREQ, REQ, HREQ, HWRITE, PAREQ and CAREQ as privileged.
-The emulator currently follows that privilege table. Combined with the S=1 MTU
-bypass, this leaves the EMEM lower/upper indices ineffective for device access:
-user IO traps before mapping, while system IO bypasses mapping.
+The PDF marks READ and WRITE privileged. At the author's request, the emulator
+now permits these two instructions in user mode. Their encodings are unchanged.
+All user IO addresses, including register and PC/BP-relative forms, are checked
+against inclusive EMEM lower/upper bounds and remain **absolute physical device
+addresses**. There is no EMEM rebasing. An out-of-range address faults with code 3.
+System mode still bypasses these bounds.
 
-Allowing READ and WRITE in user mode is a proposed change, **not implemented or
-accepted yet**. Existing system-mode IO can retain its current behavior and wire
-encoding. A complete change must address:
-
-- Validate every user device address against EMEM bounds. Currently absolute
-  operands are mapped, but register-address READ and PC/BP-relative IO paths do
-  not pass through that mapping. Decide the logical/physical convention for each
-  mode and reject access outside the granted range, without wrapping arithmetic.
-- Keep EMEM-bound setters privileged. The existing OS sets user EMEM to `0..0`,
-  so it grants no access to its devices at `0x0100`, `0x0200`, `0xfffc`, etc.
-- Define access to A: PAREQ/CAREQ are currently privileged, although user SR
-  writes can change A while preserving protected S/I/T. Decide the intended
-  supported interface, especially for MPME's address/data protocol.
-- Direct IO bypasses syscall permission flags and filesystem checks for any
-  device in the granted range. Shared device state, keyboard event consumption,
-  display access and raw card writes need an ownership policy. A contiguous range
-  grants all devices in it, not individual operations or files.
-- Update privilege tests and add coverage for allowed/denied IO, all address
-  modes, overflow, and unchanged system-mode access.
-
-Other choices are to reserve/remove the unused EMEM indices, or define explicit
-bounded system IO. See REVIEW.md. No choice has been applied to the code.
+IREQ, REQ, HREQ, HWRITE, PAREQ, CAREQ and MTU setters remain privileged. User SR
+writes can still change A while preserving protected S/I/T; this existing rule
+allows a granted MPME device's address/data protocol through WRITE. The OS grants
+only AVC64 through SYS_VIDEO; it starts each process with an empty interval.
+A grant permits all READ/WRITE commands on every device in the interval, rather
+than selected files or operations. The OS uses a single-address video interval.
+See [the syscall ABI](../os/SYSCALLS.md#direct-video-access).
 
 ## OS conventions, not ISA changes
 
-The kernel at `0x0100`, ROM device at EMEM `0x0100`, boot cards at `0x0200/0x0201`,
+The kernel at `0x0100`, flat ROM at EMEM `0x0100`, boot cards at `0x3000/0x3001`,
 user IMEM `0x4000..0x7fff`, interrupt stack at `0x3100`, and return stub at
 `0x7ff0` are this OS's choices. POSR at `0x7ff0` restores SR; POPC at `0x7ff2`
 restores the actual user PC. The stub must be inside user IMEM after clearing S.
@@ -116,3 +104,12 @@ The previously discussed UALf 11-byte base header/file-relative entry, AFS v1
 emulator command/texture packing concern their own format/device documents,
 rather than ANC216.pdf alone. Their corrections and implementation contracts
 remain in IMPLEMENTATION.md and REVIEW.md.
+
+## Corrected emulator ROM mapping
+
+The earlier emulator incorrectly gave ROM an MPME-like internal-offset protocol:
+it read different bytes from one EMEM address using R1. This was an invented
+behavior, not an ANC216.pdf rule. It has been removed. ROM now maps consecutive
+EMEM bytes; firmware advances the bus address, and complete mapping ranges are
+checked for overlap. The OS length-prefixed ROM format and origin `0100` remain
+OS conventions; the PDF's example reset loader uses EMEM `0000..2fff`.

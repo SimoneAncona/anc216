@@ -1,0 +1,42 @@
+; AFS v1 format sizes, byte offsets, IDs and statuses.
+use MPME216ID as 0x0102                    ; mpme216id: 0x0102
+use AFS_MAGIC as 0xfe01                    ; afs magic: 0xfe01
+use FS_SUCCESS as 0                        ; fs success: 0
+use FS_INVALID_INPUT as 1                  ; fs invalid input: 1
+use FS_BAD_DEVICE as 2                     ; fs bad device: 2
+use FS_NOT_FOUND as 3                      ; fs not found: 3
+use FS_NO_DESCRIPTOR as 4                  ; fs no descriptor: 4
+use FS_CORRUPT_CHAIN as 5                  ; fs corrupt chain: 5
+use FS_DISK_CAPACITY as 6                  ; fs disk capacity: 6
+use FS_DIR_SEP_CHAR as 47                  ; fs dir sep char: 47
+use FS_EXT_DOT_CHAR as 46                  ; fs ext dot char: 46
+use FS_FIRST_PRINTABLE as 32               ; fs first printable: 32
+use FS_DELETE_CHAR as 127                  ; fs delete char: 127
+use FS_BACKSLASH_CHAR as 92                ; fs backslash char: 92
+use FS_COLON_CHAR as 58                    ; fs colon char: 58
+use FS_MAX_FNAME_LEN as 17                 ; fs max fname len: 17
+use FS_EXISTS as 10                        ; fs exists: 10
+use FS_NOT_EMPTY as 11                     ; fs not empty: 11
+use FS_MAX_DIRNAME_LEN as 15               ; fs max dirname len: 15
+use FS_NAME_FIELDS as 20                   ; fs name fields: 20
+use FS_MAX_PATH as 255                     ; fs max path: 255
+use FS_DIRECTORY_COUNT as 96               ; fs directory count: 96
+use FS_CLUSTER_COUNT as 196                ; fs cluster count: 196
+use FS_TABLE_OFFSET as 257                 ; fs table offset: 257
+use FS_DIRECTORY_OFFSET as 649             ; fs directory offset: 649
+use FS_DIRECTORY_BYTES as 16               ; fs directory bytes: 16
+use FS_CLUSTER_BYTES as 323                ; fs cluster bytes: 323
+use FS_STAT_BYTES as 8                     ; fs stat bytes: 8
+use FS_CLUSTER_OFFSET as 2185              ; fs cluster offset: 2185
+use FS_HEAD_NEXT as 20                     ; fs head next: 20
+use FS_HEAD_LENGTH as 21                   ; fs head length: 21
+use FS_HEAD_DATA as 23                     ; fs head data: 23
+use FS_HEAD_CAPACITY as 300                ; fs head capacity: 300
+use FS_CONT_DATA as 3                      ; fs cont data: 3
+use FS_CONT_CAPACITY as 320                ; fs cont capacity: 320
+use FS_ENTRY_BYTES as 24                   ; fs entry bytes: 24
+use FS_ENTRY_DIRECTORY as 1                ; fs entry directory: 1
+use FS_ENTRY_FILE as 2                     ; fs entry file: 2
+use FS_HEAD_TYPE as 1                      ; fs head type: 1
+use FS_CONT_TYPE as 2                      ; fs cont type: 2
+

@@ -3,511 +3,119 @@
 ; CPU saves user SP/BP in 31fe/31fc and pushes PC/SR at the configured interrupt stack (3100).
 ; Return is POSR/POPC, never RET (which is only for CALL frames).
 ; Interrupts remain masked: argument slots and FS operations are nonreentrant.
-syscall_handler:
-    store & arg0, r0
-    store & arg1, r1
-    store & arg2, r2
-    store & arg3, r3
-    store & arg4, r4
-    store & arg5, r5
-    ; Interrupt SP can differ from kernel CALL SP. Capture its frame before
-    ; helpers use BP, rather than assuming that all handlers start at 3000.
-    trsp r4
-    sub r4, 3
-    ldbp r4
-    load r5, & bp + 0
-    store & syscall_pc, r5
-    load r5, 0
-    load l5, & bp + 2
-    store & syscall_sr, r5
-    ldbp 0x3000
-    load r6, 0
-    load r7, 0
-    load r0, & process_active
-    cmp r0, 0
-    jeq panic
-    ; Three free bytes above saved SP are needed for the return frame.
-    ; User code can modify SP, so bounds must be checked in system mode.
-    load r0, & 0x31fe
-    cmp r0, 0x7800
-    jls syscall_bad_stack
-    cmp r0, 0x7ffd
-    jgr syscall_bad_stack
-    load r0, & arg0
-    and r0, 0xff
-    cmp r0, 0
-    jeq syscall_exit
-    cmp r0, 5
-    jeq syscall_print
-    cmp r0, 6
-    jeq syscall_getl
-    cmp r0, 7
-    jeq syscall_clear
-    cmp r0, 6
-    jls syscall_fs_permission
-    cmp r0, 0x1d
-    jeq [0x000a]
-    cmp r0, 0x10
-    jls syscall_unsupported
-    cmp r0, 0x1c
-    jgr syscall_unsupported
-syscall_fs_permission:
-    load r1, & process_flags
-    and r1, 0x20
-    jeq syscall_denied
-    cmp r0, 1
-    jeq syscall_open
-    cmp r0, 2
-    jeq syscall_close
-    cmp r0, 3
-    jeq syscall_read
-    cmp r0, 4
-    jeq syscall_write
-    cmp r0, 0x10
-    jeq syscall_mount
-    cmp r0, 0x11
-    jeq syscall_exec
-    cmp r0, 0x12
-    jeq syscall_rewind
-    cmp r0, 0x13
-    jeq syscall_size
-    cmp r0, 0x14
-    jeq syscall_directory
-    cmp r0, 0x15
-    jeq syscall_list
-    cmp r0, 0x16
-    jeq syscall_touch
-    cmp r0, 0x17
-    jeq syscall_mkdir
-    cmp r0, 0x18
-    jeq syscall_remove
-    cmp r0, 0x1a
-    jeq syscall_run
-    cmp r0, 0x1b
-    jeq syscall_getcwd
-    cmp r0, 0x1c
-    jeq syscall_chdir
-syscall_unsupported:
-    load r7, 8
-    jmp syscall_return
-syscall_exit:
-    load r1, & arg1
-    store & 0x00f2, r1
-    store & 0x00f0, word 0x2161
-    jmp process_finish
-syscall_bad_stack:
-    store & 0x00f4, word 4
-    store & 0x00f0, word 0x2162
-    jmp process_finish
-syscall_denied:
-    load r7, 9
-    jmp syscall_return
-syscall_invalid:
-    load r7, 1
-    jmp syscall_return
+syscall_handler: ; C: syscall_handler: (routine, branch target or data symbol)
+    store & arg0, r0                     ; C: *(arg0) = r0;
+    store & arg1, r1                     ; C: *(arg1) = r1;
+    store & arg2, r2                     ; C: *(arg2) = r2;
+    store & arg3, r3                     ; C: *(arg3) = r3;
+    store & arg4, r4                     ; C: *(arg4) = r4;
+    store & arg5, r5                     ; C: *(arg5) = r5;
+; Interrupt SP can differ from kernel CALL SP. Capture its frame before
+; helpers use BP, rather than assuming that all handlers start at 3000.
+    trsp r4                              ; C: r4 = SP;
+    sub r4, 3                            ; C: r4 -= 3;
+    ldbp r4                              ; C: BP = r4;
+    load r5, & bp + 0                    ; C: r5 = *(bp + 0);
+    store & syscall_pc, r5               ; C: *(syscall_pc) = r5;
+    load r5, 0                           ; C: r5 = 0;
+    load l5, & bp + 2                    ; C: l5 = *(bp + 2);
+    store & syscall_sr, r5               ; C: *(syscall_sr) = r5;
+    ldbp KERNEL_STACK                    ; C: BP = KERNEL_STACK;
+    load r6, 0                           ; C: r6 = 0;
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+    load r0, & process_active            ; C: r0 = *(process_active);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq panic                            ; C: if (Z) goto panic;
+; Three free bytes above saved SP are needed for the return frame.
+; User code can modify SP, so bounds must be checked in system mode.
+    load r0, & SAVED_SP                  ; C: r0 = *(SAVED_SP);
+    cmp r0, USER_STACK                   ; C: flags = compare(r0, USER_STACK);
+    jls syscall_bad_stack                ; C: if (N != O) goto syscall_bad_stack;
+    cmp r0, USER_RETURN_LIMIT            ; C: flags = compare(r0, USER_RETURN_LIMIT);
+    jgr syscall_bad_stack                ; C: if (N == O && !Z) goto syscall_bad_stack;
+    jmp syscall_dispatch                 ; C: goto syscall_dispatch;
+syscall_unsupported: ; C: syscall_unsupported: (routine, branch target or data symbol)
+    load r7, OS_UNSUPPORTED              ; C: r7 = OS_UNSUPPORTED;
+    jmp syscall_return                   ; C: goto syscall_return;
+syscall_exit: ; C: syscall_exit: (routine, branch target or data symbol)
+    load r1, & arg1                      ; C: r1 = *(arg1);
+    store & EXIT_ADDRESS, r1             ; C: *(EXIT_ADDRESS) = r1;
+    store & STATE_ADDRESS, word STATE_EXIT ; C: *(STATE_ADDRESS) = STATE_EXIT;
+    jmp process_finish                   ; C: goto process_finish;
+syscall_bad_stack: ; C: syscall_bad_stack: (routine, branch target or data symbol)
+    store & FAULT_ADDRESS, word 4        ; C: *(FAULT_ADDRESS) = 4;
+    store & STATE_ADDRESS, word STATE_FAULT ; C: *(STATE_ADDRESS) = STATE_FAULT;
+    jmp process_finish                   ; C: goto process_finish;
+syscall_denied: ; C: syscall_denied: (routine, branch target or data symbol)
+    load r7, OS_PERMISSION               ; C: r7 = OS_PERMISSION;
+    jmp syscall_return                   ; C: goto syscall_return;
+syscall_invalid: ; C: syscall_invalid: (routine, branch target or data symbol)
+    load r7, OS_INVALID                  ; C: r7 = OS_INVALID;
+    jmp syscall_return                   ; C: goto syscall_return;
 
 ; R1 logical pointer, R2 length -> R1 physical pointer or R7=1.
 ; User buffers stay below 7ff0, reserving the mode-switch stub at 7ff0.
-user_buffer:
-    cmp r1, 0
-    jls user_buffer_bad
-    cmp r1, 0x3ff0
-    jge user_buffer_bad
-    cmp r2, 0
-    jls user_buffer_bad
-    cmp r2, 255
-    jgr user_buffer_bad
-    tran r0, r1
-    add r0, r2
-    cmp r0, 0x3ff0
-    jgr user_buffer_bad
-    add r1, 0x4000
-    load r7, 0
-    ret
-user_buffer_bad:
-    load r7, 1
-    ret
+user_buffer: ; C: user_buffer: (routine, branch target or data symbol)
+    cmp r1, 0                            ; C: flags = compare(r1, 0);
+    jls user_buffer_bad                  ; C: if (N != O) goto user_buffer_bad;
+    cmp r1, USER_BUFFER_LIMIT            ; C: flags = compare(r1, USER_BUFFER_LIMIT);
+    jge user_buffer_bad                  ; C: if (N == O) goto user_buffer_bad;
+    cmp r2, 0                            ; C: flags = compare(r2, 0);
+    jls user_buffer_bad                  ; C: if (N != O) goto user_buffer_bad;
+    cmp r2, 255                          ; C: flags = compare(r2, 255);
+    jgr user_buffer_bad                  ; C: if (N == O && !Z) goto user_buffer_bad;
+    tran r0, r1                          ; C: r0 = r1;
+    add r0, r2                           ; C: r0 += r2;
+    cmp r0, USER_BUFFER_LIMIT            ; C: flags = compare(r0, USER_BUFFER_LIMIT);
+    jgr user_buffer_bad                  ; C: if (N == O && !Z) goto user_buffer_bad;
+    add r1, USER_BASE                    ; C: r1 += USER_BASE;
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+user_buffer_bad: ; C: user_buffer_bad: (routine, branch target or data symbol)
+    load r7, OS_INVALID                  ; C: r7 = OS_INVALID;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
-; print(05): R1 buffer, L2 count, R3 stream 0/1. Requires console flag 80.
-; Length is authoritative, so this service never scans an unbounded string.
-syscall_print:
-    load r0, & process_flags
-    and r0, 0x80
-    jeq syscall_denied
-    load r0, & arg3
-    cmp r0, 0
-    jls syscall_invalid
-    cmp r0, 1
-    jgr syscall_invalid
-    load r1, & arg1
-    load r2, & arg2
-    and r2, 0xff
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    store & print_pointer, r1
-    store & print_count, r2
-syscall_print_loop:
-    load r0, & print_count
-    cmp r0, 0
-    jeq syscall_print_done
-    load r2, & print_pointer
-    phbp
-    ldbp r2
-    load l0, & bp + 0
-    phbp
-    call putc
-    pobp
-    pobp
-    load r0, & print_pointer
-    inc r0
-    store & print_pointer, r0
-    load r0, & print_count
-    dec r0
-    store & print_count, r0
-    jmp syscall_print_loop
-syscall_print_done:
-    load r6, & arg2
-    and r6, 0xff
-    load r7, 0
-    jmp syscall_return
+syscall_return: ; C: syscall_return: (routine, branch target or data symbol)
+; Copy the original interrupt PC/SR, restore physical user SP/BP,
+; push a return frame there, restore inputs, then switch back to user mode.
+    load r5, & syscall_pc                ; C: r5 = *(syscall_pc);
+    load r4, & syscall_sr                ; C: r4 = *(syscall_sr);
+    ldsp & SAVED_SP                      ; C: SP = *(SAVED_SP);
+    ldbp & SAVED_BP                      ; C: BP = *(SAVED_BP);
+    push r5                              ; C: push(r5);
+    push l4                              ; C: push(l4);
+    load r0, & arg0                      ; C: r0 = *(arg0);
+    load r1, & arg1                      ; C: r1 = *(arg1);
+    load r2, & arg2                      ; C: r2 = *(arg2);
+    load r3, & arg3                      ; C: r3 = *(arg3);
+    load r4, & arg4                      ; C: r4 = *(arg4);
+    load r5, & arg5                      ; C: r5 = *(arg5);
+; Execute the mode switch inside user IMEM: after POSR the next fetch
+; must already be inside the MTU range. Reinstall before each transition.
+    store & RETURN_STUB, word RETURN_POSR_WORD ; C: *(RETURN_STUB) = RETURN_POSR_WORD;
+    store & RETURN_STUB_PC, word RETURN_POPC_WORD ; C: *(RETURN_STUB_PC) = RETURN_POPC_WORD;
+    jmp RETURN_STUB                      ; C: goto RETURN_STUB;
 
-; fopen(01): R1 absolute path, L2 size, R3 descriptor-byte pointer.
-; Successful open writes descriptor 1. There is only one open file per process.
-syscall_open:
-    load r1, & arg3
-    load r2, 1
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    store & fd_pointer, r1
-    load r1, & arg1
-    load r2, & arg2
-    and r2, 0xff
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    phbp
-    call fs_open
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    load r1, & fd_pointer
-    phbp
-    ldbp r1
-    store & bp + 0, byte 1
-    pobp
-    load r6, 1
-    jmp syscall_return
-syscall_close:
-    phbp
-    call syscall_check_fd
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    store & fs_head, word 0
-    jmp syscall_return
-syscall_check_fd:
-    load r0, & arg1
-    cmp r0, 1
-    jne syscall_no_fd
-    load r0, & fs_head
-    cmp r0, 0
-    jeq syscall_no_fd
-    load r7, 0
-    ret
-syscall_no_fd:
-    load r7, 4
-    ret
+arg0: ; C: arg0: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+arg1: ; C: arg1: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+arg2: ; C: arg2: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+arg3: ; C: arg3: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+arg4: ; C: arg4: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+arg5: ; C: arg5: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+syscall_pc: ; C: syscall_pc: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+syscall_sr: ; C: syscall_sr: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
 
-; fread(03): R1 descriptor, L2 count, R3 destination.
-; fwrite(04): R1 descriptor, R2=8000|count, R3 source.
-; The high byte is the PDF's write mode; the low byte is its byte count.
-syscall_read:
-    store & transfer_mode, word 0
-    jmp syscall_transfer
-syscall_write:
-    load r0, & arg2
-    and r0, 0xff00
-    cmp r0, 0x8000
-    jne syscall_invalid
-    store & transfer_mode, word 1
-syscall_transfer:
-    phbp
-    call syscall_check_fd
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    load r1, & arg3
-    load r2, & arg2
-    and r2, 0xff
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    tran r3, r2
-    tran r2, r1
-    load r4, & transfer_mode
-    phbp
-    call fs_transfer
-    pobp
-    jmp syscall_return
 
-; Extensions: mount(10) R1 chip address; exec(11) R1 path/L2 size;
-; rewind(12) and size(13) R1 descriptor. Successful exec replaces the process.
-syscall_mount:
-    load r1, & arg1
-    phbp
-    call fs_mount
-    pobp
-    cmp r7, FS_SUCCESS
-    jne syscall_return
-    load r0, & arg1
-    store & shell_session_device, r0 ; cwd and selected volume survive commands
-    store & shell_cwd_length, word 1
-    store & shell_cwd, word 0x2f00 ; a new volume starts at root
-    jmp syscall_return
-syscall_exec:
-    load r1, & arg1
-    load r2, & arg2
-    and r2, 0xff
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    phbp
-    call fs_open
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    phbp
-    call exec_open_file
-    pobp
-    jmp syscall_return
-syscall_rewind:
-    phbp
-    call syscall_check_fd
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    phbp
-    call fs_rewind
-    pobp
-    jmp syscall_return
-syscall_size:
-    phbp
-    call syscall_check_fd
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    load r6, & fs_size
-    jmp syscall_return
-
-; getl(06): R1 capacity (1..255), R2 logical destination.
-; Requires console permission. Poll keyboard while I is masked, so SDL capture
-; can continue without nesting interrupts into the system-call stack.
-; R6 is the length excluding newline/NUL; capacity includes the NUL terminator.
-; Enter finishes, backspace erases one buffered byte; unknown keys are ignored.
-syscall_getl:
-    ireq & 0xfffc
-    cmp r0, 0x0301
-    jeq syscall_getl_present
-    load r7, 2
-    jmp syscall_return
-syscall_getl_present:
-    load r0, & process_flags
-    and r0, 0x80
-    jeq syscall_denied
-    load r2, & arg1
-    cmp r2, 1
-    jls syscall_invalid
-    load r1, & arg2
-    phbp
-    call user_buffer
-    pobp
-    cmp r7, 0
-    jne syscall_return
-    store & input_start, r1
-    store & input_pointer, r1
-    dec r2
-    store & input_capacity, r2
-    store & input_length, word 0
-    phbp
-    call console_cursor_reset
-    pobp
-syscall_getl_loop:
-    phbp
-    call console_cursor_tick    ; blink even when the input queue is empty
-    pobp
-    load r1, 0
-    read & 0xfffc
-    cmp r1, 0
-    jeq syscall_getl_loop
-    store & input_event, r1     ; drawing uses R1 for GPU reads
-    cmp r1, 10
-    jeq syscall_getl_done
-    cmp r1, 8
-    jeq syscall_getl_backspace
-    cmp r1, 32
-    jls syscall_getl_loop
-    cmp r1, 126
-    jgr syscall_getl_loop
-    load r0, & input_length
-    cmp r0, & input_capacity
-    jge syscall_getl_loop
-    phbp
-    call console_cursor_hide
-    pobp
-    ; Remember the actual cell, including line wraps, for visual backspace.
-    load r2, & input_length
-    shl r2, 1
-    add r2, input_coordinates
-    load r0, & console_x
-    shl r0, 8
-    or r0, & console_y
-    phbp
-    ldbp r2
-    store & bp + 0, r0
-    pobp
-    load r0, & input_length
-    load r1, & input_event
-    phbp
-    load r2, & input_pointer
-    ldbp r2
-    store & bp + 0, l1
-    pobp
-    inc r2
-    store & input_pointer, r2
-    inc r0
-    store & input_length, r0
-    tran r0, r1
-    phbp
-    call putc
-    pobp
-    phbp
-    call console_cursor_reset
-    pobp
-    jmp syscall_getl_loop
-syscall_getl_backspace:
-    load r0, & input_length
-    cmp r0, 0
-    jeq syscall_getl_loop
-    phbp
-    call console_cursor_hide
-    pobp
-    load r0, & input_length
-    dec r0
-    store & input_length, r0
-    shl r0, 1
-    add r0, input_coordinates
-    phbp
-    ldbp r0
-    load r3, & bp + 0           ; high byte X, low byte Y of the deleted glyph
-    pobp
-    tran r0, r3
-    shr r0, 8
-    store & console_x, r0
-    and r3, 0xff
-    store & console_y, r3
-    load r0, & input_pointer
-    dec r0
-    store & input_pointer, r0
-    phbp
-    ldbp r0
-    store & bp + 0, byte 0      ; remove the byte as well as its visible glyph
-    pobp
-    phbp
-    call console_erase_cell
-    pobp
-    phbp
-    call console_cursor_reset
-    pobp
-    jmp syscall_getl_loop
-syscall_getl_done:
-    phbp
-    call console_cursor_hide   ; no cursor remains after Enter returns the line
-    pobp
-    tstop
-    phbp
-    load r2, & input_pointer
-    ldbp r2
-    store & bp + 0, byte 0
-    pobp
-    load r0, 10
-    phbp
-    call putc
-    pobp
-    load r6, & input_length
-    load r7, 0
-    jmp syscall_return
-
-syscall_return:
-    ; Copy the original interrupt PC/SR, restore physical user SP/BP,
-    ; push a return frame there, restore inputs, then switch back to user mode.
-    load r5, & syscall_pc
-    load r4, & syscall_sr
-    ldsp & 0x31fe
-    ldbp & 0x31fc
-    push r5
-    push l4
-    load r0, & arg0
-    load r1, & arg1
-    load r2, & arg2
-    load r3, & arg3
-    load r4, & arg4
-    load r5, & arg5
-    ; Execute the mode switch inside user IMEM: after POSR the next fetch
-    ; must already be inside the MTU range. Reinstall before each transition.
-    store & 0x7ff0, word 0x000b
-    store & 0x7ff2, word 0x0009
-    jmp 0x7ff0
-
-arg0:
-    word 0
-arg1:
-    word 0
-arg2:
-    word 0
-arg3:
-    word 0
-arg4:
-    word 0
-arg5:
-    word 0
-print_pointer:
-    word 0
-print_count:
-    word 0
-fd_pointer:
-    word 0
-transfer_mode:
-    word 0
-
-input_start:
-    word 0
-input_pointer:
-    word 0
-input_capacity:
-    word 0
-input_length:
-    word 0
-
-syscall_pc:
-    word 0
-syscall_sr:
-    word 0
-
-import "shell_services.anc216"
-
-input_event:
-    word 0
-input_coordinates:
-    reserve 510                ; 255 saved XY words; getl accepts at most 254 bytes
+import "syscall_dispatch.anc216" ; C: #include "syscall_dispatch.anc216"
+import "syscall_files.anc216" ; C: #include "syscall_files.anc216"
+import "syscall_namespace.anc216" ; C: #include "syscall_namespace.anc216"
+import "syscall_console.anc216" ; C: #include "syscall_console.anc216"
+import "syscall_session.anc216" ; C: #include "syscall_session.anc216"

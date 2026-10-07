@@ -4,44 +4,44 @@
 ; Preserve every remaining register while restoring the interrupt frame. Idle enables I;
 ; the user loader keeps I masked and getl polls queued keyboard events instead.
 ; The most recent IRQ payload is exposed at physical IMEM 00f6 for debugging.
-keyboard_irq:
-    store & irq3, r3
-    store & irq4, r4
-    store & irq5, r5
-    store & irq6, r6
-    store & irq7, r7
-    cmp r0, 0xfffc
-    jne keyboard_irq_return
-    store & 0x00f6, r1
-    ; No console read is active in idle: consume the event without printing.
-    ; getl owns input echo while a program explicitly requests a line.
-keyboard_irq_return:
-    ; Restore CPU-saved registers, copy PC/SR while still on the system stack.
-    pop l2
-    pop r1
-    pop r0
-    load r3, 0
-    pop l3
-    pop r4
-    ldsp & 0x31fe
-    ldbp & 0x31fc
-    push r4
-    push l3
-    load r3, & irq3
-    load r4, & irq4
-    load r5, & irq5
-    load r6, & irq6
-    load r7, & irq7
-    store & 0x7ff0, word 0x000b
-    store & 0x7ff2, word 0x0009
-    jmp 0x7ff0
-irq3:
-    word 0
-irq4:
-    word 0
-irq5:
-    word 0
-irq6:
-    word 0
-irq7:
-    word 0
+keyboard_irq: ; C: keyboard_irq: (routine, branch target or data symbol)
+    store & irq3, r3                     ; C: *(irq3) = r3;
+    store & irq4, r4                     ; C: *(irq4) = r4;
+    store & irq5, r5                     ; C: *(irq5) = r5;
+    store & irq6, r6                     ; C: *(irq6) = r6;
+    store & irq7, r7                     ; C: *(irq7) = r7;
+    cmp r0, KEYBOARD_ADDRESS             ; C: flags = compare(r0, KEYBOARD_ADDRESS);
+    jne keyboard_irq_return              ; C: if (!Z) goto keyboard_irq_return;
+    store & KEY_ADDRESS, r1              ; C: *(KEY_ADDRESS) = r1;
+; No console read is active in idle: consume the event without printing.
+; getl owns input echo while a program explicitly requests a line.
+keyboard_irq_return: ; C: keyboard_irq_return: (routine, branch target or data symbol)
+; Restore CPU-saved registers, copy PC/SR while still on the system stack.
+    pop l2                               ; C: l2 = pop();
+    pop r1                               ; C: r1 = pop();
+    pop r0                               ; C: r0 = pop();
+    load r3, 0                           ; C: r3 = 0;
+    pop l3                               ; C: l3 = pop();
+    pop r4                               ; C: r4 = pop();
+    ldsp & SAVED_SP                      ; C: SP = *(SAVED_SP);
+    ldbp & SAVED_BP                      ; C: BP = *(SAVED_BP);
+    push r4                              ; C: push(r4);
+    push l3                              ; C: push(l3);
+    load r3, & irq3                      ; C: r3 = *(irq3);
+    load r4, & irq4                      ; C: r4 = *(irq4);
+    load r5, & irq5                      ; C: r5 = *(irq5);
+    load r6, & irq6                      ; C: r6 = *(irq6);
+    load r7, & irq7                      ; C: r7 = *(irq7);
+    store & RETURN_STUB, word RETURN_POSR_WORD ; C: *(RETURN_STUB) = RETURN_POSR_WORD;
+    store & RETURN_STUB_PC, word RETURN_POPC_WORD ; C: *(RETURN_STUB_PC) = RETURN_POPC_WORD;
+    jmp RETURN_STUB                      ; C: goto RETURN_STUB;
+irq3: ; C: irq3: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+irq4: ; C: irq4: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+irq5: ; C: irq5: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+irq6: ; C: irq6: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+irq7: ; C: irq7: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };

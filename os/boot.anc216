@@ -1,34 +1,39 @@
+use FIRMWARE_ORIGIN as 0xff00              ; architectural reset PC and ROM origin
+use FIRMWARE_ROM_BASE as 0x0100          ; first EMEM byte of the flat kernel ROM
+use FIRMWARE_KERNEL_ORIGIN as 0x0100       ; physical IMEM destination; a separate address space
+use FIRMWARE_STACK as 0x3000               ; safe stack above the kernel image
+use FIRMWARE_MAX_KERNEL as 0x2e00          ; bytes fitting below reserved kernel state
+use FIRMWARE_SIGN_BIT as 0x8000            ; reject lengths unsuitable for signed comparisons
 ; ROM loader: EMEM 0x0100 holds a word byte count, then an even-sized kernel.
-org 0xff00
-    clri
-    clrt
-    careq
-    ldsp 0x3000
-    load r1, 0
-    read & 0x0100
-    tran r4, r1
-    cmp r4, 0
-    jeq failed
-    tran r0, r4
-    and r0, 0x8000
-    jne failed
-    cmp r4, 0x2e00
-    jgr failed
-    tran r0, r4
-    and r0, 1
-    jne failed
-    load r2, 2
-    load r3, 0x0100
+org FIRMWARE_ORIGIN ; linker places the following bytes at this physical origin
+    clri                                 ; C: SR.I = 0;
+    clrt                                 ; C: SR.T = 0;
+    careq                                ; C: SR.A = 0;
+    ldsp FIRMWARE_STACK                  ; C: SP = FIRMWARE_STACK;
+    load r1, 0                           ; C: r1 = 0;
+    read & FIRMWARE_ROM_BASE           ; C: r1 = emem_read_word(FIRMWARE_ROM_BASE);
+    tran r4, r1                          ; C: r4 = r1;
+    cmp r4, 0                            ; C: flags = compare(r4, 0);
+    jeq failed                           ; C: if (Z) goto failed;
+    tran r0, r4                          ; C: r0 = r4;
+    and r0, FIRMWARE_SIGN_BIT            ; C: r0 &= FIRMWARE_SIGN_BIT;
+    jne failed                           ; C: if (!Z) goto failed;
+    cmp r4, FIRMWARE_MAX_KERNEL          ; C: flags = compare(r4, FIRMWARE_MAX_KERNEL);
+    jgr failed                           ; C: if (N == O && !Z) goto failed;
+    tran r0, r4                          ; C: r0 = r4;
+    and r0, 1                            ; C: r0 &= 1;
+    jne failed                           ; C: if (!Z) goto failed;
+    load r2, FIRMWARE_ROM_BASE + 2       ; C: r2 = FIRMWARE_ROM_BASE + 2;
+    load r3, FIRMWARE_KERNEL_ORIGIN      ; C: r3 = FIRMWARE_KERNEL_ORIGIN;
 copy:
-    tran r1, r2
-    read & 0x0100
-    ldbp r3
-    store & bp + 0, r1
-    add r2, 2
-    add r3, 2
-    sub r4, 2
-    jne copy
-    ldbp 0x3000
-    jmp 0x0100
+    read r2                              ; C: r1 = emem_read_word(r2); // advance bus address, not request data
+    ldbp r3                              ; C: BP = r3;
+    store & bp + 0, r1                   ; C: *(bp + 0) = r1;
+    add r2, 2                            ; C: r2 += 2;
+    add r3, 2                            ; C: r3 += 2;
+    sub r4, 2                            ; C: r4 -= 2;
+    jne copy                             ; C: if (!Z) goto copy;
+    ldbp FIRMWARE_STACK                  ; C: BP = FIRMWARE_STACK;
+    jmp FIRMWARE_KERNEL_ORIGIN           ; C: goto FIRMWARE_KERNEL_ORIGIN;
 failed:
-    kill
+    kill                                 ; C: halt();

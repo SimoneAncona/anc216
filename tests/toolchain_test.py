@@ -161,4 +161,38 @@ with tempfile.TemporaryDirectory(prefix='anc216-tests-') as directory:
     output = run(emulator,'--boot',binary,'--insert-card','0x0100',image,'--novideo','--debug',input=b'ni\nni\nsh info\nexit\n').stdout
     assert b'R1=fe01' in output
 
+
+    # ROM is flat EMEM, independent of R1: repeated bus addresses read the same word.
+    rom = p/'flat.rom'
+    rom.write_bytes(bytes.fromhex('1234abcd'))
+    assemble('load r1, 2\nread & 0x0100\nload r1, 0xffff\nread & 0x0100\nload r2, 0x0102\nread r2\nkill\n')
+    result = run(emulator, '--boot', binary, '--insert', '0x0100', rom, '--novideo', '--debug',
+                 input=b's 2\nr\ns 2\nr\ns 2\nr\ndevices\nq\n')
+    assert result.stdout.count(b'R1=1234') >= 2 and b'R1=abcd' in result.stdout
+    assert b'0x0100-0x0103' in result.stdout  # Debugger shows the complete mapped range.
+    assemble('careq\nwrite & 0x0100, word 0xffff\npareq\nwrite & 0x0100, word 0x5678\nread & 0x0100\nkill\n')
+    result = run(emulator, '--boot', binary, '--insert', '0x0100', rom, '--novideo', '--debug',
+                 input=b's 5\nr\nq\n')
+    assert b'R1=1234' in result.stdout and rom.read_bytes() == bytes.fromhex('1234abcd')
+    run(emulator, '--boot', binary, '--insert', '0x0100', rom,
+        '--insert-card', '0x0102', image, '--novideo', ok=False)
+    run(emulator, '--boot', binary, '--insert', '0x0100', rom,
+        '--insert', '0x0102', rom, '--novideo', ok=False)
+    run(emulator, '--boot', binary, '--insert', '0xfffe', rom, '--novideo', ok=False)
+    # User ROM word reads must validate both byte addresses, not just the first.
+    assemble('sihi 0xffff\nseli 0x0100\nsehi 0x0100\nldsr 0\nread & 0x0100\nkill\n')
+    result = run(emulator, '--boot', binary, '--insert', '0x0100', rom, '--novideo', '--fast-mode', ok=False)
+    assert b'(code 3)' in result.stderr + result.stdout
+
+    # MPME persistence is write-through and survives a fresh emulator process.
+    persistent = p/'persistent.card'
+    persistent.write_bytes(bytes(65536))
+    assemble('careq\nwrite & 0x0100, word 7\npareq\nwrite & 0x0100, word 0xabcd\ncareq\nwrite & 0x0100, word 0xffff\npareq\nwrite & 0x0100, byte 0x42\nkill\n')
+    run(emulator, '--boot', binary, '--insert-card', '0x0100', persistent, '--novideo', '--fast-mode')
+    data = persistent.read_bytes()
+    assert data[7:9] == bytes.fromhex('abcd') and data[-1] == 0x42 and len(data) == 65536
+    assemble('load r1, 7\nread & 0x0100\nkill\n')
+    result = run(emulator, '--boot', binary, '--insert-card', '0x0100', persistent, '--novideo', '--debug', input=b's 2\nr\nq\n')
+    assert b'R1=abcd' in result.stdout
+
 print('Toolchain tests passed: 65536 headers, truncations, random bytes, assembly diagnostics, UALf, boot and AFS persistence/corruption')

@@ -511,7 +511,7 @@ void debug_console(ANC216::CPU &cpu, ANC216::EmemMapper &mapper, ANC216::Video::
             {
                 arity(0, 0);
                 unsigned count = 0;
-                std::cout << "EMEM address  Device       ID\n";
+                std::cout << "EMEM address/range  Device       ID\n";
                 for (unsigned at = 0; at < MAX_MEM; ++at)
                 {
                     const auto id = mapper.info_req(at);
@@ -521,7 +521,12 @@ void debug_console(ANC216::CPU &cpu, ANC216::EmemMapper &mapper, ANC216::Video::
                                        id == ANC216::KEYBOARD ? "Keyboard" :
                                        id == ANC216::MPME_CARD ? "MPME216" :
                                        id == ANC216::AVC64_VIDEO_CARD ? "AVC64" : "Unknown";
-                    std::cout << hex(at) << "        " << std::left << std::setw(13) << name
+                    const unsigned begin = at;
+                    if (id == ANC216::ROM)
+                        while (at + 1 < MAX_MEM && mapper.is_rom(at + 1))
+                            ++at;
+                    const std::string range = hex(begin) + (at != begin ? "-" + hex(at) : "");
+                    std::cout << std::left << std::setw(20) << range << std::setw(13) << name
                               << std::right << hex(id) << '\n';
                     ++count;
                 }

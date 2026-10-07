@@ -1,0 +1,29 @@
+; Print the raw CPU identification word; CPUID returns it in R0.
+; The emulator defaults to 0x8000 (32768). No host CPU information is exposed.
+import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
+_code:
+    cpuid                                ; C: r0 = CPU.identification;
+    store & cpu_identification, r0       ; C: *(cpu_identification) = r0; // preserve across print syscall
+    load r1, cpu_label                   ; C: r1 = cpu_label;
+    load r2, sizeof cpu_label            ; C: r2 = sizeof cpu_label;
+    phbp                                 ; C: push(BP);
+    call app_print                       ; C: app_print();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS);
+    jne app_error                        ; C: if (!Z) goto app_error;
+    load r1, & cpu_identification        ; C: r1 = *(cpu_identification);
+    phbp                                 ; C: push(BP);
+    call app_print_unsigned              ; C: app_print_unsigned();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, OS_SUCCESS                   ; C: flags = compare(r7, OS_SUCCESS);
+    jne app_error                        ; C: if (!Z) goto app_error;
+    phbp                                 ; C: push(BP);
+    call app_newline                     ; C: app_newline();
+    pobp                                 ; C: BP = pop_word();
+    jmp app_exit                         ; C: goto app_exit;
+cpu_identification:
+    word 0                               ; C: uint16_t cpu_identification = 0;
+cpu_label:
+    "CPU ID: "                           ; C: const char cpu_label[] = "CPU ID: ";
+import "../libs/numbers.anc216" ; C: #include "../libs/numbers.anc216"
+import "../libs/io.anc216" ; C: #include "../libs/io.anc216"

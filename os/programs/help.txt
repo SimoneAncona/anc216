@@ -1,0 +1,34 @@
+This is a list of standard cli
+utils
+cat FILE
+print content of file
+cd DIR
+change directory
+clear
+clear screen
+echo ARG
+print on screen
+help
+print this message
+ls
+list objects in a directory
+lscpu
+cpu info
+mkdir DIRNAME
+create a directory
+more
+print contet of a file with scroll
+mount ADDR (integer)
+mount a disk from address
+poweroff
+powroff the system
+pwd
+print working directory
+rm
+remove file or directory
+sh
+start a new shell
+stat
+show file or directory disk usage
+touch
+create a new file

@@ -1,0 +1,49 @@
+; Private filesystem state. Interrupts are masked; no reentrant operations.
+; fs_head is the descriptor's head ID; fs_cluster is the current chain ID.
+; fs_base/next/remaining/offset describe the selected cluster's payload window.
+; fs_parent is a directory ID, not a chip offset. fs_seen is a per-ID cycle map.
+; fs_path/fs_name own the bounded path and its zero-padded 17+3-byte leaf name.
+fs_directory_mode: ; C: fs_directory_mode: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_final_directory: ; C: fs_final_directory: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_missing_final: ; C: fs_missing_final: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_head: ; C: fs_head: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_parent: ; C: fs_parent: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_cluster: ; C: fs_cluster: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_base: ; C: fs_base: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_next: ; C: fs_next: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_remaining: ; C: fs_remaining: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_offset: ; C: fs_offset: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_allocated: ; C: fs_allocated: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_size: ; C: fs_size: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_dot: ; C: fs_dot: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_path_cursor: ; C: fs_path_cursor: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_buffer: ; C: fs_buffer: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_count: ; C: fs_count: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_write: ; C: fs_write: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+fs_path: ; C: fs_path: (routine, branch target or data symbol)
+    reserve FS_MAX_PATH + 1              ; C: uint8_t buffer[FS_MAX_PATH + 1];
+fs_name: ; C: fs_name: (routine, branch target or data symbol)
+    reserve FS_NAME_FIELDS               ; C: uint8_t buffer[FS_NAME_FIELDS];
+fs_seen: ; C: fs_seen: (routine, branch target or data symbol)
+    reserve FS_CLUSTER_COUNT             ; C: uint8_t buffer[FS_CLUSTER_COUNT];
+
+fs_mounted: ; C: fs_mounted: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+

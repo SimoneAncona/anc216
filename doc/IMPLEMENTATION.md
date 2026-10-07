@@ -9,10 +9,11 @@ This file records decisions needed to resolve gaps in the original PDFs. It desc
 
 - Words and instruction headers are big-endian. PC points to the next instruction. PC-relative offsets use PC **after the entire instruction**, including all operands. Signed offsets and indexing registers use two's complement; low-register writes preserve the high byte.
 - Reset clears registers, initializes SP/BP to `0x3000`, PC to `0xff00`, and SR to `0x3c`. Default MTU: IMEM `0..0xfeff`, EMEM `0..0xffff`, user stack `0x3200..0xfeff`. Bounds are inclusive. The default system-SP vector is `0x3000`.
-- SR bit S (`0x08`) controls MTU translation: with S=0 (user mode), absolute operands are rebased by the corresponding MTU lower index and accesses are bounds checked; with S=1 (system mode), operands use physical addresses directly and user MTU bounds do not apply. Interrupt/syscall entry sets S; restoring SR with POSR can clear S and resume user translation. PC/BP-relative addresses, PC/SP/BP, and stack accesses are physical, and user accesses are bounds checked. ROM `0xff00..0xffff` is readable/executable in system mode and never writable through guest stores. Host `load`/`poke` may initialize it.
+- SR bit S (`0x08`) controls MTU translation: with S=0 (user mode), absolute IMEM operands are rebased by the IMEM lower index and accesses are bounds checked; EMEM addresses remain physical, without rebasing, and are checked against inclusive EMEM bounds in every addressing mode; with S=1 (system mode), operands use physical addresses directly and user MTU bounds do not apply. Interrupt/syscall entry sets S; restoring SR with POSR can clear S and resume user translation. PC/BP-relative addresses, PC/SP/BP, and stack accesses are physical, and user accesses are bounds checked. ROM `0xff00..0xffff` is readable/executable in system mode and never writable through guest stores. Host `load`/`poke` may initialize it.
 - Full memory operands are words. LDSR/STSR memory operands are bytes. Unary register operands honor R/L width. Register-to-register encoding permits full registers only. TRSR requires a low register; SP/BP/MTU/CPUID/timer transfers require full registers. TIME accepts immediates as supported by the original assembler.
 - ADD/SUB/INC/DEC/NEG/CMP update N/O/Z/C for operand width. Carry means unsigned carry on addition and borrow on subtraction. Logic, LOAD, STORE, TRAN and register POP update N/Z. SIGN changes N only; PAR changes Z only (even parity). Shifts are logical and change carry only; zero shifts retain carry, shifts beyond width produce zero with clear carry. SWAP exchanges two full registers only and leaves flags unchanged; memory and immediate operands are invalid.
 - JGE/JGR/JLE/JLS use signed comparisons through N/O, and equality through Z. JLE is `(N != O) || Z`. Numeric jump/call operands in assembly are converted to absolute addressing; immediate jump/call wire encodings are invalid. CALL accepts only absolute addressing; relative, indexed, and indirect CALL encodings are invalid.
+- READ/WRITE are allowed in user mode, subject to EMEM bounds. IREQ/REQ/HREQ/HWRITE/PAREQ/CAREQ and MTU setters remain privileged.
 - Privileged opcodes trap with NMI code 1. LDSR/POSR/RET cannot elevate S/I/T from user mode. Unknown opcodes/illegal operand combinations trap with code 0; IMEM bounds faults use 2, EMEM mapping faults 3, stack bounds faults 4, soft RESET uses 5. The faulting PC is saved. Unhandled vectors halt with an error instead of looping silently.
 - TIME sets a millisecond countdown and stops it. TSTART starts/resumes it; TSTOP stops it. It advances with host steady-clock time, independently of instruction speed. Expiry invokes vector `0x0008` when T is enabled. This is a functional emulator, not cycle-accurate hardware.
 
@@ -35,9 +36,9 @@ Interrupt handlers must restore their extra saved registers and the interrupted 
 
 ### External devices
 
-`--insert address file` maps a read-only memory device. `--insert-card address file` maps a writable MPME memory device. Images are at most 64 KiB. WRITE/HWRITE carry the encoded source data. MPME writes use A=0 to select an internal address and A=1 to send data; transfer width follows the R/L or immediate width. Raw ROM ignores data writes.
+`--insert address file` maps read-only ROM bytes consecutively from that EMEM address; the full file must fit before `0x10000` and cannot overlap another ROM or IO device. `--insert-card address file` attaches a writable MPME device at one EMEM address with up to 64 KiB of internal storage. WRITE/HWRITE carry the encoded source data. MPME writes use A=0 to select an internal address and A=1 to send data; transfer width follows the R/L or immediate width. Raw ROM ignores data writes.
 
-READ uses R1 as the outgoing request payload and places the synchronous response in R1. REQ/HREQ also use R1 as payload and invoke EINR when I is enabled, with the documented R0/R1/L2 response convention. Requests made while I is masked currently do not deliver an interrupt; use READ for polling. IREQ is synchronous: R0=device ID, R1=device address; absent devices identify as `0xffff`. Unmapped reads return zero and writes are ignored. Priority variants behave identically because there is no bus contention model.
+READ places the synchronous response in R1. For IO devices, R1 is the outgoing request payload. For flat ROM, R1 is ignored as input: the EMEM bus address selects the byte, and a word reads that byte and its successor in big-endian order. A missing ROM successor contributes zero; no wrap occurs at `0xffff`. User ROM word reads check both byte addresses against EMEM bounds. REQ/HREQ also use R1 as payload and invoke EINR when I is enabled, with the documented R0/R1/L2 response convention. Requests made while I is masked currently do not deliver an interrupt; use READ for polling. IREQ is synchronous: R0=device ID, R1=device address; absent devices identify as `0xffff`. Unmapped reads return zero and writes are ignored. Priority variants behave identically because there is no bus contention model.
 
 The emulator accepts raw ROM boot code up to 256 bytes, not an entire UALf program. Larger guest programs can be loaded through mapped external memory by guest firmware, or with the CPU library's host loading API. No BIOS/OS services are built in. Execution is batched to avoid a host sleep after each instruction. `--speed=N` targets approximately `100 × N` instructions per second; `--uncapped` removes pacing while keeping SDL enabled. SDL updates occur roughly every 16 ms, and frames use a streaming texture upload. The mapper keeps a list of displays instead of scanning all device addresses each update. Fast mode skips instruction delays; it does not translate guest OS syscalls into host IO.
 
@@ -117,4 +118,27 @@ A file-head cluster contains a 17-byte base name, 3-byte extension, next ID (1),
 
 The reader validates exact image length, magic/version, directory parents/cycles, duplicate names, cluster types, payload sizes, chain cycles, shared chains, dangling IDs, and orphan continuations. It never fixes or reformats malformed input implicitly. The original `cardreader/test/test.bin` has 16 orphan clusters and is rejected; it was not modified.
 
-Replacing contents checks capacity before changing anything and reuses the file's old clusters. Shrinking/deleting frees the whole continuation chain. Directory deletion is recursive. Paths support root, `.` and `..`; names containing spaces can be quoted in the shell. Read-only commands do not rewrite images. Successful edits save through a temporary sibling file and rename it over the image. This avoids the original implementation's truncation-on-open bug. Writable MPME devices modify emulator memory only; they do not automatically save to the host image.
+Replacing contents checks capacity before changing anything and reuses the file's old clusters. Shrinking/deleting frees the whole continuation chain. Directory deletion is recursive. Paths support root, `.` and `..`; names containing spaces can be quoted in the shell. Read-only commands do not rewrite images. Successful edits save through a temporary sibling file and rename it over the image. This avoids the original implementation's truncation-on-open bug. Writable MPME devices persist writes immediately to the attached host image.
+
+## Persistent MPME216 images
+
+`--insert-card ADDRESS FILE` opens FILE for binary read/write access. A=0 WRITE
+selects the internal byte address; A=1 WRITE updates one byte or a big-endian word
+and flushes it immediately to that same file. A word at internal address `ffff`
+is ignored, preventing wraparound. Address selection does not write the file.
+A short image can grow up to 64 KiB; gaps read as zero. ROM devices remain read
+only. Host write/flush failures are reported as emulator errors. Flush makes
+writes available to another emulator process; it is not an fsync guarantee
+against host power loss. Tests attach private copies to avoid mutating fixtures.
+
+## Flat ROM versus device protocols
+
+ROM occupies an actual EMEM byte range. Repeated READs at one bus address return
+the same bytes; R1 is not a ROM offset. MPME still occupies one device address
+and uses its internal address/data protocol. ROM cells report ID 0 to IREQ;
+debugger `devices` groups contiguous ROM cells into ranges. Duplicate or
+intersecting ROM/device mappings are rejected.
+
+The OS ROM begins at `0100` and can extend through `2f01`; boot cards have moved
+to `3000` and `3001`. Firmware advances the bus address as it copies ROM into
+IMEM. This removes the old, incorrectly invented ROM internal-offset protocol.

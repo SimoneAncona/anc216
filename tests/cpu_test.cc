@@ -158,6 +158,41 @@ int main()
         f.program({0xc9, 0x3a, 0x56, 0x78, 0x80, 0x1e, 1, 0, 0, 0x1f, 0x0e, 0x1b, 1, 0, 0xab, 0xcd, 0x80, 0x19, 1, 0, 0, 0});
         info = f.run();
         require(uint16_t(info.reg[0]) == 0x102 && uint16_t(info.reg[1]) == 0x100 && device->last == 0xabcd && device->additional, "device IO/information request");
+        // User READ/WRITE retain physical addresses and validate every operand family.
+        auto user_io = [&](std::vector<uint8_t> code)
+        {
+            f.program({0x10, 0x52, 1, 0, 0x10, 0x53, 1, 0});
+            f.cpu.step();
+            f.cpu.step();
+            f.cpu.load(code, 0x4000);
+            f.cpu.debug_set("pc", 0x4000);
+            f.cpu.debug_set("sr", 0);
+            f.cpu.debug_set("r1", 0x5678);
+            f.cpu.debug_set("r2", 0x100);
+        };
+        user_io({0x80, 0x1e, 1, 0});
+        f.cpu.step();
+        require(uint16_t(f.cpu.get_info().reg[1]) == (0x5678 ^ 0x1234), "user READ must not rebase EMEM");
+        user_io({0x11, 0x1e}); // READ R2: register supplies the device address.
+        f.cpu.step();
+        require(uint16_t(f.cpu.get_info().reg[1]) == (0x5678 ^ 0x1234), "register user READ grant");
+        user_io({0x0e, 0x1b, 1, 0, 0xab, 0xcd});
+        f.cpu.step();
+        require(device->last == 0xabcd && !f.cpu.halted(), "user WRITE grant");
+        user_io({0x80, 0x1e, 1, 1});
+        f.cpu.step();
+        require(f.cpu.halted() && !f.cpu.error().empty(), "outside-range absolute READ must fault");
+        user_io({0x11, 0x1e});
+        f.cpu.debug_set("r2", 0x101);
+        f.cpu.step();
+        require(f.cpu.halted() && !f.cpu.error().empty(), "register READ cannot bypass EMEM bounds");
+        user_io({0x8c, 0x1e, 0}); // BP-relative READ.
+        f.cpu.debug_set("bp", 0x101);
+        f.cpu.step();
+        require(f.cpu.halted() && !f.cpu.error().empty(), "relative READ cannot bypass EMEM bounds");
+        user_io({0x0e, 0x1d, 1, 0, 0xab, 0xcd});
+        f.cpu.step();
+        require(f.cpu.halted(), "HWRITE stays privileged");
         f.program({0x08, 0x60, 1, 0, 0x61});
         f.cpu.poke(8, 0x40);
         f.cpu.poke(9, 0);

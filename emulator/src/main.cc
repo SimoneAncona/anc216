@@ -20,7 +20,7 @@ static void help(const char *name)
                                       "  --zoom=<1..16>                Window scale (default 5: 1280x1120)\n"
                                       "  --uncapped                    Maximum CPU speed, keeping video enabled\n"
                                       "  --speed=<positive number>     Instruction rate multiplier\n"
-                                      "  -i, --insert <address> <file> Attach a raw ROM device\n"
+                                      "  -i, --insert <address> <file> Map ROM bytes starting here\n"
                                       "  --insert-card <address> <file> Attach a writable MPME device\n"
                                       "  --insert-charmap <file>        Load AVC64 character/texture map\n"
                                       "  --gpu=default                 AVC64 (SDL build only)\n"

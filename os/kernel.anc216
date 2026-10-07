@@ -1,79 +1,82 @@
 ; ANC216 kernel entry and module composition. All imported labels share this origin.
 ; IMEM 0100..2eff kernel; 3000..31ef system stack; 3200..3fff executable staging;
 ; 4000..7fff isolated user memory, with its stack at 7800..7ffc.
-org 0x0100
-entry:
-    clri
-    clrt
-    careq
-    ldsp 0x3000
-    ldbp 0x3000
-    store & 0x0000, word entry
-    store & 0x0002, word keyboard_irq
-    store & 0x0004, word fault_handler
-    store & 0x0006, word syscall_handler
-    store & 0x0008, word panic
-    store & 0x000a, word shutdown_handler
-    store & 0x000c, word 0x3100
-    write & 0xfffd, word 0x0500
-    write & 0xfffd, word 0x0200
-    write & 0xfffd, word 0x07ff
-    write & 0xfffd, word 0x0800
-    write & 0xfffd, word 0x0500
-    store & 0x00f0, word 0x2160
-    ; Try the conventional boot volume. An absent/unformatted chip is optional.
-    load r1, 0x0200
-    phbp
-    call fs_mount
-    pobp
-    cmp r7, 0
-    jne idle
-    load r1, init_path
-    load r2, sizeof init_path
-    phbp
-    call fs_open
-    pobp
-    cmp r7, 0
-    jne idle
-    ; exec enters user mode and never RETs after successful loading.
-    phbp
-    call exec_open_file
-    pobp
-idle:
-    seti
-    jmp idle
+import "libs/abi.anc216" ; C: #include "libs/abi.anc216"
+import "kernel/constants.anc216" ; C: #include "kernel/constants.anc216"
+
+org KERNEL_ORIGIN ; C: linker origin = KERNEL_ORIGIN;
+entry: ; C: entry: (routine, branch target or data symbol)
+    clri                                 ; C: SR.I = 0;
+    clrt                                 ; C: SR.T = 0;
+    careq                                ; C: SR.A = 0;
+    ldsp KERNEL_STACK                    ; C: SP = KERNEL_STACK;
+    ldbp KERNEL_STACK                    ; C: BP = KERNEL_STACK;
+    store & VECTOR_RESET, word entry     ; C: *(VECTOR_RESET) = entry;
+    store & VECTOR_IRQ, word keyboard_irq ; C: *(VECTOR_IRQ) = keyboard_irq;
+    store & VECTOR_NMI, word fault_handler ; C: *(VECTOR_NMI) = fault_handler;
+    store & VECTOR_SYSCALL, word syscall_handler ; C: *(VECTOR_SYSCALL) = syscall_handler;
+    store & VECTOR_TIMER, word panic     ; C: *(VECTOR_TIMER) = panic;
+    store & VECTOR_SHUTDOWN, word shutdown_handler ; C: *(VECTOR_SHUTDOWN) = shutdown_handler;
+    store & VECTOR_SYSTEM_SP, word INTERRUPT_STACK ; C: *(VECTOR_SYSTEM_SP) = INTERRUPT_STACK;
+    write & GPU_ADDRESS, word GPU_SET_COLOR ; C: device_write(GPU_ADDRESS, GPU_SET_COLOR);
+    write & GPU_ADDRESS, word GPU_CLEAR  ; C: device_write(GPU_ADDRESS, GPU_CLEAR);
+    write & GPU_ADDRESS, word GPU_WHITE_FOREGROUND ; C: device_write(GPU_ADDRESS, GPU_WHITE_FOREGROUND);
+    write & GPU_ADDRESS, word GPU_BACKGROUND ; C: device_write(GPU_ADDRESS, GPU_BACKGROUND);
+    write & GPU_ADDRESS, word GPU_SET_COLOR ; C: device_write(GPU_ADDRESS, GPU_SET_COLOR);
+    store & STATE_ADDRESS, word STATE_READY ; C: *(STATE_ADDRESS) = STATE_READY;
+; Try the conventional boot volume. An absent/unformatted chip is optional.
+    load r1, BOOT_DEVICE                 ; C: r1 = BOOT_DEVICE;
+    phbp                                 ; C: push(BP);
+    call fs_mount                        ; C: fs_mount();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, 0                            ; C: flags = compare(r7, 0);
+    jne idle                             ; C: if (!Z) goto idle;
+    load r1, init_path                   ; C: r1 = init_path;
+    load r2, sizeof init_path            ; C: r2 = sizeof init_path;
+    phbp                                 ; C: push(BP);
+    call fs_open                         ; C: fs_open();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, 0                            ; C: flags = compare(r7, 0);
+    jne idle                             ; C: if (!Z) goto idle;
+; exec enters user mode and never RETs after successful loading.
+    phbp                                 ; C: push(BP);
+    call exec_open_file                  ; C: exec_open_file();
+    pobp                                 ; C: BP = pop_word();
+idle: ; C: idle: (routine, branch target or data symbol)
+    seti                                 ; C: SR.I = 1;
+    jmp idle                             ; C: goto idle;
 
 ; Kernel faults halt. User faults terminate the process and retain the fault code.
-fault_handler:
-    cmp r0, 5
-    jeq soft_reset
-    load r1, & process_active
-    cmp r1, 0
-    jeq panic
-    store & 0x00f4, r0
-    store & 0x00f0, word 0x2162
-    jmp process_finish
+fault_handler: ; C: fault_handler: (routine, branch target or data symbol)
+    cmp r0, 5                            ; C: flags = compare(r0, 5);
+    jeq soft_reset                       ; C: if (Z) goto soft_reset;
+    load r1, & process_active            ; C: r1 = *(process_active);
+    cmp r1, 0                            ; C: flags = compare(r1, 0);
+    jeq panic                            ; C: if (Z) goto panic;
+    store & FAULT_ADDRESS, r0            ; C: *(FAULT_ADDRESS) = r0;
+    store & STATE_ADDRESS, word STATE_FAULT ; C: *(STATE_ADDRESS) = STATE_FAULT;
+    jmp process_finish                   ; C: goto process_finish;
 ; Soft reset abandons the old frame and reruns firmware; attached chips persist.
-soft_reset:
-    clri
-    clrt
-    ldsp 0x3000
-    ldbp 0x3000
-    store & process_active, word 0
-    jmp 0xff00
-shutdown_handler:
-    ; Shutdown pin has no CALL/interrupt frame to restore.
-    store & 0x00f0, word 0x2164
-    kill
-panic:
-    store & 0x00f0, word 0xffff
-    kill
-init_path:
-    "/bin/init"
+soft_reset: ; C: soft_reset: (routine, branch target or data symbol)
+    clri                                 ; C: SR.I = 0;
+    clrt                                 ; C: SR.T = 0;
+    ldsp KERNEL_STACK                    ; C: SP = KERNEL_STACK;
+    ldbp KERNEL_STACK                    ; C: BP = KERNEL_STACK;
+    store & process_active, word 0       ; C: *(process_active) = 0;
+    jmp BOOT_PC                          ; C: goto BOOT_PC;
+shutdown_handler: ; C: shutdown_handler: (routine, branch target or data symbol)
+; Shutdown pin has no CALL/interrupt frame to restore.
+    store & STATE_ADDRESS, word STATE_SHUTDOWN ; C: *(STATE_ADDRESS) = STATE_SHUTDOWN;
+    kill                                 ; C: halt();
+panic: ; C: panic: (routine, branch target or data symbol)
+    store & STATE_ADDRESS, word STATE_PANIC ; C: *(STATE_ADDRESS) = STATE_PANIC;
+    kill                                 ; C: halt();
+init_path: ; C: init_path: (routine, branch target or data symbol)
+    "/bin/init"                          ; C: const char text[];
 
-import "kernel/console.anc216"
-import "kernel/storage.anc216"
-import "kernel/fs.anc216"
-import "kernel/loader.anc216"
-import "kernel/syscalls.anc216"
-import "kernel/keyboard.anc216"
+import "kernel/console.anc216" ; C: #include "kernel/console.anc216"
+import "kernel/storage.anc216" ; C: #include "kernel/storage.anc216"
+import "kernel/fs.anc216" ; C: #include "kernel/fs.anc216"
+import "kernel/loader.anc216" ; C: #include "kernel/loader.anc216"
+import "kernel/syscalls.anc216" ; C: #include "kernel/syscalls.anc216"
+import "kernel/keyboard.anc216" ; C: #include "kernel/keyboard.anc216"

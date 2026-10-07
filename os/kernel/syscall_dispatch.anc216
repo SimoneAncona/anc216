@@ -1,0 +1,57 @@
+use SYS_TABLE_ENTRIES as 32                ; IDs 00..1f, including explicit unsupported slots
+
+
+; One dispatch table and one permission policy replace the comparison ladder.
+; Table entries are physical handler PCs, not CALL targets. A push/POPC performs
+; the indirect branch without making a new return frame; handlers use syscall_return.
+syscall_dispatch: ; C: syscall_dispatch: (routine, branch target or data symbol)
+    load r0, & arg0                      ; C: r0 = *(arg0);
+    and r0, BYTE_MASK                    ; C: r0 &= BYTE_MASK;
+    cmp r0, SYS_TABLE_ENTRIES            ; C: flags = compare(r0, SYS_TABLE_ENTRIES);
+    jge syscall_unsupported              ; C: if (N == O) goto syscall_unsupported;
+    cmp r0, SYS_EXIT                     ; C: flags = compare(r0, SYS_EXIT);
+    jeq syscall_dispatch_allowed         ; C: if (Z) goto syscall_dispatch_allowed;
+    cmp r0, SYS_POWEROFF                 ; C: flags = compare(r0, SYS_POWEROFF);
+    jeq syscall_dispatch_allowed         ; C: if (Z) goto syscall_dispatch_allowed;
+    cmp r0, SYS_PRINT                    ; C: flags = compare(r0, SYS_PRINT);
+    jeq syscall_dispatch_console         ; C: if (Z) goto syscall_dispatch_console;
+    cmp r0, SYS_GETL                     ; C: flags = compare(r0, SYS_GETL);
+    jeq syscall_dispatch_console         ; C: if (Z) goto syscall_dispatch_console;
+    cmp r0, SYS_CLEAR                    ; C: flags = compare(r0, SYS_CLEAR);
+    jeq syscall_dispatch_console         ; C: if (Z) goto syscall_dispatch_console;
+    cmp r0, SYS_GETK
+    jeq syscall_dispatch_console
+    cmp r0, SYS_VIDEO                    ; C: flags = compare(r0, SYS_VIDEO);
+    jeq syscall_dispatch_console         ; C: if (Z) goto syscall_dispatch_console;
+    cmp r0, SYS_MOUNT                    ; C: flags = compare(r0, SYS_MOUNT);
+    jge syscall_dispatch_fs              ; C: if (N == O) goto syscall_dispatch_fs;
+    cmp r0, SYS_WRITE                    ; C: flags = compare(r0, SYS_WRITE);
+    jgr syscall_unsupported              ; C: if (N == O && !Z) goto syscall_unsupported;
+syscall_dispatch_fs: ; C: syscall_dispatch_fs: (routine, branch target or data symbol)
+    load r1, & process_flags             ; C: r1 = *(process_flags);
+    and r1, PERMISSION_FS                ; C: r1 &= PERMISSION_FS;
+    jeq syscall_denied                   ; C: if (Z) goto syscall_denied;
+    jmp syscall_dispatch_allowed         ; C: goto syscall_dispatch_allowed;
+syscall_dispatch_console: ; C: syscall_dispatch_console: (routine, branch target or data symbol)
+    load r1, & process_flags             ; C: r1 = *(process_flags);
+    and r1, PERMISSION_CONSOLE           ; C: r1 &= PERMISSION_CONSOLE;
+    jeq syscall_denied                   ; C: if (Z) goto syscall_denied;
+syscall_dispatch_allowed: ; C: syscall_dispatch_allowed: (routine, branch target or data symbol)
+    shl r0, 1                            ; C: r0 <<= 1;
+    add r0, syscall_table                ; C: r0 += syscall_table;
+    ldbp r0                              ; C: BP = r0;
+    load r0, & bp + 0                    ; C: r0 = *(bp + 0);
+    ldbp KERNEL_STACK                    ; C: BP = KERNEL_STACK;
+    push r0                              ; C: push(r0);
+    popc                                 ; C: PC = pop_word();
+syscall_poweroff: ; C: syscall_poweroff: (routine, branch target or data symbol)
+    jmp [VECTOR_SHUTDOWN]                ; C: goto [VECTOR_SHUTDOWN];
+syscall_table: ; C: syscall_table: (routine, branch target or data symbol)
+    word syscall_exit, syscall_open, syscall_close, syscall_read ; C: uint16_t data[] = { syscall_exit, syscall_open, syscall_close, syscall_read };
+    word syscall_write, syscall_print, syscall_getl, syscall_clear ; C: uint16_t data[] = { syscall_write, syscall_print, syscall_getl, syscall_clear };
+    word syscall_unsupported, syscall_unsupported, syscall_unsupported, syscall_unsupported ; C: uint16_t data[] = { syscall_unsupported, syscall_unsupported, syscall_unsupported, syscall_unsupported };
+    word syscall_unsupported, syscall_unsupported, syscall_unsupported, syscall_unsupported ; C: uint16_t data[] = { syscall_unsupported, syscall_unsupported, syscall_unsupported, syscall_unsupported };
+    word syscall_mount, syscall_exec, syscall_rewind, syscall_size ; C: uint16_t data[] = { syscall_mount, syscall_exec, syscall_rewind, syscall_size };
+    word syscall_directory, syscall_list, syscall_touch, syscall_mkdir ; C: uint16_t data[] = { syscall_directory, syscall_list, syscall_touch, syscall_mkdir };
+    word syscall_remove, syscall_fstat, syscall_run, syscall_getcwd ; C: uint16_t data[] = { syscall_remove, syscall_fstat, syscall_run, syscall_getcwd };
+    word syscall_chdir, syscall_poweroff, syscall_video, syscall_getk ; C: uint16_t data[] = { syscall_chdir, syscall_poweroff, syscall_video };

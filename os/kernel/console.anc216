@@ -1,191 +1,193 @@
+use CONSOLE_GPU as 0xfffd                  ; console gpu: 0xfffd
+use CONSOLE_CELL_WIDTH as 8                ; console cell width: 8
+use CONSOLE_CURSOR_ROW as 7                ; console cursor row: 7
+use CONSOLE_CURSOR_MS as 500               ; console cursor ms: 500
+use AVC_SET_X as 0x0300                    ; avc set x: 0x0300
+use AVC_SET_Y as 0x0400                    ; avc set y: 0x0400
+use AVC_SET_COLOR as 0x0500                ; avc set color: 0x0500
+use AVC_SET_TEXTURE as 0x0600              ; avc set texture: 0x0600
+use AVC_DRAW_TEXTURE as 0x0100             ; avc draw texture: 0x0100
+use AVC_WHITE as 0xff                      ; avc white: 0xff
+use CONSOLE_SPACE_TEXTURE as 32            ; console space texture: 32
+
+
 ; AVC64 console. All addresses are system physical addresses.
 ; CALL sites save BP with phbp/call/pobp; puts saves its frame in R7.
 ; puts: R2 = physical zero-terminated string. Preserves BP via call convention.
 ; Clobbers R0/R2/R3/R7; R5/R6 are console pixel cursor coordinates.
-puts:
-    trbp r7
-puts_next:
-    ldbp r2
-    load l0, & bp + 0
-    cmp l0, 0
-    jeq puts_done
-    phbp
-    call putc
-    pobp
-    inc r2
-    jmp puts_next
-puts_done:
-    ldbp r7
-    ret
+puts: ; C: puts: (routine, branch target or data symbol)
+    trbp r7                              ; C: r7 = BP;
+puts_next: ; C: puts_next: (routine, branch target or data symbol)
+    ldbp r2                              ; C: BP = r2;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    cmp l0, 0                            ; C: flags = compare(l0, 0);
+    jeq puts_done                        ; C: if (Z) goto puts_done;
+    phbp                                 ; C: push(BP);
+    call putc                            ; C: putc();
+    pobp                                 ; C: BP = pop_word();
+    inc r2                               ; C: r2++;
+    jmp puts_next                        ; C: goto puts_next;
+puts_done: ; C: puts_done: (routine, branch target or data symbol)
+    ldbp r7                              ; C: BP = r7;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; putc: L0 = ASCII character; wraps at 32 columns and clears at 28 rows.
-putc:
-    load r5, & console_x
-    load r6, & console_y
-    cmp l0, 10
-    jeq newline
-    load r5, & console_x
-    load r6, & console_y
-    tran r3, r5
-    or r3, 0x0300
-    write & 0xfffd, r3
-    tran r3, r6
-    or r3, 0x0400
-    write & 0xfffd, r3
-    and r0, 0x00ff
-    or r0, 0x0600
-    write & 0xfffd, r0
-    write & 0xfffd, word 0x0100
-    add r5, 8
-    cmp r5, 256
-    jne putc_done
-newline:
-    load r5, 0
-    add r6, 8
-    cmp r6, 224
-    jne putc_done
-    write & 0xfffd, word 0x0200
-    load r6, 0
-putc_done:
-    store & console_x, r5
-    store & console_y, r6
-    ret
+putc: ; C: putc: (routine, branch target or data symbol)
+    load r5, & console_x                 ; C: r5 = *(console_x);
+    load r6, & console_y                 ; C: r6 = *(console_y);
+    cmp l0, 10                           ; C: flags = compare(l0, 10);
+    jeq newline                          ; C: if (Z) goto newline;
+    load r5, & console_x                 ; C: r5 = *(console_x);
+    load r6, & console_y                 ; C: r6 = *(console_y);
+    tran r3, r5                          ; C: r3 = r5;
+    or r3, AVC_SET_X                     ; C: r3 |= AVC_SET_X;
+    write & GPU_ADDRESS, r3              ; C: device_write(GPU_ADDRESS, r3);
+    tran r3, r6                          ; C: r3 = r6;
+    or r3, AVC_SET_Y                     ; C: r3 |= AVC_SET_Y;
+    write & GPU_ADDRESS, r3              ; C: device_write(GPU_ADDRESS, r3);
+    and r0, 0x00ff                       ; C: r0 &= 0x00ff;
+    or r0, AVC_SET_TEXTURE               ; C: r0 |= AVC_SET_TEXTURE;
+    write & GPU_ADDRESS, r0              ; C: device_write(GPU_ADDRESS, r0);
+    write & GPU_ADDRESS, word AVC_DRAW_TEXTURE ; C: device_write(GPU_ADDRESS, AVC_DRAW_TEXTURE);
+    add r5, 8                            ; C: r5 += 8;
+    cmp r5, 256                          ; C: flags = compare(r5, 256);
+    jne putc_done                        ; C: if (!Z) goto putc_done;
+newline: ; C: newline: (routine, branch target or data symbol)
+    load r5, 0                           ; C: r5 = 0;
+    add r6, 8                            ; C: r6 += 8;
+    cmp r6, 224                          ; C: flags = compare(r6, 224);
+    jne putc_done                        ; C: if (!Z) goto putc_done;
+    write & GPU_ADDRESS, word GPU_CLEAR  ; C: device_write(GPU_ADDRESS, GPU_CLEAR);
+    load r6, 0                           ; C: r6 = 0;
+putc_done: ; C: putc_done: (routine, branch target or data symbol)
+    store & console_x, r5                ; C: *(console_x) = r5;
+    store & console_y, r6                ; C: *(console_y) = r6;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; Console coordinates live in kernel memory, never in user-owned registers.
-console_x:
-    word 0
-console_y:
-    word 0
+console_x: ; C: console_x: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+console_y: ; C: console_y: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
 
 ; _______________________________________________________________________
 ; getl cursor: an eight-pixel underline, blinking from the hardware countdown.
 ; T stays masked: poll TRT instead of interrupting the nonreentrant syscall.
 ; Save underlying pixels before drawing, then restore them when hiding so the
 ; cursor does not become part of the text or overwrite a previous glyph.
-use CONSOLE_GPU as 0xfffd
-use CONSOLE_CELL_WIDTH as 8
-use CONSOLE_CURSOR_ROW as 7
-use CONSOLE_CURSOR_MS as 500
-use AVC_SET_X as 0x0300
-use AVC_SET_Y as 0x0400
-use AVC_SET_COLOR as 0x0500
-use AVC_SET_TEXTURE as 0x0600
-use AVC_DRAW_TEXTURE as 0x0100
-use AVC_WHITE as 0xff
-use CONSOLE_SPACE_TEXTURE as 32
 
-console_cursor_reset:
-    phbp
-    call console_cursor_hide
-    pobp
-    time CONSOLE_CURSOR_MS      ; restart the visible phase after an edit
-    tstart
-    phbp
-    call console_cursor_show
-    pobp
-    ret
-console_cursor_tick:
-    trt r0                     ; timer advances with host time, not CPU speed
-    cmp r0, 0
-    jne console_cursor_return
-    load r0, & console_cursor_active
-    cmp r0, 0
-    jeq console_cursor_tick_show
-    phbp
-    call console_cursor_hide
-    pobp
-    jmp console_cursor_tick_restart
-console_cursor_tick_show:
-    phbp
-    call console_cursor_show
-    pobp
-console_cursor_tick_restart:
-    time CONSOLE_CURSOR_MS
-    tstart
-console_cursor_return:
-    ret
-console_cursor_show:
-    load r0, & console_cursor_active
-    cmp r0, 0
-    jne console_cursor_return
-    load r5, & console_x
-    store & console_cursor_x, r5
-    load r6, & console_y
-    store & console_cursor_y, r6
-    add r6, CONSOLE_CURSOR_ROW
-    or r6, AVC_SET_Y
-    write & CONSOLE_GPU, r6
-    load r4, 0
-    phbp
-console_cursor_save_loop:
-    tran r3, r5
-    add r3, r4
-    or r3, AVC_SET_X
-    write & CONSOLE_GPU, r3
-    load r1, 0                 ; READ operation 0 returns the selected pixel
-    read & CONSOLE_GPU
-    load r2, console_cursor_pixels
-    add r2, r4
-    ldbp r2
-    store & bp + 0, l1         ; save RGB332 before drawing the underline
-    write & CONSOLE_GPU, word AVC_SET_COLOR + AVC_WHITE
-    write & CONSOLE_GPU, word 0
-    inc r4
-    cmp r4, CONSOLE_CELL_WIDTH
-    jne console_cursor_save_loop
-    pobp
-    write & CONSOLE_GPU, word AVC_SET_COLOR ; restore black clear/pixel color
-    store & console_cursor_active, word 1
-    ret
-console_cursor_hide:
-    load r0, & console_cursor_active
-    cmp r0, 0
-    jeq console_cursor_return
-    load r5, & console_cursor_x
-    load r6, & console_cursor_y
-    add r6, CONSOLE_CURSOR_ROW
-    or r6, AVC_SET_Y
-    write & CONSOLE_GPU, r6
-    load r4, 0
-    phbp
-console_cursor_restore_loop:
-    tran r3, r5
-    add r3, r4
-    or r3, AVC_SET_X
-    write & CONSOLE_GPU, r3
-    load r2, console_cursor_pixels
-    add r2, r4
-    ldbp r2
-    load r0, 0
-    load l0, & bp + 0
-    or r0, AVC_SET_COLOR
-    write & CONSOLE_GPU, r0
-    write & CONSOLE_GPU, word 0
-    inc r4
-    cmp r4, CONSOLE_CELL_WIDTH
-    jne console_cursor_restore_loop
-    pobp
-    write & CONSOLE_GPU, word AVC_SET_COLOR
-    store & console_cursor_active, word 0
-    ret
+console_cursor_reset: ; C: console_cursor_reset: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP);
+    call console_cursor_hide             ; C: console_cursor_hide();
+    pobp                                 ; C: BP = pop_word();
+    time CONSOLE_CURSOR_MS               ; C: timer_ms = CONSOLE_CURSOR_MS; timer_running = false; | restart the visible phase after an edit
+    tstart                               ; C: timer_running = true;
+    phbp                                 ; C: push(BP);
+    call console_cursor_show             ; C: console_cursor_show();
+    pobp                                 ; C: BP = pop_word();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+console_cursor_tick: ; C: console_cursor_tick: (routine, branch target or data symbol)
+    trt r0                               ; C: r0 = timer_ms; | timer advances with host time, not CPU speed
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jne console_cursor_return            ; C: if (!Z) goto console_cursor_return;
+    load r0, & console_cursor_active     ; C: r0 = *(console_cursor_active);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq console_cursor_tick_show         ; C: if (Z) goto console_cursor_tick_show;
+    phbp                                 ; C: push(BP);
+    call console_cursor_hide             ; C: console_cursor_hide();
+    pobp                                 ; C: BP = pop_word();
+    jmp console_cursor_tick_restart      ; C: goto console_cursor_tick_restart;
+console_cursor_tick_show: ; C: console_cursor_tick_show: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP);
+    call console_cursor_show             ; C: console_cursor_show();
+    pobp                                 ; C: BP = pop_word();
+console_cursor_tick_restart: ; C: console_cursor_tick_restart: (routine, branch target or data symbol)
+    time CONSOLE_CURSOR_MS               ; C: timer_ms = CONSOLE_CURSOR_MS; timer_running = false;
+    tstart                               ; C: timer_running = true;
+console_cursor_return: ; C: console_cursor_return: (routine, branch target or data symbol)
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+console_cursor_show: ; C: console_cursor_show: (routine, branch target or data symbol)
+    load r0, & console_cursor_active     ; C: r0 = *(console_cursor_active);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jne console_cursor_return            ; C: if (!Z) goto console_cursor_return;
+    load r5, & console_x                 ; C: r5 = *(console_x);
+    store & console_cursor_x, r5         ; C: *(console_cursor_x) = r5;
+    load r6, & console_y                 ; C: r6 = *(console_y);
+    store & console_cursor_y, r6         ; C: *(console_cursor_y) = r6;
+    add r6, CONSOLE_CURSOR_ROW           ; C: r6 += CONSOLE_CURSOR_ROW;
+    or r6, AVC_SET_Y                     ; C: r6 |= AVC_SET_Y;
+    write & CONSOLE_GPU, r6              ; C: device_write(CONSOLE_GPU, r6);
+    load r4, 0                           ; C: r4 = 0;
+    phbp                                 ; C: push(BP);
+console_cursor_save_loop: ; C: console_cursor_save_loop: (routine, branch target or data symbol)
+    tran r3, r5                          ; C: r3 = r5;
+    add r3, r4                           ; C: r3 += r4;
+    or r3, AVC_SET_X                     ; C: r3 |= AVC_SET_X;
+    write & CONSOLE_GPU, r3              ; C: device_write(CONSOLE_GPU, r3);
+    load r1, 0                           ; C: r1 = 0; | READ operation 0 returns the selected pixel
+    read & CONSOLE_GPU                   ; C: r1 = device_read(CONSOLE_GPU, r1);
+    load r2, console_cursor_pixels       ; C: r2 = console_cursor_pixels;
+    add r2, r4                           ; C: r2 += r4;
+    ldbp r2                              ; C: BP = r2;
+    store & bp + 0, l1                   ; C: *(bp + 0) = l1; | save RGB332 before drawing the underline
+    write & CONSOLE_GPU, word AVC_SET_COLOR + AVC_WHITE ; C: device_write(CONSOLE_GPU, AVC_SET_COLOR + AVC_WHITE);
+    write & CONSOLE_GPU, word 0          ; C: device_write(CONSOLE_GPU, 0);
+    inc r4                               ; C: r4++;
+    cmp r4, CONSOLE_CELL_WIDTH           ; C: flags = compare(r4, CONSOLE_CELL_WIDTH);
+    jne console_cursor_save_loop         ; C: if (!Z) goto console_cursor_save_loop;
+    pobp                                 ; C: BP = pop_word();
+    write & CONSOLE_GPU, word AVC_SET_COLOR ; C: device_write(CONSOLE_GPU, AVC_SET_COLOR); | restore black clear/pixel color
+    store & console_cursor_active, word 1 ; C: *(console_cursor_active) = 1;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+console_cursor_hide: ; C: console_cursor_hide: (routine, branch target or data symbol)
+    load r0, & console_cursor_active     ; C: r0 = *(console_cursor_active);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq console_cursor_return            ; C: if (Z) goto console_cursor_return;
+    load r5, & console_cursor_x          ; C: r5 = *(console_cursor_x);
+    load r6, & console_cursor_y          ; C: r6 = *(console_cursor_y);
+    add r6, CONSOLE_CURSOR_ROW           ; C: r6 += CONSOLE_CURSOR_ROW;
+    or r6, AVC_SET_Y                     ; C: r6 |= AVC_SET_Y;
+    write & CONSOLE_GPU, r6              ; C: device_write(CONSOLE_GPU, r6);
+    load r4, 0                           ; C: r4 = 0;
+    phbp                                 ; C: push(BP);
+console_cursor_restore_loop: ; C: console_cursor_restore_loop: (routine, branch target or data symbol)
+    tran r3, r5                          ; C: r3 = r5;
+    add r3, r4                           ; C: r3 += r4;
+    or r3, AVC_SET_X                     ; C: r3 |= AVC_SET_X;
+    write & CONSOLE_GPU, r3              ; C: device_write(CONSOLE_GPU, r3);
+    load r2, console_cursor_pixels       ; C: r2 = console_cursor_pixels;
+    add r2, r4                           ; C: r2 += r4;
+    ldbp r2                              ; C: BP = r2;
+    load r0, 0                           ; C: r0 = 0;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    or r0, AVC_SET_COLOR                 ; C: r0 |= AVC_SET_COLOR;
+    write & CONSOLE_GPU, r0              ; C: device_write(CONSOLE_GPU, r0);
+    write & CONSOLE_GPU, word 0          ; C: device_write(CONSOLE_GPU, 0);
+    inc r4                               ; C: r4++;
+    cmp r4, CONSOLE_CELL_WIDTH           ; C: flags = compare(r4, CONSOLE_CELL_WIDTH);
+    jne console_cursor_restore_loop      ; C: if (!Z) goto console_cursor_restore_loop;
+    pobp                                 ; C: BP = pop_word();
+    write & CONSOLE_GPU, word AVC_SET_COLOR ; C: device_write(CONSOLE_GPU, AVC_SET_COLOR);
+    store & console_cursor_active, word 0 ; C: *(console_cursor_active) = 0;
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; Erase the cell at console_x/y without advancing the text position.
 ; getl restores this coordinate from its per-character history on backspace.
-console_erase_cell:
-    load r3, & console_x
-    or r3, AVC_SET_X
-    write & CONSOLE_GPU, r3
-    load r3, & console_y
-    or r3, AVC_SET_Y
-    write & CONSOLE_GPU, r3
-    write & CONSOLE_GPU, word AVC_SET_TEXTURE + CONSOLE_SPACE_TEXTURE
-    write & CONSOLE_GPU, word AVC_DRAW_TEXTURE
-    ret
-console_cursor_active:
-    word 0
-console_cursor_x:
-    word 0
-console_cursor_y:
-    word 0
-console_cursor_pixels:
-    reserve CONSOLE_CELL_WIDTH
+console_erase_cell: ; C: console_erase_cell: (routine, branch target or data symbol)
+    load r3, & console_x                 ; C: r3 = *(console_x);
+    or r3, AVC_SET_X                     ; C: r3 |= AVC_SET_X;
+    write & CONSOLE_GPU, r3              ; C: device_write(CONSOLE_GPU, r3);
+    load r3, & console_y                 ; C: r3 = *(console_y);
+    or r3, AVC_SET_Y                     ; C: r3 |= AVC_SET_Y;
+    write & CONSOLE_GPU, r3              ; C: device_write(CONSOLE_GPU, r3);
+    write & CONSOLE_GPU, word AVC_SET_TEXTURE + CONSOLE_SPACE_TEXTURE ; C: device_write(CONSOLE_GPU, AVC_SET_TEXTURE + CONSOLE_SPACE_TEXTURE);
+    write & CONSOLE_GPU, word AVC_DRAW_TEXTURE ; C: device_write(CONSOLE_GPU, AVC_DRAW_TEXTURE);
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+console_cursor_active: ; C: console_cursor_active: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+console_cursor_x: ; C: console_cursor_x: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+console_cursor_y: ; C: console_cursor_y: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+console_cursor_pixels: ; C: console_cursor_pixels: (routine, branch target or data symbol)
+    reserve CONSOLE_CELL_WIDTH           ; C: uint8_t buffer[CONSOLE_CELL_WIDTH];

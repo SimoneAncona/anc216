@@ -1,0 +1,73 @@
+; Sequential descriptor reads/writes; no file growth.
+; fs_transfer: R2=physical buffer, R3=count (0..255), R4=0 read / 1 write.
+; Returns R6=transferred bytes and R7=status. Advances through continuations.
+; EOF is a successful short transfer. Writes cannot grow a file. Caller must
+; validate user buffers before calling this system-mode routine.
+fs_transfer: ; C: fs_transfer: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    store & fs_buffer, r2                ; C: *(fs_buffer) = r2; | *(fs_buffer) = r2
+    store & fs_count, r3                 ; C: *(fs_count) = r3; | *(fs_count) = r3
+    store & fs_write, r4                 ; C: *(fs_write) = r4; | *(fs_write) = r4
+    load r6, 0                           ; C: r6 = 0; | r6 = 0
+    load r0, & fs_head                   ; C: r0 = *(fs_head); | r0 = *(fs_head)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_transfer_no_fd                ; C: if (Z) goto fs_transfer_no_fd; | if equal, goto fs_transfer_no_fd
+fs_transfer_loop: ; C: fs_transfer_loop: (routine, branch target or data symbol)
+    load r0, & fs_count                  ; C: r0 = *(fs_count); | r0 = *(fs_count)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_transfer_done                 ; C: if (Z) goto fs_transfer_done; | if equal, goto fs_transfer_done
+    load r0, & fs_remaining              ; C: r0 = *(fs_remaining); | r0 = *(fs_remaining)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jne fs_transfer_byte                 ; C: if (!Z) goto fs_transfer_byte; | if not equal, goto fs_transfer_byte
+    load r0, & fs_next                   ; C: r0 = *(fs_next); | r0 = *(fs_next)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_transfer_done                 ; C: if (Z) goto fs_transfer_done; | if equal, goto fs_transfer_done
+    store & fs_cluster, r0               ; C: *(fs_cluster) = r0; | *(fs_cluster) = r0
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_cluster_info                 ; C: fs_cluster_info(); | fs_cluster_info()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp fs_transfer_loop                 ; C: goto fs_transfer_loop; | goto fs_transfer_loop
+fs_transfer_byte: ; C: fs_transfer_byte: (routine, branch target or data symbol)
+    load r0, & fs_write                  ; C: r0 = *(fs_write); | r0 = *(fs_write)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jne fs_transfer_write                ; C: if (!Z) goto fs_transfer_write; | if not equal, goto fs_transfer_write
+    load r1, & fs_offset                 ; C: r1 = *(fs_offset); | r1 = *(fs_offset)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call disk_byte                       ; C: disk_byte(); | disk_byte()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    load r2, & fs_buffer                 ; C: r2 = *(fs_buffer); | r2 = *(fs_buffer)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    store & bp + 0, l1                   ; C: *(bp + 0) = l1; | *(bp + 0) = l1
+    jmp fs_transfer_advance              ; C: goto fs_transfer_advance; | goto fs_transfer_advance
+fs_transfer_write: ; C: fs_transfer_write: (routine, branch target or data symbol)
+    load r2, & fs_buffer                 ; C: r2 = *(fs_buffer); | r2 = *(fs_buffer)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0); | l0 = *(bp + 0)
+    load r1, & fs_offset                 ; C: r1 = *(fs_offset); | r1 = *(fs_offset)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call disk_write_byte                 ; C: disk_write_byte(); | disk_write_byte()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+fs_transfer_advance: ; C: fs_transfer_advance: (routine, branch target or data symbol)
+    load r0, & fs_buffer                 ; C: r0 = *(fs_buffer); | r0 = *(fs_buffer)
+    inc r0                               ; C: r0++; | r0++
+    store & fs_buffer, r0                ; C: *(fs_buffer) = r0; | *(fs_buffer) = r0
+    load r0, & fs_offset                 ; C: r0 = *(fs_offset); | r0 = *(fs_offset)
+    inc r0                               ; C: r0++; | r0++
+    store & fs_offset, r0                ; C: *(fs_offset) = r0; | *(fs_offset) = r0
+    load r0, & fs_remaining              ; C: r0 = *(fs_remaining); | r0 = *(fs_remaining)
+    dec r0                               ; C: r0--; | r0--
+    store & fs_remaining, r0             ; C: *(fs_remaining) = r0; | *(fs_remaining) = r0
+    load r0, & fs_count                  ; C: r0 = *(fs_count); | r0 = *(fs_count)
+    dec r0                               ; C: r0--; | r0--
+    store & fs_count, r0                 ; C: *(fs_count) = r0; | *(fs_count) = r0
+    inc r6                               ; C: r6++; | r6++
+    jmp fs_transfer_loop                 ; C: goto fs_transfer_loop; | goto fs_transfer_loop
+fs_transfer_no_fd: ; C: fs_transfer_no_fd: (routine, branch target or data symbol)
+    load r7, FS_NO_DESCRIPTOR            ; C: r7 = FS_NO_DESCRIPTOR; | r7 = 4
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
+fs_transfer_done: ; C: fs_transfer_done: (routine, branch target or data symbol)
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = 0
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
+

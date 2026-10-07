@@ -18,6 +18,23 @@ ctest --test-dir build --output-on-failure
 
 `./build.sh` and the PowerShell build script enable SDL by default and require SDL2 development headers/libraries. For a headless build, run `./build.sh -DANC216_WITH_SDL=OFF`. Direct CMake configuration keeps SDL optional; enable it with `-DANC216_WITH_SDL=ON`.
 
+## Production build
+
+```sh
+./build.sh --release
+./runos.sh
+```
+
+The production pipeline builds optimized Release binaries in `build/production`
+with `BUILD_TESTING=OFF`: no test executables, test runs, or OS regression fixtures.
+The OS contains only `disk0.afs`, with the shell and commands in `/bin` and help text
+in `/data/help.txt`. It generates no `message.txt`, `other.txt`, or disk1.
+`runos.sh` boots this build with only disk0 attached and forwards emulator options.
+Use `./build.sh --release -DANC216_WITH_SDL=OFF` for a headless build, then
+`./runos.sh --novideo --debug`. Windows builds use `./build-production.ps1`.
+`build.sh` without `--release` and `build.ps1` run the development build/test pipeline.
+`build-production.sh` remains an alias for `build.sh --release`.
+
 ## Zed
 
 Project settings live in `.zed/settings.json`. CMake generates `build/compile_commands.json`, and `.clangd` points to it so each tool gets its own custom-header include path. Configure once with `cmake -S . -B build`, then restart the C++ language server if the project was already open. This follows [Zed's C++ compilation database setup](https://zed.dev/docs/languages/cpp).
@@ -54,7 +71,7 @@ build/cardreader/cardreader card.bin
 
 The interactive shell supports `mkdir`, `cd`, `ls`, `touch`, `set`, `put`, `get`, `find`, `du`, `rm`, `boot`, and `exit`. Quote paths containing spaces. Successful edits save on exit/EOF; one-command invocations save immediately. Invalid images are rejected without modification.
 
-Attach a card to the emulator with `--insert-card 0x0100 card.bin`, or a read-only raw ROM device with `--insert 0x0100 file.bin`. MPME writes affect emulated memory and are not automatically persisted to the host file. The supplied old card fixture has orphan clusters; create a fresh card for new experiments.
+Attach a card to the emulator with `--insert-card 0x0100 card.bin`, or a read-only flat ROM range with `--insert 0x0100 file.bin` (each file byte occupies an EMEM address; the range must not overlap other mappings). MPME writes update and flush the attached host file immediately. Use copies for experiments you want to discard. The supplied old card fixture has orphan clusters; create a fresh card for new experiments.
 
 The emulator is functional rather than cycle accurate. Audio, script extensions and bus contention are not implemented; their protocols are not fully specified in the supplied documents. AVC64's pixel/texture model is implemented and tested; its optional SDL window requires a display environment.
 

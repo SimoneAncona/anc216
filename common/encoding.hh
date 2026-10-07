@@ -209,13 +209,13 @@ namespace anc216_isa
         case 0x1A:
             return {"req", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), true};
         case 0x1B:
-            return {"write", (1u << REGISTER_TO_MEMORY) | (1u << IMMEDIATE_TO_MEMORY), true};
+            return {"write", (1u << REGISTER_TO_MEMORY) | (1u << IMMEDIATE_TO_MEMORY), false};
         case 0x1C:
             return {"hreq", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), true};
         case 0x1D:
             return {"hwrite", (1u << REGISTER_TO_MEMORY) | (1u << IMMEDIATE_TO_MEMORY), true};
         case 0x1E:
-            return {"read", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), true};
+            return {"read", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), false};
         case 0x1F:
             return {"pareq", (1u << IMPLIED), true};
         case 0x20:

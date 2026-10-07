@@ -21,9 +21,13 @@ if(BUILD_TESTING)
 endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(OS_BUILD_OPTIONS)
+if(BUILD_TESTING)
+    list(APPEND OS_BUILD_OPTIONS --test-fixtures)
+endif()
 add_custom_target(os
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/os/build.py
-        --assembler $<TARGET_FILE:assembler> --cardreader $<TARGET_FILE:cardreader> --output ${CMAKE_BINARY_DIR}/os
+        --assembler $<TARGET_FILE:assembler> --cardreader $<TARGET_FILE:cardreader> --output ${CMAKE_BINARY_DIR}/os ${OS_BUILD_OPTIONS}
     DEPENDS assembler cardreader
     COMMENT "Build ANC216 OS ROM and AVC64 charmap")
 if(BUILD_TESTING)

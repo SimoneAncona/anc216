@@ -1,6 +1,7 @@
 """Exercise asynchronous debugger commands through its real terminal input."""
 import os
 import pty
+import re
 import select
 import signal
 import subprocess
@@ -16,18 +17,17 @@ with tempfile.TemporaryDirectory() as directory:
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = bytearray()
 
-    def expect(fragment):
+    def expect(fragment, *, pattern=False):
         deadline = time.monotonic() + 5
-        target = fragment.encode()
-        while target not in output:
+        target = re.compile(fragment.encode() if pattern else re.escape(fragment.encode()))
+        while (match := target.search(output)) is None:
             remaining = deadline - time.monotonic()
             assert remaining > 0, (fragment, output.decode(errors='replace'))
             assert select.select([proc.stdout], [], [], remaining)[0], (fragment, output.decode(errors='replace'))
             data = os.read(proc.stdout.fileno(), 65536)
             assert data, output.decode(errors='replace')
             output.extend(data)
-        end = output.index(target) + len(target)
-        del output[:end]
+        del output[:match.end()]
 
     def command(text):
         proc.stdin.write((text + '\n').encode())
@@ -36,7 +36,8 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         expect('(anc216) ')
         command('devices')
-        expect('0xfffc        Keyboard     0x0301')
+        # Column padding changes when ROM address ranges need more space.
+        expect(r'0xfffc[ \t]+Keyboard[ \t]+0x0301', pattern=True)
         command('b pc')
         expect('Breakpoint set at 0xff00')
         command('c')

@@ -1,0 +1,66 @@
+; app_print_unsigned(R1=unsigned 16-bit value): print decimal without leading zeros.
+; Small repeated subtraction avoids requiring a DIV instruction. CMP carry means
+; unsigned borrow, so values above 32767 work even though signed jumps do not.
+use NUMBER_FACTORS as 5                    ; decimal positions in a 16-bit number
+use NUMBER_BUFFER as 6                     ; five digits plus the terminating NUL
+app_print_unsigned:
+    store & number_remaining, r1         ; C: *(number_remaining) = r1;
+    store & number_length, word 0        ; C: *(number_length) = 0;
+    tili r6                              ; C: r6 = MTU.imem_lower;
+    load r2, number_factors              ; C: r2 = number_factors;
+    add r2, r6                           ; C: r2 += r6;
+    load r3, number_text                 ; C: r3 = number_text;
+    add r3, r6                           ; C: r3 += r6;
+    load r1, NUMBER_FACTORS              ; C: r1 = NUMBER_FACTORS;
+    phbp                                 ; C: push(BP);
+number_position:
+    ldbp r2                              ; C: BP = r2;
+    load r4, & bp + 0                    ; C: r4 = *(bp + 0);
+    load r5, 0                           ; C: r5 = 0;
+number_subtract:
+    load r0, & number_remaining          ; C: r0 = *(number_remaining);
+    cmp r0, r4                           ; C: flags = compare(r0, r4);
+    trsr l7                              ; C: l7 = SR;
+    and l7, 1                            ; C: l7 &= 1;
+    jne number_digit_ready               ; C: if (!Z) goto number_digit_ready;
+    sub r0, r4                           ; C: r0 -= r4;
+    store & number_remaining, r0         ; C: *(number_remaining) = r0;
+    inc r5                               ; C: r5++;
+    jmp number_subtract                  ; C: goto number_subtract;
+number_digit_ready:
+    cmp r5, 0                            ; C: flags = compare(r5, 0);
+    jne number_emit                      ; C: if (!Z) goto number_emit;
+    cmp r4, 1                            ; C: flags = compare(r4, 1);
+    jeq number_emit                      ; C: if (Z) goto number_emit;
+    load r0, & number_length             ; C: r0 = *(number_length);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq number_next                      ; C: if (Z) goto number_next;
+number_emit:
+    add r5, ASCII_DIGIT_ZERO             ; C: r5 += ASCII_DIGIT_ZERO;
+    ldbp r3                              ; C: BP = r3;
+    store & bp + 0, l5                   ; C: *(bp + 0) = l5;
+    inc r3                               ; C: r3++;
+    load r0, & number_length             ; C: r0 = *(number_length);
+    inc r0                               ; C: r0++;
+    store & number_length, r0            ; C: *(number_length) = r0;
+number_next:
+    add r2, 2                            ; C: r2 += 2;
+    dec r1                               ; C: r1--;
+    jne number_position                  ; C: if (!Z) goto number_position;
+    ldbp r3                              ; C: BP = r3;
+    store & bp + 0, byte ASCII_NUL       ; C: *(bp + 0) = ASCII_NUL;
+    pobp                                 ; C: BP = pop_word();
+    load r1, number_text                 ; C: r1 = number_text;
+    load r2, & number_length             ; C: r2 = *(number_length);
+    phbp                                 ; C: push(BP);
+    call app_print                       ; C: app_print();
+    pobp                                 ; C: BP = pop_word();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
+number_remaining:
+    word 0                               ; C: uint16_t data[] = { 0 };
+number_length:
+    word 0                               ; C: uint16_t data[] = { 0 };
+number_factors:
+    word 10000, word 1000, word 100, word 10, word 1 ; C: uint16_t data[] = { 10000, word 1000, word 100, word 10, word 1 };
+number_text:
+    reserve NUMBER_BUFFER                ; C: uint8_t buffer[NUMBER_BUFFER];

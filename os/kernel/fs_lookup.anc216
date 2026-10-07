@@ -1,0 +1,297 @@
+; AFS v1 filesystem over MPME216. One mounted volume and one descriptor (1).
+; Mounting another chip closes the descriptor; any EMEM address can be mounted.
+; Paths are absolute, with directories up to 15 bytes and file names 17+3.
+; Guest namespace operations allocate empty file heads/directories and remove
+; validated files or empty directories. Transfers still overwrite existing bytes;
+; EOF does not extend the chain or resize the file.
+; R7 is the status: 0 success, 1 invalid input, 2 device/format, 3 not found,
+; 4 no descriptor, 5 corrupt chain, 6 capacity. All entry points clobber scratch
+; registers. They preserve their CALL frame BP even when using BP as a pointer.
+
+; _______________________________________________________________________
+; fs_mount(R1=EMEM address): require the MPME ID and AFS magic/version.
+fs_mount: ; C: fs_mount: (routine, branch target or data symbol)
+    store & fs_device, r1                ; C: *(fs_device) = r1; | *fs_device = ememAddress
+    store & fs_mounted, word 0           ; C: *(fs_mounted) = 0; | *fs_mounted = false
+    store & fs_head, word 0              ; C: *(fs_head) = 0; | *(fs_head) = 0
+    phbp                                 ; C: push(BP); | temp save bp
+    ldbp r1                              ; C: BP = r1; | bp = r1 (ememAddress)
+    ireq & bp + 0                        ; C: (r0, r1) = device_identify(bp + 0); | ireq bp (ireq returns the device id in the r0)
+    pobp                                 ; C: BP = pop_word(); | restore bp
+    cmp r0, MPME216ID                    ; C: flags = compare(r0, MPME216ID); | if r0 != MPME216ID
+    jne fs_bad_device                    ; C: if (!Z) goto fs_bad_device; | goto fs_bad_device
+    load r1, 0                           ; C: r1 = 0; | else r1 = 0
+    phbp                                 ; C: push(BP); | temp save bp
+    call disk_word                       ; C: disk_word(); | disw_word()
+    pobp                                 ; C: BP = pop_word(); | restore bp
+    cmp r1, AFS_MAGIC                    ; C: flags = compare(r1, AFS_MAGIC); | if r1 != AFS_MAGIC
+    jne fs_bad_device                    ; C: if (!Z) goto fs_bad_device; | goto fs_bad_device()
+    store & fs_mounted, word 1           ; C: *(fs_mounted) = 1; | else *fs_mounted = true
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | status = success
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return 0
+fs_bad_device: ; C: fs_bad_device: (routine, branch target or data symbol)
+    store & fs_device, word 0            ; C: *(fs_device) = 0; | *fs_device = null
+    load r7, FS_BAD_DEVICE               ; C: r7 = FS_BAD_DEVICE; | status = device/format error
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return 2
+
+; _______________________________________________________________________
+; fs_open(R1=physical path, R2=byte length): copy to a bounded kernel buffer.
+; Components are resolved by scanning directory parents; no host FS is used.
+fs_open: ; C: fs_open: (routine, branch target or data symbol)
+    store & fs_directory_mode, word 0    ; C: *(fs_directory_mode) = 0; | resolve a file, not a directory
+    jmp fs_lookup                        ; C: goto fs_lookup; | goto fs_lookup
+
+; _______________________________________________________________________
+; fs_directory(R1=physical absolute path, R2=length): R6=directory ID.
+; Root is ID 0. This namespace lookup closes the single open descriptor.
+fs_directory: ; C: fs_directory: (routine, branch target or data symbol)
+    store & fs_directory_mode, word 1    ; C: *(fs_directory_mode) = 1; | final component is a directory
+fs_lookup: ; C: fs_lookup: (routine, branch target or data symbol)
+    store & fs_missing_final, word 0     ; C: *(fs_missing_final) = 0; | distinguish missing leaf from missing parent
+    phbp                                 ; C: push(BP); | temp save bp (see fs_open_keep where is restored)
+    store & fs_head, word 0              ; C: *(fs_head) = 0; | *fs_head = 0
+    load r0, & fs_mounted                ; C: r0 = *(fs_mounted); | r0 = *fs_mounted
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | if the mounted flag is false
+    jeq fs_open_device                   ; C: if (Z) goto fs_open_device; | then goto fs_open_device
+    cmp r2, 1                            ; C: flags = compare(r2, 1); | reject an empty path
+    jls fs_open_bad                      ; C: if (N != O) goto fs_open_bad; | then goto fs_open_bad
+    cmp r2, FS_MAX_PATH                  ; C: flags = compare(r2, FS_MAX_PATH); | else if r2 (byte length) >= 255
+    jgr fs_open_bad                      ; C: if (N == O && !Z) goto fs_open_bad; | then goto fs_open_bad
+    load r3, fs_path                     ; C: r3 = fs_path; | r3 = fs_path
+    tran r4, r1                          ; C: r4 = r1; | r4 = r1 (physical path)
+    tran r5, r2                          ; C: r5 = r2; | r5 = r2 (byte length)
+fs_copy_path: ; C: fs_copy_path: (routine, branch target or data symbol)
+    ldbp r4                              ; C: BP = r4; | bp = r4 (physical path)
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0); | l0 = *bp (l0 = bp[0])
+    cmp l0, 0                            ; C: flags = compare(l0, 0); | embedded NUL must not hide a path suffix
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    ldbp r3                              ; C: BP = r3; | bp = r3
+    store & bp + 0, l0                   ; C: *(bp + 0) = l0; | *bp = l0
+    inc r4                               ; C: r4++; | r4++ (increment the pointer of the physical path)
+    inc r3                               ; C: r3++; | r3++ (increment pointer of fs_path)
+    dec r5                               ; C: r5--; | r5-- (decrement byte length)
+    jne fs_copy_path                     ; C: if (!Z) goto fs_copy_path; | if r5 != 0 then goto fs_copy_path
+    ldbp r3                              ; C: BP = r3; | else bp = r3 (pointer to end of fs_path)
+    store & bp + 0, byte 0               ; C: *(bp + 0) = 0; | *bp = '\0'
+    load r0, & fs_path                   ; C: r0 = *(fs_path); | r0 = *fs_path
+    shr r0, 8                            ; C: r0 >>= 8; | r0 >>= 8 (so that l0 = to upper r0)
+    cmp r0, FS_DIR_SEP_CHAR              ; C: flags = compare(r0, FS_DIR_SEP_CHAR); | if l0 != '/'
+    jne fs_open_bad                      ; C: if (!Z) goto fs_open_bad; | then goto fs_open_bad (path must begin with /)
+    store & fs_parent, word 0            ; C: *(fs_parent) = 0; | *fs_parent = null
+    load r4, fs_path + 1                 ; C: r4 = fs_path + 1; | start after the leading slash
+    cmp r2, 1                            ; C: flags = compare(r2, 1); | is this the root path alone?
+    jne fs_component                     ; C: if (!Z) goto fs_component; | if not equal, goto fs_component
+    load r0, & fs_directory_mode         ; C: r0 = *(fs_directory_mode); | root can be opened only as a directory
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    load r6, 0                           ; C: r6 = 0; | root directory ID
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | status = successr7 = FS_SUCCESS
+    jmp fs_open_finish                   ; C: goto fs_open_finish; | goto fs_open_finish
+fs_component: ; C: fs_component: (routine, branch target or data symbol)
+    store & fs_final_directory, word 0   ; C: *(fs_final_directory) = 0; | intermediate directory by default
+; Clear a 20-byte fixed-field name before extracting each component.
+    load r3, fs_name                     ; C: r3 = fs_name; | r3 = fs_name
+    load r5, FS_NAME_FIELDS              ; C: r5 = FS_NAME_FIELDS; | r5 = 20
+fs_clear_name: ; C: fs_clear_name: (routine, branch target or data symbol)
+    ldbp r3                              ; C: BP = r3; | bp = r3
+    store & bp + 0, byte 0               ; C: *(bp + 0) = 0; | *bp = 0
+    inc r3                               ; C: r3++; | r3++
+    dec r5                               ; C: r5--; | r5--
+    jne fs_clear_name                    ; C: if (!Z) goto fs_clear_name; | if r5 != 0 then goto fs_clear_name
+    load r3, fs_name                     ; C: r3 = fs_name; | r3 = fs_name
+    load r5, 0                           ; C: r5 = 0; | r5 = 0
+    store & fs_dot, word 0               ; C: *(fs_dot) = 0; | *fs_dot = false
+fs_component_char: ; C: fs_component_char: (routine, branch target or data symbol)
+    ldbp r4                              ; C: BP = r4; | bp = r4 (fs_path + 1)
+    load r0, 0                           ; C: r0 = 0; | r0 = 0
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0); | l0 = *bp (currentChar)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | if r0 == '\0'
+    jeq fs_final_component               ; C: if (Z) goto fs_final_component; | resolve the final component
+    cmp r0, FS_DIR_SEP_CHAR              ; C: flags = compare(r0, FS_DIR_SEP_CHAR); | else if r0 == '/'
+    jeq fs_dir_scan_start                ; C: if (Z) goto fs_dir_scan_start; | then goto fs_dir_scan_start
+    cmp r0, FS_EXT_DOT_CHAR              ; C: flags = compare(r0, FS_EXT_DOT_CHAR); | else if r0 == '.'
+    jeq fs_extension                     ; C: if (Z) goto fs_extension; | then goto fs_extension
+    cmp r0, FS_FIRST_PRINTABLE           ; C: flags = compare(r0, FS_FIRST_PRINTABLE); | reject control characters in names
+    jls fs_open_bad                      ; C: if (N != O) goto fs_open_bad; | if less, goto fs_open_bad
+    cmp r0, FS_DELETE_CHAR               ; C: flags = compare(r0, FS_DELETE_CHAR); | compare r0 with FS_DELETE_CHAR
+    jge fs_open_bad                      ; C: if (N == O) goto fs_open_bad; | if greater or equal, goto fs_open_bad
+    cmp r0, FS_BACKSLASH_CHAR            ; C: flags = compare(r0, FS_BACKSLASH_CHAR); | compare r0 with FS_BACKSLASH_CHAR
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    cmp r0, FS_COLON_CHAR                ; C: flags = compare(r0, FS_COLON_CHAR); | compare r0 with FS_COLON_CHAR
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    cmp r5, FS_NAME_FIELDS               ; C: flags = compare(r5, FS_NAME_FIELDS); | if r5 >= 20 (the length of the fs_name is >= 20)
+    jge fs_open_bad                      ; C: if (N == O) goto fs_open_bad; | then goto fs_open_bad
+    ldbp r3                              ; C: BP = r3; | bp = r3 (fs_name)
+    store & bp + 0, l0                   ; C: *(bp + 0) = l0; | *bp = l0 (*fs_name = currentChar)
+    inc r3                               ; C: r3++; | fs_name++
+    inc r4                               ; C: r4++; | fs_path++
+    inc r5                               ; C: r5++; | r5++ (fs_name length)
+    load r0, & fs_dot                    ; C: r0 = *(fs_dot); | r0 = *fs_dot
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | if a file extension is active
+    jne fs_component_char                ; C: if (!Z) goto fs_component_char; | continue within its three-byte field
+    cmp r5, FS_MAX_FNAME_LEN             ; C: flags = compare(r5, FS_MAX_FNAME_LEN); | if the base-name length exceeds its field
+    jgr fs_open_bad                      ; C: if (N == O && !Z) goto fs_open_bad; | then goto fs_open_bad
+    jmp fs_component_char                ; C: goto fs_component_char; | goto fs_component_char
+fs_extension: ; C: fs_extension: (routine, branch target or data symbol)
+; The on-disk extension is a separate three-byte field.
+    load r0, & fs_dot                    ; C: r0 = *(fs_dot); | r0 = *fs_dot
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | if r0 != '\0'
+    jne fs_open_bad                      ; C: if (!Z) goto fs_open_bad; | then goto fs_open_bad (only file name can have '.' char in fname)
+    cmp r5, 0                            ; C: flags = compare(r5, 0); | if r5 == 0
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | then goto fs_open_bad
+    store & fs_dot, word 1               ; C: *(fs_dot) = 1; | *fs_dot = true
+    load r3, fs_name + FS_MAX_FNAME_LEN  ; C: r3 = fs_name + FS_MAX_FNAME_LEN; | r3 = fs_name + FS_MAX_FNAME_LEN
+    load r5, FS_MAX_FNAME_LEN            ; C: r5 = FS_MAX_FNAME_LEN; | r5 = FS_MAX_FNAME_LEN
+    inc r4                               ; C: r4++; | fs_path++
+    jmp fs_component_char                ; C: goto fs_component_char; | goto fs_component_char
+
+fs_final_component: ; C: fs_final_component: (routine, branch target or data symbol)
+    load r0, & fs_directory_mode         ; C: r0 = *(fs_directory_mode); | select file or directory leaf lookup
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_file_scan_start               ; C: if (Z) goto fs_file_scan_start; | if equal, goto fs_file_scan_start
+    store & fs_final_directory, word 1   ; C: *(fs_final_directory) = 1; | NUL ends this directory name
+fs_dir_scan_start: ; C: fs_dir_scan_start: (routine, branch target or data symbol)
+    cmp r5, 0                            ; C: flags = compare(r5, 0); | compare r5 with 0
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    cmp r5, FS_MAX_DIRNAME_LEN           ; C: flags = compare(r5, FS_MAX_DIRNAME_LEN); | compare r5 with FS_MAX_DIRNAME_LEN
+    jgr fs_open_bad                      ; C: if (N == O && !Z) goto fs_open_bad; | if greater, goto fs_open_bad
+    load r0, & fs_dot                    ; C: r0 = *(fs_dot); | r0 = *(fs_dot)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jne fs_open_bad                      ; C: if (!Z) goto fs_open_bad; | if not equal, goto fs_open_bad
+    load r0, & fs_final_directory        ; C: r0 = *(fs_final_directory); | do not advance past the final NUL
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jne fs_dir_cursor                    ; C: if (!Z) goto fs_dir_cursor; | if not equal, goto fs_dir_cursor
+    inc r4                               ; C: r4++; | r4++
+fs_dir_cursor: ; C: fs_dir_cursor: (routine, branch target or data symbol)
+    store & fs_path_cursor, r4           ; C: *(fs_path_cursor) = r4; | *(fs_path_cursor) = r4
+    load r4, 1                           ; C: r4 = 1; | r4 = 1
+    load r5, FS_DIRECTORY_OFFSET         ; C: r5 = FS_DIRECTORY_OFFSET; | r5 = FS_DIRECTORY_OFFSET
+fs_dir_scan: ; C: fs_dir_scan: (routine, branch target or data symbol)
+    tran r1, r5                          ; C: r1 = r5; | r1 = r5
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call disk_byte                       ; C: disk_byte(); | disk_byte()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r1, & fs_parent                  ; C: flags = compare(r1, *(fs_parent)); | compare r1 with *(fs_parent)
+    jne fs_dir_next                      ; C: if (!Z) goto fs_dir_next; | if not equal, goto fs_dir_next
+    tran r2, r5                          ; C: r2 = r5; | r2 = r5
+    inc r2                               ; C: r2++; | r2++
+    load r3, fs_name                     ; C: r3 = fs_name; | r3 = fs_name
+    load r6, FS_MAX_DIRNAME_LEN          ; C: r6 = FS_MAX_DIRNAME_LEN; | r6 = FS_MAX_DIRNAME_LEN
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_match                        ; C: fs_match(); | fs_match()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, 0                            ; C: flags = compare(r7, 0); | compare r7 with 0
+    jeq fs_dir_found                     ; C: if (Z) goto fs_dir_found; | if equal, goto fs_dir_found
+fs_dir_next: ; C: fs_dir_next: (routine, branch target or data symbol)
+    inc r4                               ; C: r4++; | r4++
+    add r5, FS_DIRECTORY_BYTES           ; C: r5 += FS_DIRECTORY_BYTES; | r5 += FS_DIRECTORY_BYTES
+    cmp r4, FS_DIRECTORY_COUNT + 1       ; C: flags = compare(r4, FS_DIRECTORY_COUNT + 1); | compare r4 with FS_DIRECTORY_COUNT + 1
+    jne fs_dir_scan                      ; C: if (!Z) goto fs_dir_scan; | if not equal, goto fs_dir_scan
+    load r0, & fs_final_directory        ; C: r0 = *(fs_final_directory); | missing parent is never creatable
+    store & fs_missing_final, r0         ; C: *(fs_missing_final) = r0; | *(fs_missing_final) = r0
+    jmp fs_open_missing                  ; C: goto fs_open_missing; | goto fs_open_missing
+fs_dir_found: ; C: fs_dir_found: (routine, branch target or data symbol)
+    store & fs_parent, r4                ; C: *(fs_parent) = r4; | *(fs_parent) = r4
+    load r0, & fs_final_directory        ; C: r0 = *(fs_final_directory); | r0 = *(fs_final_directory)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_dir_continue                  ; C: if (Z) goto fs_dir_continue; | if equal, goto fs_dir_continue
+    tran r6, r4                          ; C: r6 = r4; | return the final directory ID
+    load r7, FS_SUCCESS                  ; C: r7 = FS_SUCCESS; | status = successr7 = FS_SUCCESS
+    jmp fs_open_finish                   ; C: goto fs_open_finish; | goto fs_open_finish
+fs_dir_continue: ; C: fs_dir_continue: (routine, branch target or data symbol)
+    load r4, & fs_path_cursor            ; C: r4 = *(fs_path_cursor); | r4 = *(fs_path_cursor)
+    jmp fs_component                     ; C: goto fs_component; | goto fs_component
+fs_file_scan_start: ; C: fs_file_scan_start: (routine, branch target or data symbol)
+    cmp r5, 0                            ; C: flags = compare(r5, 0); | compare r5 with 0
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | if equal, goto fs_open_bad
+    load r0, & fs_dot                    ; C: r0 = *(fs_dot); | r0 = *(fs_dot)
+    cmp r0, 0                            ; C: flags = compare(r0, 0); | compare r0 with 0
+    jeq fs_file_name_ready               ; C: if (Z) goto fs_file_name_ready; | if equal, goto fs_file_name_ready
+    cmp r5, FS_MAX_FNAME_LEN             ; C: flags = compare(r5, FS_MAX_FNAME_LEN); | compare r5 with FS_MAX_FNAME_LEN
+    jeq fs_open_bad                      ; C: if (Z) goto fs_open_bad; | a dot must be followed by an extension byte
+fs_file_name_ready: ; C: fs_file_name_ready: (routine, branch target or data symbol)
+    load r4, 1                           ; C: r4 = 1; | r4 = 1
+fs_file_scan: ; C: fs_file_scan: (routine, branch target or data symbol)
+    tran r1, r4                          ; C: r1 = r4; | r1 = r4
+    dec r1                               ; C: r1--; | r1--
+    shl r1, 1                            ; C: r1 <<= 1; | r1 <<= 1
+    add r1, FS_TABLE_OFFSET              ; C: r1 += FS_TABLE_OFFSET; | r1 += FS_TABLE_OFFSET
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call disk_word                       ; C: disk_word(); | disk_word()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    load r0, & fs_parent                 ; C: r0 = *(fs_parent); | r0 = *(fs_parent)
+    shl r0, 8                            ; C: r0 <<= 8; | r0 <<= 8
+    or r0, 1                             ; C: r0 |= 1; | r0 |= 1
+    cmp r1, r0                           ; C: flags = compare(r1, r0); | compare r1 with r0
+    jne fs_file_next                     ; C: if (!Z) goto fs_file_next; | if not equal, goto fs_file_next
+    store & fs_cluster, r4               ; C: *(fs_cluster) = r4; | *(fs_cluster) = r4
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_cluster_address              ; C: fs_cluster_address(); | fs_cluster_address()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    tran r2, r1                          ; C: r2 = r1; | r2 = r1
+    load r3, fs_name                     ; C: r3 = fs_name; | r3 = fs_name
+    load r6, FS_NAME_FIELDS              ; C: r6 = FS_NAME_FIELDS; | r6 = FS_NAME_FIELDS
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_match                        ; C: fs_match(); | fs_match()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, 0                            ; C: flags = compare(r7, 0); | compare r7 with 0
+    jeq fs_file_found                    ; C: if (Z) goto fs_file_found; | if equal, goto fs_file_found
+fs_file_next: ; C: fs_file_next: (routine, branch target or data symbol)
+    inc r4                               ; C: r4++; | r4++
+    cmp r4, FS_CLUSTER_COUNT + 1         ; C: flags = compare(r4, FS_CLUSTER_COUNT + 1); | compare r4 with FS_CLUSTER_COUNT + 1
+    jne fs_file_scan                     ; C: if (!Z) goto fs_file_scan; | if not equal, goto fs_file_scan
+    store & fs_missing_final, word 1     ; C: *(fs_missing_final) = 1; | all parents exist; only the file is absent
+    jmp fs_open_missing                  ; C: goto fs_open_missing; | goto fs_open_missing
+fs_file_found: ; C: fs_file_found: (routine, branch target or data symbol)
+    store & fs_head, r4                  ; C: *(fs_head) = r4; | *(fs_head) = r4
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_validate                     ; C: fs_validate(); | fs_validate()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    cmp r7, 0                            ; C: flags = compare(r7, 0); | compare r7 with 0
+    jne fs_open_finish                   ; C: if (!Z) goto fs_open_finish; | if not equal, goto fs_open_finish
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call fs_rewind                       ; C: fs_rewind(); | fs_rewind()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    jmp fs_open_finish                   ; C: goto fs_open_finish; | goto fs_open_finish
+fs_open_bad: ; C: fs_open_bad: (routine, branch target or data symbol)
+    load r7, FS_INVALID_INPUT            ; C: r7 = FS_INVALID_INPUT; | status = FS_INVALID_INPUT
+    jmp fs_open_finish                   ; C: goto fs_open_finish; | goto fs_open_finish
+fs_open_device: ; C: fs_open_device: (routine, branch target or data symbol)
+    load r7, FS_BAD_DEVICE               ; C: r7 = FS_BAD_DEVICE; | r7 = 2
+    jmp fs_open_finish                   ; C: goto fs_open_finish; | goto fs_open_finish
+fs_open_missing: ; C: fs_open_missing: (routine, branch target or data symbol)
+    load r7, FS_NOT_FOUND                ; C: r7 = FS_NOT_FOUND; | r7 = 3
+fs_open_finish: ; C: fs_open_finish: (routine, branch target or data symbol)
+    cmp r7, FS_SUCCESS                   ; C: flags = compare(r7, FS_SUCCESS); | if status == FS_SUCCESS
+    jeq fs_open_keep                     ; C: if (Z) goto fs_open_keep; | then goto fs_open_keep
+    store & fs_head, word 0              ; C: *(fs_head) = 0; | else *fs_head = 0
+fs_open_keep: ; C: fs_open_keep: (routine, branch target or data symbol)
+    pobp                                 ; C: BP = pop_word(); | restore the bp
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return status
+
+; _______________________________________________________________________
+; Compare R6 bytes at chip R2 with kernel R3. Preserve scan registers R4/R5.
+fs_match: ; C: fs_match: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+fs_match_loop: ; C: fs_match_loop: (routine, branch target or data symbol)
+    tran r1, r2                          ; C: r1 = r2; | r1 = r2
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    call disk_byte                       ; C: disk_byte(); | disk_byte()
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ldbp r3                              ; C: BP = r3; | BP = r3 (physical pointer or saved frame)
+    load r0, 0                           ; C: r0 = 0; | r0 = 0
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0); | l0 = *(bp + 0)
+    cmp r0, r1                           ; C: flags = compare(r0, r1); | compare r0 with r1
+    jne fs_match_no                      ; C: if (!Z) goto fs_match_no; | if not equal, goto fs_match_no
+    inc r2                               ; C: r2++; | r2++
+    inc r3                               ; C: r3++; | r3++
+    dec r6                               ; C: r6--; | r6--
+    jne fs_match_loop                    ; C: if (!Z) goto fs_match_loop; | if not equal, goto fs_match_loop
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = 0
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
+fs_match_no: ; C: fs_match_no: (routine, branch target or data symbol)
+    load r7, FS_NOT_FOUND                ; C: r7 = FS_NOT_FOUND; | r7 = 3
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
+

@@ -1,42 +1,48 @@
 ; Shared OS ABI names. Imported once by each executable, before its helpers.
-use SYS_EXIT as 0x00
-use SYS_OPEN as 0x01
-use SYS_CLOSE as 0x02
-use SYS_READ as 0x03
-use SYS_WRITE as 0x04
-use SYS_PRINT as 0x05
-use SYS_GETL as 0x06
-use SYS_CLEAR as 0x07
-use SYS_MOUNT as 0x10
-use SYS_EXEC as 0x11
-use SYS_REWIND as 0x12
-use SYS_SIZE as 0x13
-use SYS_DIRECTORY as 0x14
-use SYS_LIST as 0x15
-use SYS_TOUCH as 0x16
-use SYS_MKDIR as 0x17
-use SYS_REMOVE as 0x18
-use SYS_RUN as 0x1a
-use SYS_GETCWD as 0x1b
-use SYS_CHDIR as 0x1c
-use SYS_POWEROFF as 0x1d
-use OS_SUCCESS as 0
-use OS_INVALID as 1
-use OS_ENTRY_BYTES as 24
-use OS_PATH_CAPACITY as 255
-use OS_ARGUMENT_POINTER as 0x3000
-use OS_USER_BASE as 0x4000
-use ASCII_NUL as 0
-use ASCII_SPACE as 32
-use ASCII_SLASH as 47
-use ASCII_DOT as 46
-use ASCII_NEWLINE as 10
-use OS_ENTRY_DIRECTORY as 1
-use ASCII_DIGIT_ZERO as 48
-use ASCII_DIGIT_NINE as 57
-use DECIMAL_MULTIPLY_LIMIT as 6553
-use OS_NOT_FOUND as 3
-use OS_CAPACITY as 6
-use OS_PERMISSION as 9
-use OS_EXISTS as 10
-use OS_NOT_EMPTY as 11
+use SYS_EXIT as 0x00                       ; syscall exit ID = 0x00
+use SYS_OPEN as 0x01                       ; syscall open ID = 0x01
+use SYS_CLOSE as 0x02                      ; syscall close ID = 0x02
+use SYS_READ as 0x03                       ; syscall read ID = 0x03
+use SYS_WRITE as 0x04                      ; syscall write ID = 0x04
+use SYS_PRINT as 0x05                      ; syscall print ID = 0x05
+use SYS_GETL as 0x06                       ; syscall getl ID = 0x06
+use SYS_CLEAR as 0x07                      ; syscall clear ID = 0x07
+use SYS_MOUNT as 0x10                      ; syscall mount ID = 0x10
+use SYS_EXEC as 0x11                       ; syscall exec ID = 0x11
+use SYS_REWIND as 0x12                     ; syscall rewind ID = 0x12
+use SYS_SIZE as 0x13                       ; syscall size ID = 0x13
+use SYS_DIRECTORY as 0x14                  ; syscall directory ID = 0x14
+use SYS_LIST as 0x15                       ; syscall list ID = 0x15
+use SYS_TOUCH as 0x16                      ; syscall touch ID = 0x16
+use SYS_MKDIR as 0x17                      ; syscall mkdir ID = 0x17
+use SYS_REMOVE as 0x18                     ; syscall remove ID = 0x18
+use SYS_FSTAT as 0x19                      ; syscall fstat ID = 0x19
+use SYS_RUN as 0x1a                        ; syscall run ID = 0x1a
+use SYS_GETCWD as 0x1b                     ; syscall getcwd ID = 0x1b
+use SYS_CHDIR as 0x1c                      ; syscall chdir ID = 0x1c
+use SYS_POWEROFF as 0x1d                   ; syscall poweroff ID = 0x1d
+use SYS_VIDEO as 0x1e                      ; syscall video ID = 0x1e
+use SYS_GETK as 0x1f                       ; syscall getk ID = 0x1f
+use OS_STAT_BYTES as 8                     ; os stat bytes = 8
+use OS_SUCCESS as 0                        ; os success = 0
+use OS_INVALID as 1                        ; os invalid = 1
+use OS_ENTRY_BYTES as 24                   ; os entry bytes = 24
+use OS_PATH_CAPACITY as 255                ; os path capacity = 255
+use OS_ARGUMENT_POINTER as 0x3000          ; os argument pointer = 0x3000
+use OS_USER_BASE as 0x4000                 ; os user base = 0x4000
+use ASCII_NUL as 0                         ; ascii nul = 0
+use ASCII_SPACE as 32                      ; ascii space = 32
+use ASCII_SLASH as 47                      ; ascii slash = 47
+use ASCII_DOT as 46                        ; ascii dot = 46
+use ASCII_NEWLINE as 10                    ; ascii newline = 10
+use OS_ENTRY_DIRECTORY as 1                ; os entry directory = 1
+use ASCII_DIGIT_ZERO as 48                 ; ascii digit zero = 48
+use ASCII_DIGIT_NINE as 57                 ; ascii digit nine = 57
+use DECIMAL_MULTIPLY_LIMIT as 6553         ; decimal multiply limit = 6553
+use OS_NOT_FOUND as 3                      ; os not found = 3
+use OS_CAPACITY as 6                       ; os capacity = 6
+use OS_BAD_EXEC as 7                       ; os bad exec = 7
+use OS_UNSUPPORTED as 8                    ; os unsupported = 8
+use OS_PERMISSION as 9                     ; os permission = 9
+use OS_EXISTS as 10                        ; os exists = 10
+use OS_NOT_EMPTY as 11                     ; os not empty = 11

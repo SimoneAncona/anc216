@@ -1,5 +1,6 @@
-use SHELL_ARGUMENT_PHYSICAL as 0x7000
-use SHELL_ARGUMENT_LOGICAL as 0x3000
+use SHELL_ARGUMENT_PHYSICAL as 0x7000      ; shell argument physical: 0x7000
+use SHELL_ARGUMENT_LOGICAL as 0x3000       ; shell argument logical: 0x3000
+
 
 ; UALf application loader. The filesystem descriptor must already be open.
 ; A bounded 3584-byte staging area prevents a bad file from overwriting kernel
@@ -7,213 +8,213 @@ use SHELL_ARGUMENT_LOGICAL as 0x3000
 ; Supported: version 1, ANC216, type 0 applications, optional symbol records.
 ; Flags: bit 7 console, bit 5 filesystem; other privilege bits are rejected.
 ; One foreground process, logical origin zero, no dynamic linking.
-exec_open_file:
-    phbp
-    load r0, & fs_size
-    cmp r0, 11
-    jls exec_invalid
-    cmp r0, 0x0e00
-    jgr exec_invalid
-    store & exec_size, r0
-    phbp
-    call fs_rewind
-    pobp
-    load r2, 0x3200
-    store & exec_cursor, r2
-exec_read_loop:
-    load r0, & exec_size
-    cmp r0, 0
-    jeq exec_header
-    load r3, 255
-    cmp r0, 255
-    jge exec_read_chunk
-    tran r3, r0
-exec_read_chunk:
-    store & exec_chunk, r3
-    load r2, & exec_cursor
-    load r4, 0
-    phbp
-    call fs_transfer
-    pobp
-    cmp r7, 0
-    jne exec_finish
-    cmp r6, & exec_chunk
-    jne exec_invalid
-    load r0, & exec_cursor
-    add r0, r6
-    store & exec_cursor, r0
-    load r0, & exec_size
-    sub r0, r6
-    store & exec_size, r0
-    jmp exec_read_loop
-exec_header:
-    load r0, & 0x3200
-    cmp r0, 0x5541
-    jne exec_invalid
-    load r0, & 0x3202
-    cmp r0, 0x4c01
-    jne exec_invalid
-    load r0, 0
-    load l0, & 0x3206
-    cmp r0, 1
-    jne exec_invalid
-    load l0, & 0x3208
-    cmp r0, 0
-    jne exec_invalid
-    load l0, & 0x3207
-    tran r1, r0
-    ; Only console (80) and filesystem (20) are implemented permissions.
-    and r1, 0x005f
-    jne exec_invalid
-    store & exec_flags, r0
-    load r1, & 0x3209
-    cmp r1, 11
-    jls exec_invalid
-    cmp r1, & fs_size
-    jge exec_invalid
-    store & exec_header_size, r1
-    load r0, & 0x3204
-    cmp r0, r1
-    jls exec_invalid
-    cmp r0, & fs_size
-    jge exec_invalid
-    sub r0, r1
-    add r0, 0x4000
-    store & exec_entry, r0
-    ; Each optional symbol is a nonempty NUL name followed by two words.
-    ; Parsing is bounded by header size; symbols do not require relocation.
-    load r2, 11
-exec_symbol:
-    cmp r2, & exec_header_size
-    jeq exec_clear
-    tran r3, r2
-    add r3, 0x3200
-    ldbp r3
-    load l0, & bp + 0
-    cmp l0, 0
-    jeq exec_invalid
-exec_symbol_name:
-    cmp r2, & exec_header_size
-    jge exec_invalid
-    tran r3, r2
-    add r3, 0x3200
-    ldbp r3
-    load l0, & bp + 0
-    inc r2
-    cmp l0, 0
-    jne exec_symbol_name
-    add r2, 4
-    cmp r2, & exec_header_size
-    jgr exec_invalid
-    jmp exec_symbol
-exec_clear:
-    ; Previous user data and stack are cleared only after validation succeeds.
-    load r2, 0x4000
-exec_clear_loop:
-    ldbp r2
-    store & bp + 0, word 0
-    add r2, 2
-    cmp r2, 0x8000
-    jne exec_clear_loop
-    load r2, & exec_header_size
-    load r4, & fs_size
-    sub r4, r2
-    add r2, 0x3200
-    load r3, 0x4000
-exec_copy:
-    ldbp r2
-    load l0, & bp + 0
-    ldbp r3
-    store & bp + 0, l0
-    inc r2
-    inc r3
-    dec r4
-    jne exec_copy
-    ; Absolute user operands are logical offsets rebased by MTU.
-    ; PC/SP/BP stay physical. Privileged IO is mediated by syscalls.
-    sili 0x4000
-    sihi 0x7fff
-    seli 0
-    sehi 0
-    sbp 0x7800
-    stp 0x7fff
-    store & fs_head, word 0
-    store & process_active, word 1
-    load r0, & exec_flags
-    store & process_flags, r0
-    store & 0x00f0, word 0x2163
-    ldsp 0x7800
-    ldbp 0x7800
-    load r0, & exec_entry
-    push r0
-    push byte 0
-    ; Only run(1a) requests an argument handoff and shell restart on exit.
-    load r0, & shell_launch_pending
-    store & shell_return_pending, r0
-    store & shell_launch_pending, word 0
-    cmp r0, 0
-    jeq exec_no_arguments
-    load r4, shell_arguments
-    load r3, SHELL_ARGUMENT_PHYSICAL
-    load r5, & shell_argument_length
-    phbp
-    call shell_copy_bytes
-    pobp
-    load r3, SHELL_ARGUMENT_PHYSICAL
-    add r3, & shell_argument_length
-    phbp
-    ldbp r3
-    store & bp + 0, byte 0
-    pobp
-exec_no_arguments:
-    ; Loading is complete; command file handles refer to the session data volume.
-    load r1, & shell_session_device
-    phbp
-    call fs_mount
-    pobp
-    load r0, 0
-    load r1, SHELL_ARGUMENT_LOGICAL
-    load r2, & shell_argument_length
-    load r3, 0
-    load r4, 0
-    load r5, 0
-    load r6, 0
-    load r7, 0
-    ; POSR switches mode; POPC then reads the physical PC from user stack.
-    ; Execute the mode switch inside user IMEM: after POSR the next fetch
-    ; must already be inside the MTU range. Reinstall before each transition.
-    store & 0x7ff0, word 0x000b
-    store & 0x7ff2, word 0x0009
-    jmp 0x7ff0
-exec_invalid:
-    load r7, 7
-exec_finish:
-    pobp
-    ret
+exec_open_file: ; C: exec_open_file: (routine, branch target or data symbol)
+    phbp                                 ; C: push(BP);
+    load r0, & fs_size                   ; C: r0 = *(fs_size);
+    cmp r0, 11                           ; C: flags = compare(r0, 11);
+    jls exec_invalid                     ; C: if (N != O) goto exec_invalid;
+    cmp r0, UAL_MAX_BYTES                ; C: flags = compare(r0, UAL_MAX_BYTES);
+    jgr exec_invalid                     ; C: if (N == O && !Z) goto exec_invalid;
+    store & exec_size, r0                ; C: *(exec_size) = r0;
+    phbp                                 ; C: push(BP);
+    call fs_rewind                       ; C: fs_rewind();
+    pobp                                 ; C: BP = pop_word();
+    load r2, UAL_STAGING                 ; C: r2 = UAL_STAGING;
+    store & exec_cursor, r2              ; C: *(exec_cursor) = r2;
+exec_read_loop: ; C: exec_read_loop: (routine, branch target or data symbol)
+    load r0, & exec_size                 ; C: r0 = *(exec_size);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq exec_header                      ; C: if (Z) goto exec_header;
+    load r3, 255                         ; C: r3 = 255;
+    cmp r0, 255                          ; C: flags = compare(r0, 255);
+    jge exec_read_chunk                  ; C: if (N == O) goto exec_read_chunk;
+    tran r3, r0                          ; C: r3 = r0;
+exec_read_chunk: ; C: exec_read_chunk: (routine, branch target or data symbol)
+    store & exec_chunk, r3               ; C: *(exec_chunk) = r3;
+    load r2, & exec_cursor               ; C: r2 = *(exec_cursor);
+    load r4, 0                           ; C: r4 = 0;
+    phbp                                 ; C: push(BP);
+    call fs_transfer                     ; C: fs_transfer();
+    pobp                                 ; C: BP = pop_word();
+    cmp r7, 0                            ; C: flags = compare(r7, 0);
+    jne exec_finish                      ; C: if (!Z) goto exec_finish;
+    cmp r6, & exec_chunk                 ; C: flags = compare(r6, *(exec_chunk));
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    load r0, & exec_cursor               ; C: r0 = *(exec_cursor);
+    add r0, r6                           ; C: r0 += r6;
+    store & exec_cursor, r0              ; C: *(exec_cursor) = r0;
+    load r0, & exec_size                 ; C: r0 = *(exec_size);
+    sub r0, r6                           ; C: r0 -= r6;
+    store & exec_size, r0                ; C: *(exec_size) = r0;
+    jmp exec_read_loop                   ; C: goto exec_read_loop;
+exec_header: ; C: exec_header: (routine, branch target or data symbol)
+    load r0, & UAL_STAGING               ; C: r0 = *(UAL_STAGING);
+    cmp r0, UAL_MAGIC_FIRST              ; C: flags = compare(r0, UAL_MAGIC_FIRST);
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    load r0, & UAL_STAGING + 2           ; C: r0 = *(UAL_STAGING + 2);
+    cmp r0, UAL_MAGIC_VERSION            ; C: flags = compare(r0, UAL_MAGIC_VERSION);
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    load r0, 0                           ; C: r0 = 0;
+    load l0, & UAL_ARCH_FIELD            ; C: l0 = *(UAL_ARCH_FIELD);
+    cmp r0, 1                            ; C: flags = compare(r0, 1);
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    load l0, & UAL_TYPE_FIELD            ; C: l0 = *(UAL_TYPE_FIELD);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    load l0, & UAL_FLAGS_FIELD           ; C: l0 = *(UAL_FLAGS_FIELD);
+    tran r1, r0                          ; C: r1 = r0;
+; Only console (80) and filesystem (20) are implemented permissions.
+    and r1, UAL_UNSUPPORTED_FLAGS        ; C: r1 &= UAL_UNSUPPORTED_FLAGS;
+    jne exec_invalid                     ; C: if (!Z) goto exec_invalid;
+    store & exec_flags, r0               ; C: *(exec_flags) = r0;
+    load r1, & UAL_SYMBOL_FIELD          ; C: r1 = *(UAL_SYMBOL_FIELD);
+    cmp r1, 11                           ; C: flags = compare(r1, 11);
+    jls exec_invalid                     ; C: if (N != O) goto exec_invalid;
+    cmp r1, & fs_size                    ; C: flags = compare(r1, *(fs_size));
+    jge exec_invalid                     ; C: if (N == O) goto exec_invalid;
+    store & exec_header_size, r1         ; C: *(exec_header_size) = r1;
+    load r0, & UAL_ENTRY_FIELD           ; C: r0 = *(UAL_ENTRY_FIELD);
+    cmp r0, r1                           ; C: flags = compare(r0, r1);
+    jls exec_invalid                     ; C: if (N != O) goto exec_invalid;
+    cmp r0, & fs_size                    ; C: flags = compare(r0, *(fs_size));
+    jge exec_invalid                     ; C: if (N == O) goto exec_invalid;
+    sub r0, r1                           ; C: r0 -= r1;
+    add r0, USER_BASE                    ; C: r0 += USER_BASE;
+    store & exec_entry, r0               ; C: *(exec_entry) = r0;
+; Each optional symbol is a nonempty NUL name followed by two words.
+; Parsing is bounded by header size; symbols do not require relocation.
+    load r2, 11                          ; C: r2 = 11;
+exec_symbol: ; C: exec_symbol: (routine, branch target or data symbol)
+    cmp r2, & exec_header_size           ; C: flags = compare(r2, *(exec_header_size));
+    jeq exec_clear                       ; C: if (Z) goto exec_clear;
+    tran r3, r2                          ; C: r3 = r2;
+    add r3, UAL_STAGING                  ; C: r3 += UAL_STAGING;
+    ldbp r3                              ; C: BP = r3;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    cmp l0, 0                            ; C: flags = compare(l0, 0);
+    jeq exec_invalid                     ; C: if (Z) goto exec_invalid;
+exec_symbol_name: ; C: exec_symbol_name: (routine, branch target or data symbol)
+    cmp r2, & exec_header_size           ; C: flags = compare(r2, *(exec_header_size));
+    jge exec_invalid                     ; C: if (N == O) goto exec_invalid;
+    tran r3, r2                          ; C: r3 = r2;
+    add r3, UAL_STAGING                  ; C: r3 += UAL_STAGING;
+    ldbp r3                              ; C: BP = r3;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    inc r2                               ; C: r2++;
+    cmp l0, 0                            ; C: flags = compare(l0, 0);
+    jne exec_symbol_name                 ; C: if (!Z) goto exec_symbol_name;
+    add r2, 4                            ; C: r2 += 4;
+    cmp r2, & exec_header_size           ; C: flags = compare(r2, *(exec_header_size));
+    jgr exec_invalid                     ; C: if (N == O && !Z) goto exec_invalid;
+    jmp exec_symbol                      ; C: goto exec_symbol;
+exec_clear: ; C: exec_clear: (routine, branch target or data symbol)
+; Previous user data and stack are cleared only after validation succeeds.
+    load r2, USER_BASE                   ; C: r2 = USER_BASE;
+exec_clear_loop: ; C: exec_clear_loop: (routine, branch target or data symbol)
+    ldbp r2                              ; C: BP = r2;
+    store & bp + 0, word 0               ; C: *(bp + 0) = 0;
+    add r2, 2                            ; C: r2 += 2;
+    cmp r2, USER_END                     ; C: flags = compare(r2, USER_END);
+    jne exec_clear_loop                  ; C: if (!Z) goto exec_clear_loop;
+    load r2, & exec_header_size          ; C: r2 = *(exec_header_size);
+    load r4, & fs_size                   ; C: r4 = *(fs_size);
+    sub r4, r2                           ; C: r4 -= r2;
+    add r2, UAL_STAGING                  ; C: r2 += UAL_STAGING;
+    load r3, USER_BASE                   ; C: r3 = USER_BASE;
+exec_copy: ; C: exec_copy: (routine, branch target or data symbol)
+    ldbp r2                              ; C: BP = r2;
+    load l0, & bp + 0                    ; C: l0 = *(bp + 0);
+    ldbp r3                              ; C: BP = r3;
+    store & bp + 0, l0                   ; C: *(bp + 0) = l0;
+    inc r2                               ; C: r2++;
+    inc r3                               ; C: r3++;
+    dec r4                               ; C: r4--;
+    jne exec_copy                        ; C: if (!Z) goto exec_copy;
+; Absolute user operands are logical offsets rebased by MTU.
+; PC/SP/BP stay physical. Privileged IO is mediated by syscalls.
+    sili USER_BASE                       ; C: MTU.imem_lower = USER_BASE;
+    sihi USER_LIMIT                      ; C: MTU.imem_upper = USER_LIMIT;
+    seli EMEM_DENY_LOWER                 ; C: MTU.emem_lower = EMEM_DENY_LOWER; | empty interval denies all user device access
+    sehi EMEM_DENY_UPPER                 ; C: MTU.emem_upper = EMEM_DENY_UPPER;
+    sbp USER_STACK                       ; C: MTU.stack_base = USER_STACK;
+    stp USER_LIMIT                       ; C: MTU.stack_top = USER_LIMIT;
+    store & fs_head, word 0              ; C: *(fs_head) = 0;
+    store & process_active, word 1       ; C: *(process_active) = 1;
+    load r0, & exec_flags                ; C: r0 = *(exec_flags);
+    store & process_flags, r0            ; C: *(process_flags) = r0;
+    store & STATE_ADDRESS, word STATE_RUNNING ; C: *(STATE_ADDRESS) = STATE_RUNNING;
+    ldsp USER_STACK                      ; C: SP = USER_STACK;
+    ldbp USER_STACK                      ; C: BP = USER_STACK;
+    load r0, & exec_entry                ; C: r0 = *(exec_entry);
+    push r0                              ; C: push(r0);
+    push byte 0                          ; C: push(0);
+; Only run(1a) requests an argument handoff and shell restart on exit.
+    load r0, & shell_launch_pending      ; C: r0 = *(shell_launch_pending);
+    store & shell_return_pending, r0     ; C: *(shell_return_pending) = r0;
+    store & shell_launch_pending, word 0 ; C: *(shell_launch_pending) = 0;
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jeq exec_no_arguments                ; C: if (Z) goto exec_no_arguments;
+    load r4, shell_arguments             ; C: r4 = shell_arguments;
+    load r3, SHELL_ARGUMENT_PHYSICAL     ; C: r3 = SHELL_ARGUMENT_PHYSICAL;
+    load r5, & shell_argument_length     ; C: r5 = *(shell_argument_length);
+    phbp                                 ; C: push(BP);
+    call shell_copy_bytes                ; C: shell_copy_bytes();
+    pobp                                 ; C: BP = pop_word();
+    load r3, SHELL_ARGUMENT_PHYSICAL     ; C: r3 = SHELL_ARGUMENT_PHYSICAL;
+    add r3, & shell_argument_length      ; C: r3 += *(shell_argument_length);
+    phbp                                 ; C: push(BP);
+    ldbp r3                              ; C: BP = r3;
+    store & bp + 0, byte 0               ; C: *(bp + 0) = 0;
+    pobp                                 ; C: BP = pop_word();
+exec_no_arguments: ; C: exec_no_arguments: (routine, branch target or data symbol)
+; Loading is complete; command file handles refer to the session data volume.
+    load r1, & shell_session_device      ; C: r1 = *(shell_session_device);
+    phbp                                 ; C: push(BP);
+    call fs_mount                        ; C: fs_mount();
+    pobp                                 ; C: BP = pop_word();
+    load r0, 0                           ; C: r0 = 0;
+    load r1, SHELL_ARGUMENT_LOGICAL      ; C: r1 = SHELL_ARGUMENT_LOGICAL;
+    load r2, & shell_argument_length     ; C: r2 = *(shell_argument_length);
+    load r3, 0                           ; C: r3 = 0;
+    load r4, 0                           ; C: r4 = 0;
+    load r5, 0                           ; C: r5 = 0;
+    load r6, 0                           ; C: r6 = 0;
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS;
+; POSR switches mode; POPC then reads the physical PC from user stack.
+; Execute the mode switch inside user IMEM: after POSR the next fetch
+; must already be inside the MTU range. Reinstall before each transition.
+    store & RETURN_STUB, word RETURN_POSR_WORD ; C: *(RETURN_STUB) = RETURN_POSR_WORD;
+    store & RETURN_STUB_PC, word RETURN_POPC_WORD ; C: *(RETURN_STUB_PC) = RETURN_POPC_WORD;
+    jmp RETURN_STUB                      ; C: goto RETURN_STUB;
+exec_invalid: ; C: exec_invalid: (routine, branch target or data symbol)
+    load r7, OS_BAD_EXEC                 ; C: r7 = OS_BAD_EXEC;
+exec_finish: ; C: exec_finish: (routine, branch target or data symbol)
+    pobp                                 ; C: BP = pop_word();
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 ; Exit/fault discards the interrupt frame and restarts the kernel stack.
-process_finish:
-    ldsp 0x3000
-    ldbp 0x3000
-    store & process_active, word 0
-    store & fs_head, word 0
-    load r0, & shell_return_pending
-    cmp r0, 0
-    jne shell_restart
-    jmp idle
-process_active:
-    word 0
-process_flags:
-    word 0
-exec_flags:
-    word 0
-exec_size:
-    word 0
-exec_cursor:
-    word 0
-exec_chunk:
-    word 0
-exec_header_size:
-    word 0
-exec_entry:
-    word 0
+process_finish: ; C: process_finish: (routine, branch target or data symbol)
+    ldsp KERNEL_STACK                    ; C: SP = KERNEL_STACK;
+    ldbp KERNEL_STACK                    ; C: BP = KERNEL_STACK;
+    store & process_active, word 0       ; C: *(process_active) = 0;
+    store & fs_head, word 0              ; C: *(fs_head) = 0;
+    load r0, & shell_return_pending      ; C: r0 = *(shell_return_pending);
+    cmp r0, 0                            ; C: flags = compare(r0, 0);
+    jne shell_restart                    ; C: if (!Z) goto shell_restart;
+    jmp idle                             ; C: goto idle;
+process_active: ; C: process_active: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+process_flags: ; C: process_flags: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_flags: ; C: exec_flags: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_size: ; C: exec_size: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_cursor: ; C: exec_cursor: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_chunk: ; C: exec_chunk: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_header_size: ; C: exec_header_size: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };
+exec_entry: ; C: exec_entry: (routine, branch target or data symbol)
+    word 0                               ; C: uint16_t data[] = { 0 };

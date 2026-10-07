@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--assembler', type=Path, default=ROOT.parent / 'build/assembler/assembler')
     parser.add_argument('--cardreader', type=Path, default=ROOT.parent / 'build/cardreader/cardreader')
     parser.add_argument('--output', type=Path, default=ROOT / 'build')
+    parser.add_argument('--test-fixtures', action='store_true',
+                        help='Also generate regression cards, programs and sample files')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     for name in ('boot', 'kernel'):
@@ -49,13 +51,13 @@ def main():
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
     # Shell and commands are real user executables; grants follow their services.
-    programs = ('init', 'readline-demo', 'sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'poweroff')
+    programs = ('sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'stat', 'poweroff', 'lscpu', 'more')
     for name in programs:
         application = args.output / f'{name}.ual'
         subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),
-                        str(application.resolve()), '-h=ualf', '-s'], check=True)
+                        str(application.resolve()), '-h=ualf'], check=True)
         data = bytearray(application.read_bytes())
-        data[7] = 0x80 if name in ('echo', 'clear', 'help', 'readline-demo') else 0xa0
+        data[7] = 0x80 if name in ('echo', 'clear') else 0xa0
         if len(data) > 0x0e00:
             raise ValueError(f"{name} exceeds the 3584-byte executable staging region")
         application.write_bytes(data)
@@ -64,39 +66,70 @@ def main():
         subprocess.run([cardreader, *map(str, arguments)], check=True,
                        stdout=subprocess.DEVNULL)
     # These are reproducible build artifacts, never a user's attached card.
-    for name in ('disk0.afs', 'disk1.afs'):
-        (args.output / name).unlink(missing_ok=True)
-        card('--format', args.output / name)
-    disk0, disk1 = args.output / 'disk0.afs', args.output / 'disk1.afs'
+    disk0 = args.output / 'disk0.afs'
+    disk0.unlink(missing_ok=True)
+    card('--format', disk0)
     card(disk0, 'mkdir', '/bin')
     card(disk0, 'mkdir', '/data')
-    bad = args.output / 'bad.ual'
-    bad.write_bytes(b'NOT UALf')
-    card(disk0, 'put', '/bin/bad', bad)
     for name in programs:
-        card(disk0, 'put', '/bin/' + ('demo-init' if name == 'init' else name), args.output / f'{name}.ual')
+        card(disk0, 'put', '/bin/' + name, args.output / f'{name}.ual')
     card(disk0, 'put', '/bin/init', args.output / 'sh.ual')
-    content = args.output / 'message.txt'
-    content.write_bytes(b'A' * 300 + b'B' * 320 + b'C' * 30)
-    card(disk0, 'put', '/data/message.txt', content)
-    content = args.output / 'other.txt'
-    content.write_bytes(b'SECOND MPME VOLUME OK!\n')
-    card(disk1, 'put', '/other.txt', content)
-    # The integration fixture selects the old init without changing disk0's shell.
-    demo_disk = args.output / 'demo-disk0.afs'
-    demo_disk.write_bytes(disk0.read_bytes())
-    card(demo_disk, 'set', '/bin/init', args.output / 'init.ual')
-    # Guest-only regression executables live on a separate test image.
-    shell_test_disk = args.output / 'shell-test.afs'
-    shell_test_disk.write_bytes(disk0.read_bytes())
-    for test_name in ('strings', 'fs_namespace'):
-        application = args.output / f'test-{test_name}.ual'
-        subprocess.run([str(args.assembler.resolve()), str(ROOT.parent / f'tests/{test_name}_test.anc216'),
-                        str(application.resolve()), '-h=ualf', '-s'], check=True)
+    card(disk0, 'put', '/data/help.txt', str(ROOT / 'programs/help.txt'))
+    if args.test_fixtures:
+        disk1 = args.output / 'disk1.afs'
+        disk1.unlink(missing_ok=True)
+        card('--format', disk1)
+        bad = args.output / 'bad.ual'
+        bad.write_bytes(b'NOT UALf')
+        content = args.output / 'message.txt'
+        content.write_bytes(b'A' * 300 + b'B' * 320 + b'C' * 30)
+        message = content  # Regression fixture only; production includes only help text in /data.
+        content = args.output / 'other.txt'
+        content.write_bytes(b'MORE AND CAT TEST, this should work on both of more and cat\n' * 6)
+        card(disk1, 'put', '/other.txt', content)
+        # Build the integration executable from test sources; never reuse stale artifacts.
+        application = args.output / 'init.ual'
+        subprocess.run([str(args.assembler.resolve()), str(ROOT.parent / 'tests/os_integration.anc216'),
+                        str(application.resolve()), '-h=ualf'], check=True)
         data = bytearray(application.read_bytes())
         data[7] = 0xa0
         application.write_bytes(data)
-        card(shell_test_disk, 'put', '/bin/test-' + test_name, application)
+        # The integration fixture selects the test init without changing disk0's shell.
+        demo_disk = args.output / 'demo-disk0.afs'
+        demo_disk.write_bytes(disk0.read_bytes())
+        card(demo_disk, 'set', '/bin/init', args.output / 'init.ual')
+        card(demo_disk, 'put', '/bin/bad', bad)
+        card(demo_disk, 'put', '/data/message.txt', message)
+        application = args.output / 'readline-demo.ual'
+        subprocess.run([str(args.assembler.resolve()), str(ROOT.parent / 'tests/readline_demo.anc216'),
+                        str(application.resolve()), '-h=ualf', '-s'], check=True)
+        data = bytearray(application.read_bytes())
+        data[7] = 0x80
+        application.write_bytes(data)
+        card(demo_disk, 'put', '/bin/readline-demo', application)
+
+        # Guest-only regression executables live on a separate test image.
+        shell_test_disk = args.output / 'shell-test.afs'
+        shell_test_disk.write_bytes(disk0.read_bytes())
+        card(shell_test_disk, 'put', '/data/message.txt', message)
+        # Namespace assertions need a controlled directory independent of help data.
+        card(shell_test_disk, 'mkdir', '/namespace-test')
+        card(shell_test_disk, 'put', '/namespace-test/message.txt', message)
+        for name, data in (
+                ('more-lines.txt', b'A\n' * 27 + b'B\n' * 27 + b'C'),
+                ('more-wrap.txt', b'A' * (32 * 27) + b'B' * (32 * 27) + b'C'),
+                ('more-exact.txt', b'A' * (32 * 27))):
+            fixture = args.output / name
+            fixture.write_bytes(data)
+            card(shell_test_disk, 'put', '/' + name, fixture)
+        for test_name in ('strings', 'fs_namespace', 'video'):
+            application = args.output / f'test-{test_name}.ual'
+            subprocess.run([str(args.assembler.resolve()), str(ROOT.parent / f'tests/{test_name}_test.anc216'),
+                            str(application.resolve()), '-h=ualf', '-s'], check=True)
+            data = bytearray(application.read_bytes())
+            data[7] = 0xa0
+            application.write_bytes(data)
+            card(shell_test_disk, 'put', '/bin/test-' + test_name, application)
     font = charmap()
     (args.output / 'charmap.bin').write_bytes(font)
     print(f'Boot: {len(boot)} bytes; kernel: {len(kernel)} bytes; font: {len(font)} bytes')

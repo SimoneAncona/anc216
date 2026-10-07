@@ -7,92 +7,92 @@
 ; str_cmp(R0=left, R1=left length, R2=right, R3=right length): R7=0 equal/1 unequal.
 ; Compare bytes, not words; an empty pair is equal without reading either buffer.
 str_cmp:
-    phbp                                 ; keep our CALL frame while BP walks strings
-    cmp r1, 0                            ; negative lengths are never valid
-    jls str_cmp_no_eq                    ; if less, goto str_cmp_no_eq
-    cmp r1, r3                           ; unequal lengths cannot contain equal strings
-    jne str_cmp_no_eq                    ; if not equal, goto str_cmp_no_eq
-    cmp r1, 0                            ; compare r1 with 0
-    jeq str_cmp_eq                       ; if equal, goto str_cmp_eq
-    tili r6                              ; convert logical pointers to physical pointers
-    add r0, r6                           ; r0 += r6
-    add r2, r6                           ; r2 += r6
+    phbp                                 ; C: push(BP); | keep our CALL frame while BP walks strings
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | negative lengths are never valid
+    jls str_cmp_no_eq                    ; C: if (N != O) goto str_cmp_no_eq; | if less, goto str_cmp_no_eq
+    cmp r1, r3                           ; C: flags = compare(r1, r3); | unequal lengths cannot contain equal strings
+    jne str_cmp_no_eq                    ; C: if (!Z) goto str_cmp_no_eq; | if not equal, goto str_cmp_no_eq
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
+    jeq str_cmp_eq                       ; C: if (Z) goto str_cmp_eq; | if equal, goto str_cmp_eq
+    tili r6                              ; C: r6 = MTU.imem_lower; | convert logical pointers to physical pointers
+    add r0, r6                           ; C: r0 += r6; | r0 += r6
+    add r2, r6                           ; C: r2 += r6; | r2 += r6
 str_cmp_loop:
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load r4, 0                           ; zero-extend the byte for a full-register CMP
-    load l4, & bp + 0                    ; left character (one byte only)
-    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
-    load r5, 0                           ; r5 = 0
-    load l5, & bp + 0                    ; right character
-    cmp r4, r5                           ; compare r4 with r5
-    jne str_cmp_no_eq                    ; if not equal, goto str_cmp_no_eq
-    inc r0                               ; left++
-    inc r2                               ; right++
-    dec r1                               ; remaining--
-    jne str_cmp_loop                     ; if not equal, goto str_cmp_loop
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load r4, 0                           ; C: r4 = 0; | zero-extend the byte for a full-register CMP
+    load l4, & bp + 0                    ; C: l4 = *(bp + 0); | left character (one byte only)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    load r5, 0                           ; C: r5 = 0; | r5 = 0
+    load l5, & bp + 0                    ; C: l5 = *(bp + 0); | right character
+    cmp r4, r5                           ; C: flags = compare(r4, r5); | compare r4 with r5
+    jne str_cmp_no_eq                    ; C: if (!Z) goto str_cmp_no_eq; | if not equal, goto str_cmp_no_eq
+    inc r0                               ; C: r0++; | left++
+    inc r2                               ; C: r2++; | right++
+    dec r1                               ; C: r1--; | remaining--
+    jne str_cmp_loop                     ; C: if (!Z) goto str_cmp_loop; | if not equal, goto str_cmp_loop
 str_cmp_eq:
-    load r7, OS_SUCCESS                  ; r7 = OS_SUCCESS
-    jmp str_cmp_ret                      ; goto str_cmp_ret
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = OS_SUCCESS
+    jmp str_cmp_ret                      ; C: goto str_cmp_ret; | goto str_cmp_ret
 str_cmp_no_eq:
-    load r7, OS_INVALID                  ; r7 = OS_INVALID
+    load r7, OS_INVALID                  ; C: r7 = OS_INVALID; | r7 = OS_INVALID
 str_cmp_ret:
-    pobp                                 ; restore the saved BP
-    ret                                  ; return through this routine's CALL frame
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 
 ; _______________________________________________________________________
 ; str_nulterm_len(R0=string, R1=maximum readable bytes): R6=length, R7=status.
 ; Missing NUL inside the bound returns INVALID; never scan beyond capacity.
 str_nulterm_len:
-    phbp                                 ; save BP before pointer/helper use
-    tili r6                              ; r6 = MTU IMEM base
-    add r0, r6                           ; BP must receive a physical pointer
-    load r6, 0                           ; length excludes the terminator
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    tili r6                              ; C: r6 = MTU.imem_lower; | r6 = MTU IMEM base
+    add r0, r6                           ; C: r0 += r6; | BP must receive a physical pointer
+    load r6, 0                           ; C: r6 = 0; | length excludes the terminator
 str_len_loop:
-    cmp r1, 0                            ; compare r1 with 0
-    jeq str_invalid                      ; if equal, goto str_invalid
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l2, & bp + 0                    ; l2 = *(bp + 0)
-    cmp l2, ASCII_NUL                    ; compare l2 with ASCII_NUL
-    jeq str_success                      ; if equal, goto str_success
-    inc r0                               ; r0++
-    inc r6                               ; r6++
-    dec r1                               ; r1--
-    jmp str_len_loop                     ; goto str_len_loop
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
+    jeq str_invalid                      ; C: if (Z) goto str_invalid; | if equal, goto str_invalid
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l2, & bp + 0                    ; C: l2 = *(bp + 0); | l2 = *(bp + 0)
+    cmp l2, ASCII_NUL                    ; C: flags = compare(l2, ASCII_NUL); | compare l2 with ASCII_NUL
+    jeq str_success                      ; C: if (Z) goto str_success; | if equal, goto str_success
+    inc r0                               ; C: r0++; | r0++
+    inc r6                               ; C: r6++; | r6++
+    dec r1                               ; C: r1--; | r1--
+    jmp str_len_loop                     ; C: goto str_len_loop; | goto str_len_loop
 
 ; _______________________________________________________________________
 ; str_copy(R0=source, R1=count, R2=destination, R3=capacity): R6=count, R7=status.
 ; Copy exactly count bytes and append NUL. Capacity includes that NUL byte.
 str_copy:
-    phbp                                 ; save BP before pointer/helper use
-    cmp r1, 0                            ; reject negative count/capacity before any store
-    jls str_invalid                      ; if less, goto str_invalid
-    cmp r3, 0                            ; compare r3 with 0
-    jle str_invalid                      ; save BP before pointer/helper use
-    cmp r1, r3                           ; compare r1 with r3
-    jge str_invalid                      ; count must be strictly less than capacity
-    tili r6                              ; r6 = MTU IMEM base
-    add r0, r6                           ; r0 += r6
-    add r2, r6                           ; r2 += r6
-    tran r6, r1                          ; return the original count
+    phbp                                 ; C: push(BP); | save BP before pointer/helper use
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | reject negative count/capacity before any store
+    jls str_invalid                      ; C: if (N != O) goto str_invalid; | if less, goto str_invalid
+    cmp r3, 0                            ; C: flags = compare(r3, 0); | compare r3 with 0
+    jle str_invalid                      ; C: if (N != O || Z) goto str_invalid; | save BP before pointer/helper use
+    cmp r1, r3                           ; C: flags = compare(r1, r3); | compare r1 with r3
+    jge str_invalid                      ; C: if (N == O) goto str_invalid; | count must be strictly less than capacity
+    tili r6                              ; C: r6 = MTU.imem_lower; | r6 = MTU IMEM base
+    add r0, r6                           ; C: r0 += r6; | r0 += r6
+    add r2, r6                           ; C: r2 += r6; | r2 += r6
+    tran r6, r1                          ; C: r6 = r1; | return the original count
 str_copy_loop:
-    cmp r1, 0                            ; compare r1 with 0
-    jeq str_copy_done                    ; if equal, goto str_copy_done
-    ldbp r0                              ; BP = r0 (physical pointer or saved frame)
-    load l4, & bp + 0                    ; l4 = *(bp + 0)
-    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
-    store & bp + 0, l4                   ; *(bp + 0) = l4
-    inc r0                               ; r0++
-    inc r2                               ; r2++
-    dec r1                               ; r1--
-    jmp str_copy_loop                    ; goto str_copy_loop
+    cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
+    jeq str_copy_done                    ; C: if (Z) goto str_copy_done; | if equal, goto str_copy_done
+    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    load l4, & bp + 0                    ; C: l4 = *(bp + 0); | l4 = *(bp + 0)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    store & bp + 0, l4                   ; C: *(bp + 0) = l4; | *(bp + 0) = l4
+    inc r0                               ; C: r0++; | r0++
+    inc r2                               ; C: r2++; | r2++
+    dec r1                               ; C: r1--; | r1--
+    jmp str_copy_loop                    ; C: goto str_copy_loop; | goto str_copy_loop
 str_copy_done:
-    ldbp r2                              ; BP = r2 (physical pointer or saved frame)
-    store & bp + 0, byte ASCII_NUL       ; *(bp + 0) = ASCII_NUL
+    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    store & bp + 0, byte ASCII_NUL       ; C: *(bp + 0) = ASCII_NUL; | *(bp + 0) = ASCII_NUL
 str_success:
-    load r7, OS_SUCCESS                  ; r7 = OS_SUCCESS
-    pobp                                 ; restore the saved BP
-    ret                                  ; return through this routine's CALL frame
+    load r7, OS_SUCCESS                  ; C: r7 = OS_SUCCESS; | r7 = OS_SUCCESS
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame
 str_invalid:
-    load r7, OS_INVALID                  ; r7 = OS_INVALID
-    pobp                                 ; restore the saved BP
-    ret                                  ; return through this routine's CALL frame
+    load r7, OS_INVALID                  ; C: r7 = OS_INVALID; | r7 = OS_INVALID
+    pobp                                 ; C: BP = pop_word(); | restore the saved BP
+    ret                                  ; C: return; // restore CALL PC/SR and discard frame | return through this routine's CALL frame

@@ -12,32 +12,24 @@ The encoding is regular, although instructions are variable length: two header b
 1. **Addressing modes:** immediate-to-memory and the many BP/PC variants create considerable decoder complexity for a small machine. Keep them if they are useful to you, but measure the cost against the assembly saved. Ordinary register-indirect data loads/stores are more useful for microcontrollers than several of the specialized variants. Currently `load r0, [r1]` cannot be encoded; general pointer walking is awkward.
 2. **IO operations:** give `req`, `read`, `ireq`, `hreq`, `write`, `hwrite`, and the additional flag an exact software contract, including request payloads and response registers. Higher priority has no observable effect until there is actual bus contention.
 3. **Stack ABI:** a frame diagram and a tested nested-call example would remove the most serious ambiguity. Specify how callers preserve BP, how local variables relate to it, and how an interrupt restores the interrupted SP/BP and privilege state.
-4. **Protection:** MTU rebasing can be useful for small kernels, but the document should separate physical PC/SP/BP values from logical absolute operands. The EMEM lower/upper indices are currently redundant; see the unresolved issue below.
+4. **Protection:** MTU rebasing can be useful for small kernels, but the document should separate physical PC/SP/BP values from logical absolute operands. EMEM bounds now restrict absolute user READ/WRITE addresses; see the accepted revision below.
 
 I would stabilize these details before adding instructions. The lack of rings is not a weakness. The current omissions matter more for predictable compiler/firmware behavior than for desktop CPU features.
 
-## Unresolved: EMEM MTU bounds and privileged IO
+## Resolved: EMEM MTU bounds and privileged IO
 
-The current rules prevent the EMEM lower/upper indices from controlling device
-access. IO instructions (`ireq`, `req`, `hreq`, `read`, `write`, `hwrite`) require
-system privileges. In user mode (S=0), the emulator raises a privilege fault
-before translating the EMEM address. In system mode (S=1), IO is permitted but
-MTU rebasing and user bounds checks are bypassed. The EMEM indices can be set
-and inspected, but neither execution mode uses them to restrict device access.
+The author selected user-accessible READ/WRITE with absolute physical EMEM
+addresses and inclusive bounds checks. No EMEM rebasing occurs. Other IO and MTU
+setters stay privileged; system IO bypasses user bounds. Register and relative
+IO paths are checked too. This differs from the original PDF privilege table and
+is recorded in [ANC216_DIFFERENCES.md](ANC216_DIFFERENCES.md).
 
-A future ISA decision is needed. Possible resolutions are:
-
-- Allow selected IO instructions in user mode, applying EMEM rebasing and bounds
-  checks so the kernel can grant access to a device range. Define which operations
-  are permitted and whether a contiguous range provides sufficient isolation.
-- Keep IO privileged and remove or explicitly reserve the unused EMEM indices.
-- Define a separate rule that applies EMEM translation/bounds to selected system
-  IO operations. Specify how the kernel accesses physical devices outside that
-  range and how it changes the active mapping.
-
-No resolution has been selected. This review entry does not change the ISA,
-emulator behavior or kernel; device access still goes through privileged kernel
-code and syscalls.
+The kernel starts with an empty device interval and SYS_VIDEO grants only AVC64.
+A contiguous grant still authorizes every device and operation in that interval;
+it cannot express per-file permissions or independently grant distant devices.
+Direct display access shares drawing state with the console. These are deliberate
+limits of this small, single-process OS rather than a complete device ownership
+model.
 
 ## Documentation assessment
 

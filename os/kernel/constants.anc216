@@ -1,0 +1,63 @@
+; Physical kernel layout and permissions. S=1 accesses these addresses directly.
+use KERNEL_ORIGIN as 0x0100                ; first byte loaded from the firmware ROM
+use KERNEL_STACK as 0x3000                 ; first free byte of the ordinary CALL stack
+use INTERRUPT_STACK as 0x3100              ; syscall/IRQ frame stack, separate from CALL frames
+use SAVED_BP as 0x31fc                     ; interrupted physical BP, two bytes
+use SAVED_SP as 0x31fe                     ; interrupted physical SP, two bytes
+use USER_BASE as 0x4000                    ; base added to logical IMEM data operands
+use USER_LIMIT as 0x7fff                   ; inclusive user instruction/data bound
+use USER_STACK as 0x7800                   ; initial user SP/BP
+use USER_RETURN_LIMIT as 0x7ffd            ; room for the three-byte syscall return frame
+use RETURN_STUB as 0x7ff0                  ; POSR, then POPC, inside user executable memory
+use RETURN_STUB_PC as 0x7ff2               ; address of the POPC instruction
+use RETURN_POSR_WORD as 0x000b             ; encoded implied POSR header
+use RETURN_POPC_WORD as 0x0009             ; encoded implied POPC header
+use BOOT_DEVICE as 0x3000                  ; MPME containing /bin/init and commands
+use BOOT_PC as 0xff00                      ; firmware restart address
+use VECTOR_RESET as 0x0000                 ; reset handler word
+use VECTOR_IRQ as 0x0002                   ; external interrupt handler word
+use VECTOR_NMI as 0x0004                   ; fault/reset handler word
+use VECTOR_SYSCALL as 0x0006               ; syscall handler word
+use VECTOR_TIMER as 0x0008                 ; timer handler word
+use VECTOR_SHUTDOWN as 0x000a              ; shutdown pin handler word
+use VECTOR_SYSTEM_SP as 0x000c             ; initial interrupt SP word
+use STATE_ADDRESS as 0x00f0                ; observable kernel/user lifecycle state
+use EXIT_ADDRESS as 0x00f2                 ; latest process exit code
+use FAULT_ADDRESS as 0x00f4                ; latest fault code
+use KEY_ADDRESS as 0x00f6                  ; latest keyboard IRQ payload
+use STATE_READY as 0x2160                  ; kernel initialized
+use STATE_EXIT as 0x2161                   ; user exited
+use STATE_FAULT as 0x2162                  ; user faulted
+use STATE_RUNNING as 0x2163                ; user image started
+use STATE_SHUTDOWN as 0x2164               ; guest shutdown handler reached
+use STATE_PANIC as 0xffff                  ; fatal kernel fault
+use PERMISSION_CONSOLE as 0x80             ; UALf console/direct-video grant
+use PERMISSION_FS as 0x20                  ; UALf filesystem grant
+use GPU_ADDRESS as 0xfffd                  ; physical AVC64 device address
+use GPU_ID as 0x0201                       ; IREQ identification for AVC64
+use KEYBOARD_ADDRESS as 0xfffc             ; physical keyboard queue address
+use KEYBOARD_ID as 0x0301                  ; IREQ identification for keyboard
+use EMEM_DENY_LOWER as 0xffff              ; lower > upper represents an empty grant
+use EMEM_DENY_UPPER as 0                   ; deny direct device IO until explicitly granted
+use FAULT_RESET as 5                       ; soft-reset NMI code
+use FAULT_STACK as 4                       ; invalid user stack fault code
+use UAL_STAGING as 0x3200                  ; complete executable staging buffer
+use UAL_MAX_BYTES as 0x0e00                ; executable maximum, including header/symbols
+use GPU_SET_COLOR as 0x0500                ; AVC64 D1 command, pixel/clear color
+use GPU_CLEAR as 0x0200                    ; AVC64 clear command
+use GPU_FOREGROUND as 0x0700               ; monochrome foreground D3 command
+use GPU_BACKGROUND as 0x0800               ; monochrome background D4 command
+use GPU_WHITE_FOREGROUND as 0x07ff         ; foreground command with white RGB332
+use USER_BUFFER_LIMIT as 0x3ff0            ; exclusive logical buffer end; protects return stub
+use USER_END as 0x8000                     ; exclusive physical end of user IMEM
+use BYTE_MASK as 0xff                      ; extract the low eight bits
+use WRITE_OVERWRITE as 0x8000              ; fwrite mode bit; lower byte is count
+use ROOT_CWD_WORD as 0x2f00                ; big-endian slash followed by NUL
+use UAL_MAGIC_FIRST as 0x5541              ; first two signature bytes: UA
+use UAL_MAGIC_VERSION as 0x4c01            ; signature L and supported version 1
+use UAL_ENTRY_FIELD as 0x3204              ; staged file-relative entry word
+use UAL_ARCH_FIELD as 0x3206               ; staged architecture byte
+use UAL_FLAGS_FIELD as 0x3207              ; staged permissions byte
+use UAL_TYPE_FIELD as 0x3208               ; staged executable type byte
+use UAL_SYMBOL_FIELD as 0x3209             ; staged symbol count word
+use UAL_UNSUPPORTED_FLAGS as 0x005f        ; all permission bits except console/filesystem

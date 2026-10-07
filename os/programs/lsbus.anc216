@@ -1,0 +1,87 @@
+import "../libs/abi.anc216"
+_code:
+    load r0, SYS_VIDEO
+    load r1, 1
+    syscall
+    load r1, lower_index
+    load r2, sizeof lower_index
+    call app_print
+    teli r1
+    push r1
+    call app_print_unsigned
+    call app_newline
+    load r1, upper_index
+    load r2, sizeof upper_index
+    call app_print
+    tehi r1
+    push r1
+    call app_print_unsigned
+    call app_newline
+    load r1, scanning_devices
+    load r2, sizeof scanning_devices
+    call app_print
+    pop r1  ; upper index
+    pop r0  ; lower index
+device_scan:
+    cmp r0, r1
+    jgr exit
+    push r0
+    push r1
+    ireq r0
+    push r0
+    call app_print_unsigned
+    load r1, space
+    load r2, sizeof space
+    call app_print
+    pop r0
+    tran r1, r0
+    push r1
+    call app_print_unsigned
+    load r1, space
+    load r2, sizeof space
+    call app_print
+    pop r1
+    cmp r1, 0x0201
+    jne noavc64
+    load r1, avc64_msg
+    load r2, sizeof avc64_msg
+    call app_print
+    jmp continue
+noavc64:
+    cmp r1, 0x0102
+    jne unknown
+    load r1, mpme216_msg
+    load r2, sizeof mpme216_msg
+    call app_print
+    jmp continue
+unknown:
+    load r1, unknown_msg
+    load r2, sizeof unknown_msg
+    call app_print
+continue:
+    pop r1
+    pop r0
+    inc r0
+    call app_newline
+    jmp device_scan
+exit:
+    call app_exit
+
+
+lower_index:
+    "Lower index: "
+upper_index:
+    "Upper index: "
+scanning_devices:
+    "Scanning devices...", 10
+space:
+    "    "
+avc64_msg:
+    "(AVC64)"
+mpme216_msg:
+    "(MPME216)"
+unknown_msg:
+    "(Unknown)"
+
+import "../libs/io.anc216"
+import "../libs/numbers.anc216"

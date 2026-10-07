@@ -52,7 +52,7 @@ def main():
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
     # Shell and commands are real user executables; grants follow their services.
-    programs = ('sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'stat', 'poweroff', 'lscpu', 'more')
+    programs = ('sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'stat', 'poweroff', 'lscpu', 'more', 'lsbus')
     for name in programs:
         application = args.output / f'{name}.ual'
         subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),

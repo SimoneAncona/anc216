@@ -205,9 +205,9 @@ namespace anc216_isa
         case 0x18:
             return {"clrc", (1u << IMPLIED), false};
         case 0x19:
-            return {"ireq", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), true};
+            return {"ireq", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), false};
         case 0x1A:
-            return {"req", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), true};
+            return {"req", (1u << REGISTER_ACCESS) | (1u << MEMORY_RELATED), false};
         case 0x1B:
             return {"write", (1u << REGISTER_TO_MEMORY) | (1u << IMMEDIATE_TO_MEMORY), false};
         case 0x1C:

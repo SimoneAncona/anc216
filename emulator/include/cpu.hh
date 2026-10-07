@@ -52,7 +52,7 @@ namespace ANC216
         void cycle();
         void execute(bool honor_breakpoints = false);
         void update_timer();
-        uint16_t mapped(uint16_t, bool external = false) const;
+        uint16_t mapped(uint16_t, bool external = false, bool is_ireq = false) const;
         void check(uint16_t, unsigned, bool write = false) const;
         uint16_t read(uint16_t, unsigned = 2) const;
         void write(uint16_t, uint16_t, unsigned = 2);

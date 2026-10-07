@@ -194,14 +194,14 @@ std::string CPU::error() const
     std::lock_guard lock(mutex);
     return failure;
 }
-uint16_t CPU::mapped(uint16_t a, bool external) const
+uint16_t CPU::mapped(uint16_t a, bool external, bool is_ireq) const
 {
     if (sr & S)
         return a;
     if (external)
     {
         // EMEM operands always name physical device addresses, including user IO.
-        if (a < mtu[2] || a > mtu[3])
+        if (!is_ireq && (a < mtu[2] || a > mtu[3]))
             throw Fault{3};
         return a;
     }
@@ -419,7 +419,8 @@ void CPU::execute(bool honor_breakpoints)
         bool has_address = false;
         const int index = static_cast<int8_t>(reg[e.reg] & 0xff);
         // IO absolute addresses refer to EMEM, other absolute addresses to IMEM.
-        const bool io = op >= IREQ && op <= READ;
+        const bool io = op > IREQ && op <= READ;
+        const bool is_ireq = op == IREQ;
         switch (e.mode)
         {
         case Mode::immediate:
@@ -434,17 +435,17 @@ void CPU::execute(bool honor_breakpoints)
         case Mode::absolute:
         case Mode::reg_absolute:
         case Mode::store_absolute:
-            address = mapped(word(operands), io);
+            address = mapped(word(operands), io, is_ireq);
             has_address = true;
             break;
         case Mode::indexed:
         case Mode::store_indexed:
-            address = mapped(uint16_t(word(operands) + index), io);
+            address = mapped(uint16_t(word(operands) + index), io, is_ireq);
             has_address = true;
             break;
         case Mode::indirect:
         case Mode::indirect_indexed:
-            address = mapped(uint16_t(read(mapped(word(operands))) + (e.mode == Mode::indirect_indexed ? index : 0)), io);
+            address = mapped(uint16_t(read(mapped(word(operands), is_ireq)) + (e.mode == Mode::indirect_indexed ? index : 0)), io);
             has_address = true;
             break;
         case Mode::pc:
@@ -487,7 +488,7 @@ void CPU::execute(bool honor_breakpoints)
         {
             // Validate every addressing family, including register and relative IO.
             // IO devices use one selector; flat ROM words span two EMEM cells.
-            address = mapped(has_address ? address : data, true);
+            address = mapped(has_address ? address : data, true, is_ireq);
             if (!(sr & S) && emem && emem->is_rom(address) &&
                 unsigned(address) + e.width - 1 > mtu[3])
                 throw Fault{3};

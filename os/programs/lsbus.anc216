@@ -1,15 +1,11 @@
 import "../libs/abi.anc216"
 _code:
-    load r0, SYS_VIDEO
-    load r1, 1
-    syscall
     load r1, lower_index
     load r2, sizeof lower_index
     phbp
     call app_print
     pobp
     teli r1
-    push r1
     phbp
     call app_print_unsigned
     pobp
@@ -22,7 +18,6 @@ _code:
     call app_print
     pobp
     tehi r1
-    push r1
     phbp
     call app_print_unsigned
     pobp
@@ -34,15 +29,15 @@ _code:
     phbp
     call app_print
     pobp
-    pop r1  ; upper index
-    pop r0  ; lower index
+    xor r0, r0
 device_scan:
-    cmp r0, r1
-    jgr exit
-    push r0
-    push r1
-    ireq r0
-    push r0
+    cmp r0, & block
+    jeq exit
+    push r0 ; r0 as address
+    ireq r0 ; ireq at address r0, after this r0 = device id, r1 = address
+    cmp r0, 0xffff
+    jeq next_dev
+    push r0 ; push r0 that contains the device id
     phbp
     call app_print_unsigned
     pobp
@@ -51,8 +46,7 @@ device_scan:
     phbp
     call app_print
     pobp
-    pop r0
-    tran r1, r0
+    pop r1
     push r1
     phbp
     call app_print_unsigned
@@ -73,9 +67,27 @@ device_scan:
     jmp continue
 noavc64:
     cmp r1, 0x0102
-    jne unknown
+    jne nompme
     load r1, mpme216_msg
     load r2, sizeof mpme216_msg
+    phbp
+    call app_print
+    pobp
+    jmp continue
+nompme:
+    cmp r1, 0x0301
+    jne nokbd
+    load r1, kbd_msg
+    load r2, sizeof kbd_msg
+    phbp
+    call app_print
+    pobp
+    jmp continue
+nokbd:
+    cmp r1, 0
+    jne unknown
+    load r1, rom_msg
+    load r2, sizeof rom_msg
     phbp
     call app_print
     pobp
@@ -87,15 +99,18 @@ unknown:
     call app_print
     pobp
 continue:
-    pop r1
-    pop r0
-    inc r0
     phbp
     call app_newline
     pobp
+next_dev:
+    pop r0
+    inc r0
     jmp device_scan
 exit:
     call app_exit
+
+block:
+    word 0xffff
 
 
 lower_index:
@@ -112,6 +127,10 @@ mpme216_msg:
     "(MPME216)"
 unknown_msg:
     "(Unknown)"
+kbd_msg:
+    "(Keyboard)"
+rom_msg:
+    "(ROM)"
 
 import "../libs/io.anc216"
 import "../libs/numbers.anc216"

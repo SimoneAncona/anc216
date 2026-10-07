@@ -20,6 +20,7 @@ See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
 | p. 7 | `bp - l4` implies a subtraction encoding. | Only register addition is encoded: `bp + l4`. A signed negative low-byte index can produce a negative displacement. |
 | p. 27 | SWAP detail permits memory operands. | SWAP exchanges two full registers only. |
 
+
 ## Emulator clarifications and limitations
 
 - **MTU and S:** S=0 rebases absolute IMEM operands using the IMEM lower
@@ -113,3 +114,8 @@ behavior, not an ANC216.pdf rule. It has been removed. ROM now maps consecutive
 EMEM bytes; firmware advances the bus address, and complete mapping ranges are
 checked for overlap. The OS length-prefixed ROM format and origin `0100` remain
 OS conventions; the PDF's example reset loader uses EMEM `0000..2fff`.
+
+## IREQ
+
+IREQ is not a system priv. instruction anymore, as opposed to the PDF, and
+additionally, unlike write and read, doesnt follow the MTU bound

@@ -20,8 +20,9 @@ def charmap():
         glyphs[name] = bytes([row << 2 for row in values] + [0])
     data = bytearray()
     for code in range(32, 127):
-        data.extend(code.to_bytes(2, 'big') + bytes([8, 8, 0, 0]))
+        data.extend(code.to_bytes(2, 'big') + bytes([8, 8, 0]))
         data.extend(glyphs[chr(code)])
+
     return bytes(data)
 
 

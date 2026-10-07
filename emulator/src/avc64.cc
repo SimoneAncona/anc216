@@ -39,15 +39,15 @@ void AVC64::load_textures(const std::vector<uint8_t> &data)
     {
         if (data.size() - i < 6)
             throw std::runtime_error("Truncated texture header");
-        unsigned id = (unsigned(data[i]) << 8) | data[i + 1], w = data[i + 2], h = data[i + 3], mode = data[i + 5];
+        unsigned id = (unsigned(data[i]) << 8) | data[i + 1], w = data[i + 2], h = data[i + 3], mode = data[i + 4];
         static const unsigned bits[] = {1, 2, 4, 8, 8, 12};
-        if (!w || !h || data[i + 4] || mode > 5 || loaded.contains(id))
+        if (!w || !h || mode > 5 || loaded.contains(id))
             throw std::runtime_error("Invalid texture header");
         size_t size = (w * h * bits[mode] + 7) / 8;
-        if (size > data.size() - i - 6)
+        if (size > data.size() - i - 5)
             throw std::runtime_error("Truncated texture data");
-        loaded.emplace(id, Texture{w, h, mode, {data.begin() + i + 6, data.begin() + i + 6 + size}});
-        i += 6 + size;
+        loaded.emplace(id, Texture{w, h, mode, {data.begin() + i + 5, data.begin() + i + 5 + size}});
+        i += 5 + size;
     }
     textures = std::move(loaded);
 }

@@ -1,0 +1,39 @@
+; used to call main in C
+
+import "abi.anc216"
+
+__kernel_error: word 0
+
+_code:
+    tran r0, r1
+    tran r1, r2
+    phbp
+    call _main   ; the C main should put the return in r0, so i move it to r1, so r0 can store the SYS_EXIT syscall id
+    ; _main and not main because the C ANC216 ABI require a _ at the starting of functions in order to not collide with assembly instructions
+    pobp
+    tran r1, r0
+    xor r0, r0  ; load r0, SYS_EXIT (0)
+    syscall
+
+_kernel_service:
+    ; R0 already contains the service and R1 contains arg0.
+    ; Preserve every C callee-saved register that the syscall may overwrite.
+    push r4
+    push r5
+    push r6
+    load r2, & bp - 7   ; third argument is pushed in the stack, the args starts at - 7 because at -1 there is the SR, at -3, -2 there is the PC (return address), at -5, -4 the caller's BP
+    ; -7 and not -6 because are big-endian so the high byte is the furhter relative to BP
+    load r3, & bp - 9
+    load r4, & bp - 11
+    syscall
+    tran r0, r6
+    ; save r7 that is not accessible in C to __kernel_error and to get the latest kernel error use a fucntion
+    store & __kernel_error, r7
+    pop r6
+    pop r5
+    pop r4
+    ret
+
+_get_err:
+    load r0, & __kernel_error
+    ret

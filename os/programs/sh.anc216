@@ -35,14 +35,12 @@ sh_loop:
     jne sh_error                         ; C: if (!Z) goto sh_error; | if not equal, goto sh_error
     store & sh_remaining, r6             ; C: *(sh_remaining) = r6; | *(sh_remaining) = r6
     load r0, SH_LINE                     ; C: r0 = SH_LINE; | r0 = SH_LINE
-    tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
-    add r0, r5                           ; C: r0 += r5; | parser walks physical bytes via BP
 sh_skip_space:
     load r4, & sh_remaining              ; C: r4 = *(sh_remaining); | r4 = *(sh_remaining)
     cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
     jeq sh_loop                          ; C: if (Z) goto sh_loop; | blank lines are harmless
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
@@ -53,14 +51,13 @@ sh_skip_space:
     jmp sh_skip_space                    ; C: goto sh_skip_space; | goto sh_skip_space
 sh_command_start:
     tran r2, r0                          ; C: r2 = r0; | r2 = r0
-    sub r2, r5                           ; C: r2 -= r5; | r2 -= r5
     store & sh_command_pointer, r2       ; C: *(sh_command_pointer) = r2; | *(sh_command_pointer) = r2
     xor r1, r1                           ; C: r1 = 0; | r1 = 0
 sh_command_measure:
     cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
     jeq sh_command_done                  ; C: if (Z) goto sh_command_done; | if equal, goto sh_command_done
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
@@ -77,7 +74,7 @@ sh_argument_spaces:
     cmp r4, 0                            ; C: flags = compare(r4, 0); | compare r4 with 0
     jeq sh_arguments_done                ; C: if (Z) goto sh_arguments_done; | if equal, goto sh_arguments_done
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     cmp l3, ASCII_SPACE                  ; C: flags = compare(l3, ASCII_SPACE); | compare l3 with ASCII_SPACE
@@ -86,17 +83,15 @@ sh_argument_spaces:
     dec r4                               ; C: r4--; | r4--
     jmp sh_argument_spaces               ; C: goto sh_argument_spaces; | goto sh_argument_spaces
 sh_arguments_done:
-    sub r0, r5                           ; C: r0 -= r5; | r0 -= r5
     store & sh_argument_pointer, r0      ; C: *(sh_argument_pointer) = r0; | *(sh_argument_pointer) = r0
     store & sh_argument_length, r4       ; C: *(sh_argument_length) = r4; | *(sh_argument_length) = r4
     ; A command containing '/' is an explicit path; otherwise prepend /bin/.
     load r0, & sh_command_pointer        ; C: r0 = *(sh_command_pointer); | r0 = *(sh_command_pointer)
-    add r0, r5                           ; C: r0 += r5; | r0 += r5
     load r1, & sh_command_length         ; C: r1 = *(sh_command_length); | r1 = *(sh_command_length)
     xor r2, r2                           ; C: r2 = 0; | r2 = 0
 sh_find_slash:
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     cmp l3, ASCII_SLASH                  ; C: flags = compare(l3, ASCII_SLASH); | compare l3 with ASCII_SLASH

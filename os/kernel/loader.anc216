@@ -131,21 +131,22 @@ exec_copy: ; C: exec_copy: (routine, branch target or data symbol)
     dec r4                               ; C: r4--;
     jne exec_copy                        ; C: if (!Z) goto exec_copy;
 ; Absolute user operands are logical offsets rebased by MTU.
-; PC/SP/BP stay physical. Privileged IO is mediated by syscalls.
+; User PC/SP/BP are logical. Privileged IO is mediated by syscalls.
     sili USER_BASE                       ; C: MTU.imem_lower = USER_BASE;
     sihi USER_LIMIT                      ; C: MTU.imem_upper = USER_LIMIT;
     seli EMEM_DENY_LOWER                 ; C: MTU.emem_lower = EMEM_DENY_LOWER; | empty interval denies all user device access
     sehi EMEM_DENY_UPPER                 ; C: MTU.emem_upper = EMEM_DENY_UPPER;
-    sbp USER_STACK                       ; C: MTU.stack_base = USER_STACK;
+    sbp USER_STACK_PHYSICAL              ; stack bounds remain physical
     stp USER_LIMIT                       ; C: MTU.stack_top = USER_LIMIT;
     store & fs_head, word 0              ; C: *(fs_head) = 0;
     store & process_active, word 1       ; C: *(process_active) = 1;
     load r0, & exec_flags                ; C: r0 = *(exec_flags);
     store & process_flags, r0            ; C: *(process_flags) = r0;
     store & STATE_ADDRESS, word STATE_RUNNING ; C: *(STATE_ADDRESS) = STATE_RUNNING;
-    ldsp USER_STACK                      ; C: SP = USER_STACK;
-    ldbp USER_STACK                      ; C: BP = USER_STACK;
-    load r0, & exec_entry                ; C: r0 = *(exec_entry);
+    ldsp USER_STACK_PHYSICAL             ; launch frame is constructed in system mode
+    ldbp USER_STACK_PHYSICAL             ; POSR converts SP/BP to logical user offsets
+    load r0, & exec_entry                ; loader entry is physical
+    sub r0, USER_BASE                    ; POPC expects a logical user PC
     push r0                              ; C: push(r0);
     push byte 0                          ; C: push(0);
 ; Only run(1a) requests an argument handoff and shell restart on exit.
@@ -180,7 +181,7 @@ exec_no_arguments: ; C: exec_no_arguments: (routine, branch target or data symbo
     xor r5, r5                           ; C: r5 = 0;
     xor r6, r6                           ; C: r6 = 0;
     xor r7, r7                  ; C: r7 = OS_SUCCESS;
-; POSR switches mode; POPC then reads the physical PC from user stack.
+; POSR converts PC/SP/BP to user offsets; POPC reads the logical entry PC.
 ; Execute the mode switch inside user IMEM: after POSR the next fetch
 ; must already be inside the MTU range. Reinstall before each transition.
     store & RETURN_STUB, word RETURN_POSR_WORD ; C: *(RETURN_STUB) = RETURN_POSR_WORD;

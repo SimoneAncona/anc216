@@ -2,6 +2,10 @@
 
 Load the service number into L0, arguments into registers, then execute `syscall`. R0–R5 are preserved, R6 returns a count/value, and R7 returns zero on success or an error. Pointers are logical user IMEM offsets, never host pointers. Buffer sizes are bytes. Buffers must stay below logical offset `3ff0`, which reserves the mode-switch stub.
 
+User PC/SP/BP are also logical offsets. The initial SP/BP is `3800`, mapping to
+physical `7800` with IMEM base `4000`. Interrupts save those logical values before
+selecting the physical kernel stack; syscall return restores the same user context.
+
 Services 00–06 use the original PDF's numbering. The fwrite packing below resolves its overlapping mode/size description. 07 and 10–1e are OS extensions (hexadecimal).
 
 | L0 | Service | Arguments | Result |
@@ -24,11 +28,11 @@ Services 00–06 use the original PDF's numbering. The fwrite packing below reso
 | 17 | mkdir | R1 absolute path, L2 length | Create one directory |
 | 18 | remove | R1 absolute path, L2 length | Remove file chain or empty directory |
 | 19 | fstat | R1 absolute path, L2 length, R3 8-byte output | R6 payload bytes; record below |
-| 1a | run | R1 executable path, L2 length, R3 argument bytes, R4 argument length <255 | Replace process; exit/fault reloads init |
+| 1a | run | R1 executable path, L2 length, R3 argument bytes, R4 argument length <255 | Replace process; exit/fault reloads /bin/init |
 | 1b | getcwd | R1 destination, R2 capacity including NUL | R6 cwd length excluding NUL |
 | 1c | chdir | R1 normalized absolute directory path, L2 length | Change session cwd |
 | 1d | poweroff | none | Poweroff the system |
-| 1e | video | R1=1 grant, R1=0 revoke | R6=`fffd` on grant, zero on revoke |
+| 1e | video | R1=1 grant, R1=0 revoke | R6=`fffd` on grant (which is the standard AVC64 address in EMEM), zero on revoke |
 | 1f | getk | none | R6=key code |
 | 20 | redct | R1 absolute path (null to stop redirect), L2 length | Redirect all console stream to the specified file |
 

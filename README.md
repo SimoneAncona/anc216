@@ -2,6 +2,10 @@
 
 A small 16-bit architecture for educational and microcontroller experiments.
 
+Experimental LLVM backend setup lives in [llvm/](llvm/README.md). It currently
+provides target registration and initial register/instruction descriptions;
+C-to-ANC216 code generation is not implemented yet.
+
 The repository contains an assembler, a lossless raw-binary disassembler, a functional CPU emulator, and an AFS v1 card-image reader/editor. All CPU opcodes are implemented, with shared instruction validation and tests for arithmetic flags, addressing, stack frames, protection, interrupts, timers, IO, and AVC64 device operations.
 
 Read [the ISA/documentation review](doc/REVIEW.md) for the design assessment and [the implementation profile](doc/IMPLEMENTATION.md) for precise semantics and corrections to the original PDFs. The core design is clean; the stack/interrupt ABI and specialized IO/addressing modes need the most specification work before building an OS.

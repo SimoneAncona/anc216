@@ -58,6 +58,8 @@ namespace ANC216
         void write(uint16_t, uint16_t, unsigned = 2);
         void push(uint16_t, unsigned = 2);
         uint16_t pop(unsigned = 2);
+        uint16_t stack_address(uint16_t, unsigned) const;
+        void restore_status(uint8_t);
         void interrupt(uint16_t vector, int code = -1);
         void nz(uint16_t, unsigned);
         void set_register(unsigned, uint16_t, unsigned);

@@ -115,6 +115,44 @@ int main()
         f.cpu.load({0xc1, 0x3a, 0x66, 0x77, 0, 0}, 0x4002);
         info = f.run();
         require(uint16_t(info.reg[0]) == 0x6677, "indirect branch");
+        // Nonzero MTU: PC/SP/BP become logical when leaving system mode.
+        // CALL/RET must map frames once, including an odd-byte local.
+        f.program({0x10, 0x50, 0x40, 0, 0x10, 0x51, 0x7f, 0xff,
+                   0x10, 0x54, 0x78, 0, 0x10, 0x55, 0x7f, 0xff,
+                   0x10, 0x3f, 0x78, 0, 0x10, 0x40, 0x78, 0,
+                   0x80, 0x22, 0x40, 0});
+        f.cpu.load({0, 0x15, 0, 0x0e, 0x80, 0x04, 0, 0x10, 0, 0x0f}, 0x4000);
+        f.cpu.load({0xc1, 0x3a, 0x12, 0x34, 0x08, 0x06, 0xaa, 0, 0x05}, 0x4010);
+        info = f.run(14);
+        require(info.pc == 0x000a && info.sp == 0x3800 && info.bp == 0x3800 &&
+                uint16_t(info.reg[0]) == 0x1234 && !(info.sr & 8),
+                "logical user PC/SP/BP call and return");
+        require(f.cpu.peek(0x7802) == 0 && f.cpu.peek(0x7803) == 8 &&
+                f.cpu.peek(0x7805) == 0xaa, "user CALL frame mapped exactly once");
+        f.cpu.load({0, 3}, 0x400a);
+        f.cpu.poke(6, 0x41);
+        f.cpu.poke(7, 0);
+        f.cpu.step();
+        info = f.cpu.get_info();
+        require(info.pc == 0x4100 && (info.sr & 8) && info.sp == 0x3003 &&
+                f.cpu.peek(0x31fe) == 0x38 && f.cpu.peek(0x31ff) == 0 &&
+                f.cpu.peek(0x31fc) == 0x38 && f.cpu.peek(0x31fd) == 0 &&
+                f.cpu.peek(0x3000) == 0 && f.cpu.peek(0x3001) == 0x0c,
+                "interrupt saves logical PC/SP/BP before selecting physical kernel stack");
+        f.cpu.debug_set("sr", 0);
+        f.cpu.debug_set("pc", 0x0a);
+        f.cpu.debug_set("sp", 0x37ff);
+        f.cpu.load({0x08, 0x06, 0xaa}, 0x400a);
+        f.cpu.poke(4, 0x41);
+        f.cpu.poke(5, 0);
+        f.cpu.step();
+        info = f.cpu.get_info();
+        require(info.pc == 0x4100 && info.reg[0] == 4 && (info.sr & 8),
+                "logical stack pointer below physical MTU stack bounds faults");
+        f.cpu.poke(4, 0);
+        f.cpu.poke(5, 0);
+        f.cpu.poke(6, 0);
+        f.cpu.poke(7, 0);
         // Protected absolute addressing is rebased, not raw host memory access.
         f.program({0x10, 0x50, 0x40, 0, 0x10, 0x51, 0x40, 0xff, 0x80, 0x22, 0x40, 0});
         f.cpu.load({0, 0x15, 0xc0, 0x3a, 0, 0x20}, 0x4000);
@@ -211,7 +249,7 @@ int main()
         gpu.cpu_write(0x0501, false);
         gpu.cpu_write(0x0200, false);
         require(gpu.cpu_read(0, false) == 1, "AVC64 clear");
-        gpu.load_textures({0, 1, 2, 1, 0, 0, 0x80}); // two pixels: foreground, background
+        gpu.load_textures({0, 1, 2, 1, 0, 0x80}); // two pixels: foreground, background
         gpu.cpu_write(0x0707, false);
         gpu.cpu_write(0x0808, false);
         gpu.cpu_write(0x0500, false);

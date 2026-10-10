@@ -1,0 +1,27 @@
+; Generic C wrapper: R0=service, R1=logical pointer to six unsigned words.
+; Uses the CPU's MTU-mapped BP-relative operands. No software TILI conversion.
+; C callee-saved R4..R6 and the CALL frame BP are preserved.
+_syscall:
+    push r4
+    push r5
+    push r6
+    push r1
+    phbp
+    ldbp r1
+    load r2, & bp + 2
+    load r3, & bp + 4
+    load r4, & bp + 6
+    load r5, & bp + 8
+    load r1, & bp + 0
+    pobp
+    syscall
+    tran r0, r7
+    pop r7
+    phbp
+    ldbp r7
+    store & bp + 10, r6
+    pobp
+    pop r6
+    pop r5
+    pop r4
+    ret

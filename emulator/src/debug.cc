@@ -79,11 +79,13 @@ namespace
     void disassemble(ANC216::CPU &cpu, unsigned at, unsigned count)
     {
         auto breakpoints = cpu.list_breakpoints();
-        const auto pc = cpu.get_pc();
-        for (unsigned i = 0; i < count && at < MAX_MEM; ++i)
+        const auto info = cpu.get_info();
+        const auto pc = info.pc;
+        const unsigned base = (info.sr & 8) ? 0 : info.mtu[0];
+        for (unsigned i = 0; i < count && at + base < MAX_MEM; ++i)
         {
-            const auto length = instruction_size(cpu, at);
-            auto bytes = cpu.memory(at, length);
+            const auto length = instruction_size(cpu, at + base);
+            auto bytes = cpu.memory(at + base, length);
             ANC216::Disassembler decoder(bytes);
             auto text = decoder.disassemble();
             if (!text.empty() && text.front() == '\t')
@@ -471,7 +473,8 @@ void debug_console(ANC216::CPU &cpu, ANC216::EmemMapper &mapper, ANC216::Video::
                 arity(0, 0);
                 cpu.stop();
                 const auto info = cpu.get_info();
-                const auto bytes = cpu.memory(info.pc, std::min(4u, MAX_MEM - unsigned(info.pc)));
+                const unsigned physical = unsigned(info.pc) + ((info.sr & 8) ? 0 : info.mtu[0]);
+                const auto bytes = cpu.memory(physical, std::min(4u, MAX_MEM - physical));
                 if ((bytes.size() == 4 && bytes[0] == 0x80 && bytes[1] == 4) ||
                     (bytes.size() >= 2 && bytes[0] == 0 && bytes[1] == 3))
                 {
@@ -496,7 +499,7 @@ void debug_console(ANC216::CPU &cpu, ANC216::EmemMapper &mapper, ANC216::Video::
                 {
                     if (info.bp < 3)
                         throw std::runtime_error("BP does not contain a CALL frame");
-                    auto frame = cpu.memory(info.bp - 3, 3);
+                    auto frame = cpu.memory(unsigned(info.bp) - 3 + ((info.sr & 8) ? 0 : info.mtu[0]), 3);
                     cpu.run_until((unsigned(frame[0]) << 8) | frame[1], info.bp - 3);
                 }
                 std::cout << "Running to target; stop or Ctrl+C pauses.\n";
@@ -551,7 +554,8 @@ void debug_console(ANC216::CPU &cpu, ANC216::EmemMapper &mapper, ANC216::Video::
             {
                 arity(op == "stack" ? 0 : 1, op == "stack" ? 1 : 2);
                 const auto info = cpu.get_info();
-                const unsigned at = op == "stack" ? (info.sp > 32 ? info.sp - 32 : 0) : value(1);
+                const unsigned at = op == "stack" ?
+                    (info.sp > 32 ? info.sp - 32 : 0) + ((info.sr & 8) ? 0 : info.mtu[0]) : value(1);
                 const unsigned index = op == "stack" ? 1 : 2;
                 const unsigned size = args.size() > index ? number(args[index], MAX_MEM) : std::min(64u, MAX_MEM - at);
                 memory(cpu, at, size);

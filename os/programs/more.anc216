@@ -23,8 +23,6 @@ _code:
     store & more_current_line, word 0
     ; Blank cells let short lines be redrawn without their newline bytes.
     load r2, more_screen
-    tili r5
-    add r2, r5
     load r3, CONSOLE_W * MORE_VISIBLE_ROWS
     phbp
 more_blank_screen:
@@ -60,8 +58,6 @@ more_keep_printing:
     tran r3, r4
     add r3, more_buffer
     phbp
-    tili r5
-    add r3, r5
     ldbp r3
     xor r1, r1
     load l1, & bp + 0
@@ -74,8 +70,6 @@ more_keep_printing:
     shl r3, 5
     add r3, & more_current_col
     add r3, more_screen
-    tili r5
-    add r3, r5
     phbp
     ldbp r3
     store & bp + 0, l1
@@ -120,9 +114,7 @@ more_wait_enter_key:
     jne more_wait_enter_key
     ; Shift retained text up one row, then blank the newly exposed row.
     phbp
-    tili r5
     load r2, more_screen
-    add r2, r5
     load r3, CONSOLE_W * (MORE_VISIBLE_ROWS - 1)
 more_shift_row:
     tran r5, r2

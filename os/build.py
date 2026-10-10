@@ -1,10 +1,33 @@
 #!/usr/bin/env python3
-"""Assemble the ROM/kernel and generate the original ANC216 OS bitmap font."""
+"""Build the ANC216 OS, assembly/C applications, disk images and bitmap font."""
 import argparse
 from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parent
+
+
+def compile_c(source, output, clang, llc, runtime):
+    """Statically link the shared assembly runtime and a C translation unit."""
+    output.mkdir(parents=True, exist_ok=True)
+    ir = output / (source.stem + '.ll')
+    assembly = output / (source.stem + '.anc216')
+    linked = output / (source.stem + '-linked.anc216')
+    for tool in (clang, llc):
+        if not tool.is_file():
+            raise ValueError(f'Missing LLVM tool: {tool}; use --clang/--llc to select your build')
+    subprocess.run([str(clang.resolve()), '-target', 'anc216-unknown-none',
+                    '-std=c89', '-ffreestanding', '-fno-builtin', '-O1',
+                    '-S', '-emit-llvm', str(source.resolve()), '-o', str(ir.resolve())], check=True)
+    subprocess.run([str(llc.resolve()), '-march=anc216', '-O0', str(ir.resolve()),
+                    '-o', str(assembly.resolve())], check=True)
+    if '_main:' not in assembly.read_text():
+        raise ValueError(f'{source}: C executables must define main (this file has no main yet)')
+    paths = (runtime.resolve(), assembly.resolve())
+    if any('"' in str(path) or '\n' in str(path) for path in paths):
+        raise ValueError('Assembly import paths cannot contain quotes or newlines')
+    linked.write_text(''.join(f'import "{path}"\n' for path in paths))
+    return linked
 
 
 def charmap():
@@ -31,6 +54,10 @@ def main():
     parser.add_argument('--assembler', type=Path, default=ROOT.parent / 'build/assembler/assembler')
     parser.add_argument('--cardreader', type=Path, default=ROOT.parent / 'build/cardreader/cardreader')
     parser.add_argument('--output', type=Path, default=ROOT / 'build')
+    parser.add_argument('--clang', type=Path, default=ROOT.parent / 'build/llvm-upstream/bin/clang')
+    parser.add_argument('--llc', type=Path, default=ROOT.parent / 'build/llvm-upstream/bin/llc')
+    parser.add_argument('--c-runtime', type=Path, default=ROOT / 'libs/c.anc216',
+                        help='Assembly startup and functions statically linked into C executables')
     parser.add_argument('--test-fixtures', action='store_true',
                         help='Also generate regression cards, programs and sample files')
     args = parser.parse_args()
@@ -53,11 +80,19 @@ def main():
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
     # Shell and commands are real user executables; grants follow their services.
     programs = ['sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'fstat', 'poweroff', 'lscpu', 'more', 'lsbus', 'redct', 'version']
-    programs = sorted(programs)
+    c_sources = {source.stem: source for source in (ROOT / 'programs').glob('*.c')}
+    for name in c_sources:
+        if (ROOT / f'programs/{name}.anc216').exists():
+            raise ValueError(f'Ambiguous program {name}: both .c and .anc216 exist')
+    programs = sorted(set(programs) | c_sources.keys())
     print("Building user-space utils")
     for name in programs:
         application = args.output / f'{name}.ual'
-        subprocess.run([str(args.assembler.resolve()), str(ROOT / f'programs/{name}.anc216'),
+        source = ROOT / f'programs/{name}.anc216'
+        if name in c_sources:
+            source = compile_c(c_sources[name], args.output / 'c' / name,
+                               args.clang, args.llc, args.c_runtime)
+        subprocess.run([str(args.assembler.resolve()), str(source.resolve()),
                         str(application.resolve()), '-h=ualf'], check=True)
         data = bytearray(application.read_bytes())
         data[7] = 0x80 if name in ('echo', 'clear') else 0xa0

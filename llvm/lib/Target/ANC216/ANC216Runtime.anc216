@@ -1,0 +1,117 @@
+; Software 16-bit integer helpers. R0/R1 inputs, R0 result. R4..R6 preserved.
+___mulhi3:
+    xor r2, r2
+_anc216_rt_mul_loop:
+    cmp r1, 0
+    jeq & _anc216_rt_mul_done
+    tran r3, r1
+    and r3, 1
+    jeq & _anc216_rt_mul_skip
+    add r2, r0
+_anc216_rt_mul_skip:
+    shl r0, 1
+    shr r1, 1
+    jmp & _anc216_rt_mul_loop
+_anc216_rt_mul_done:
+    tran r0, r2
+    ret
+
+; Restoring unsigned division. R2=quotient, R3=remainder. The overflow path
+; retains the seventeenth remainder bit for divisors above 32767.
+_anc216_rt_divmod:
+    xor r2, r2
+    xor r3, r3
+    load r7, 16
+_anc216_rt_div_loop:
+    shl r2, 1
+    cmp r3, 0
+    jls & _anc216_rt_div_overflow
+    shl r3, 1
+    cmp r0, 0
+    jge & _anc216_rt_div_bit_done
+    or r3, 1
+_anc216_rt_div_bit_done:
+    shl r0, 1
+    cmp r3, r1
+    push r7
+    trsr l7
+    and r7, 1
+    jne & _anc216_rt_div_small
+    pop r7
+    sub r3, r1
+    inc r2
+    jmp & _anc216_rt_div_next
+_anc216_rt_div_small:
+    pop r7
+    jmp & _anc216_rt_div_next
+_anc216_rt_div_overflow:
+    shl r3, 1
+    cmp r0, 0
+    jge & _anc216_rt_div_over_bit
+    or r3, 1
+_anc216_rt_div_over_bit:
+    shl r0, 1
+    sub r3, r1
+    inc r2
+_anc216_rt_div_next:
+    dec r7
+    jne & _anc216_rt_div_loop
+    ret
+
+___udivhi3:
+    phbp
+    call & _anc216_rt_divmod
+    pobp
+    tran r0, r2
+    ret
+___umodhi3:
+    phbp
+    call & _anc216_rt_divmod
+    pobp
+    tran r0, r3
+    ret
+___divhi3:
+    xor r7, r7
+    cmp r0, 0
+    jge & _anc216_rt_sdiv_a_positive
+    neg r0
+    xor r7, 1
+_anc216_rt_sdiv_a_positive:
+    cmp r1, 0
+    jge & _anc216_rt_sdiv_b_positive
+    neg r1
+    xor r7, 1
+_anc216_rt_sdiv_b_positive:
+    push r7
+    phbp
+    call & _anc216_rt_divmod
+    pobp
+    pop r7
+    tran r0, r2
+    cmp r7, 0
+    jeq & _anc216_rt_sdiv_done
+    neg r0
+_anc216_rt_sdiv_done:
+    ret
+___modhi3:
+    xor r7, r7
+    cmp r0, 0
+    jge & _anc216_rt_smod_a_positive
+    neg r0
+    load r7, 1
+_anc216_rt_smod_a_positive:
+    cmp r1, 0
+    jge & _anc216_rt_smod_b_positive
+    neg r1
+_anc216_rt_smod_b_positive:
+    push r7
+    phbp
+    call & _anc216_rt_divmod
+    pobp
+    pop r7
+    tran r0, r3
+    cmp r7, 0
+    jeq & _anc216_rt_smod_done
+    neg r0
+_anc216_rt_smod_done:
+    ret

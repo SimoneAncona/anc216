@@ -274,7 +274,7 @@ growth_check_status:
     ret
 
 growth_fill:
-    load r5, growth_buffer + OS_USER_BASE
+    load r5, growth_buffer
     load r2, 255
     phbp
 growth_fill_loop:
@@ -325,7 +325,7 @@ growth_read:
     ret
 
 growth_verify:
-    load r5, growth_buffer + OS_USER_BASE
+    load r5, growth_buffer
     load r2, 255
     phbp
 growth_verify_loop:

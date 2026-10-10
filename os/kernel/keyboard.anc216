@@ -25,6 +25,16 @@ keyboard_irq_return: ; C: keyboard_irq_return: (routine, branch target or data s
     pop r4                               ; C: r4 = pop();
     ldsp & SAVED_SP                      ; C: SP = *(SAVED_SP);
     ldbp & SAVED_BP                      ; C: BP = *(SAVED_BP);
+    tran r5, r3
+    and r5, 8                           ; interrupted SR: system stacks need no conversion
+    jne keyboard_irq_stack_ready
+    trsp r5
+    add r5, USER_BASE
+    ldsp r5
+    trbp r5
+    add r5, USER_BASE
+    ldbp r5
+keyboard_irq_stack_ready:
     push r4                              ; C: push(r4);
     push l3                              ; C: push(l3);
     load r3, & irq3                      ; C: r3 = *(irq3);

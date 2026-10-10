@@ -236,18 +236,37 @@ void CPU::write(uint16_t a, uint16_t value, unsigned width)
         imem[a + 1] = value;
     }
 }
+uint16_t CPU::stack_address(uint16_t logical, unsigned width) const
+{
+    const unsigned physical = unsigned(logical) + ((sr & S) ? 0 : unsigned(mtu[0]));
+    if (unsigned(logical) + width > MAX_MEM || physical + width > ROM_ADDR ||
+        (!(sr & S) && (physical < mtu[4] || physical + width - 1 > mtu[5])))
+        throw Fault{4};
+    return uint16_t(physical);
+}
+void CPU::restore_status(uint8_t saved)
+{
+    if (!(sr & S))
+        saved = (saved & ~(S | I | T)) | (sr & (S | I | T));
+    // A system-mode return frame is physical until the mode switch. Once
+    // entering user mode, SP/BP become offsets from the IMEM MTU base.
+    if ((sr & S) && !(saved & S)) {
+        pc = uint16_t(pc - mtu[0]);
+        sp = uint16_t(sp - mtu[0]);
+        bp = uint16_t(bp - mtu[0]);
+    }
+    sr = saved;
+}
 void CPU::push(uint16_t value, unsigned width)
 {
-    if (unsigned(sp) + width > ROM_ADDR || (!(sr & S) && (sp < mtu[4] || unsigned(sp) + width - 1 > mtu[5])))
-        throw Fault{4};
-    write(sp, value, width);
+    write(stack_address(sp, width), value, width);
     sp += width;
 }
 uint16_t CPU::pop(unsigned width)
 {
-    if (sp < width || (!(sr & S) && (unsigned(sp) - width < mtu[4] || sp - 1 > mtu[5])))
+    if (sp < width)
         throw Fault{4};
-    uint16_t value = read(sp - width, width);
+    uint16_t value = read(stack_address(sp - width, width), width);
     sp -= width;
     return value;
 }
@@ -392,16 +411,17 @@ void CPU::execute(bool honor_breakpoints)
         }
         resume_breakpoint.reset();
         ++instruction_count;
-        check(pc, 2);
-        const uint8_t addressing = imem[pc], op = imem[pc + 1];
+        const uint16_t fetch = mapped(pc);
+        check(fetch, 2);
+        const uint8_t addressing = imem[fetch], op = imem[fetch + 1];
         current_instruction = (unsigned(addressing) << 8) | op;
         const auto e = decode(addressing);
         if (!valid(op, e))
             throw Fault{0};
         if (opcode(op).privileged && !(sr & S))
             throw Fault{1};
-        check(pc, 2 + e.size);
-        const unsigned operands = unsigned(pc) + 2;
+        check(fetch, 2 + e.size);
+        const unsigned operands = unsigned(fetch) + 2;
         pc = uint16_t(unsigned(pc) + 2 + e.size);
         auto byte = [&](unsigned at)
         {
@@ -450,22 +470,22 @@ void CPU::execute(bool honor_breakpoints)
             break;
         case Mode::pc:
         case Mode::reg_pc:
-            address = uint16_t(pc + static_cast<int8_t>(byte(operands)));
+            address = mapped(uint16_t(pc + static_cast<int8_t>(byte(operands))), io, is_ireq);
             has_address = true;
             break;
         case Mode::bp:
         case Mode::reg_bp:
         case Mode::store_bp:
-            address = uint16_t(bp + static_cast<int8_t>(byte(operands)));
+            address = mapped(uint16_t(bp + static_cast<int8_t>(byte(operands))), io, is_ireq);
             has_address = true;
             break;
         case Mode::pc_reg:
-            address = uint16_t(pc + index);
+            address = mapped(uint16_t(pc + index), io, is_ireq);
             has_address = true;
             break;
         case Mode::bp_reg:
         case Mode::store_bp_reg:
-            address = uint16_t(bp + index);
+            address = mapped(uint16_t(bp + index), io, is_ireq);
             has_address = true;
             break;
         case Mode::reg_immediate:
@@ -488,7 +508,7 @@ void CPU::execute(bool honor_breakpoints)
         {
             // Validate every addressing family, including register and relative IO.
             // IO devices use one selector; flat ROM words span two EMEM cells.
-            address = mapped(has_address ? address : data, true, is_ireq);
+            address = mapped(has_address ? address : data, true, is_ireq);  // wtf is this
             if (!(sr & S) && emem && emem->is_rom(address) &&
                 unsigned(address) + e.width - 1 > mtu[3])
                 throw Fault{3};
@@ -532,21 +552,19 @@ void CPU::execute(bool honor_breakpoints)
             push(pc);
             push(sr, 1);
             bp = sp;
-            pc = address;
+            pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case RET:
         {
             if (bp < 3)
                 throw Fault{4};
             // BP marks the first local byte, immediately after PC/SR.
-            const uint8_t saved = read(bp - 1, 1);
-            const uint16_t target = read(bp - 3);
+            const auto frame = stack_address(bp - 3, 3);
+            const uint8_t saved = read(frame + 2, 1);
+            const uint16_t target = read(frame);
             sp = bp - 3;
             pc = target;
-            if (!(sr & S))
-                sr = (saved & ~(S | I | T)) | (sr & (S | I | T));
-            else
-                sr = saved;
+            restore_status(saved);
             break;
         }
         case PUSH:
@@ -567,10 +585,7 @@ void CPU::execute(bool honor_breakpoints)
         case POSR:
         {
             uint8_t saved = pop(1);
-            if (!(sr & S))
-                sr = (saved & ~(S | I | T)) | (sr & (S | I | T));
-            else
-                sr = saved;
+            restore_status(saved);
             break;
         }
         case PHSP:
@@ -602,7 +617,7 @@ void CPU::execute(bool honor_breakpoints)
             sr &= ~T;
             break;
         case CLRS:
-            sr &= ~S;
+            restore_status(sr & ~S);
             break;
         case CLRN:
             sr &= ~N;
@@ -643,47 +658,47 @@ void CPU::execute(bool honor_breakpoints)
             arith(left, data, true);
             break;
         case JMP:
-            pc = address;
+            pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JEQ:
             if (zero)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JNE:
             if (!zero)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JGE:
             if (negative == overflow)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JGR:
             if (negative == overflow && !zero)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JLE:
             if (negative != overflow || zero)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JLS:
             if (negative != overflow)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JO:
             if (overflow)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JNO:
             if (!overflow)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JN:
             if (negative)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case JNN:
             if (!negative)
-                pc = address;
+                pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
             break;
         case INC:
             set_register(e.reg, arith(left, 1, false), e.width);
@@ -747,10 +762,7 @@ void CPU::execute(bool honor_breakpoints)
         case LDSR:
         {
             uint8_t saved = data;
-            if (!(sr & S))
-                sr = (saved & ~(S | I | T)) | (sr & (S | I | T));
-            else
-                sr = saved;
+            restore_status(saved);
             break;
         }
         case LDSP:
@@ -885,7 +897,7 @@ std::map<uint16_t, bool> CPU::list_breakpoints() const
 void CPU::run_until(uint16_t address, std::optional<uint16_t> stack)
 {
     std::lock_guard lock(mutex);
-    temporary_pc = address;
+    temporary_pc = uint16_t(address - ((sr & S) ? 0 : mtu[0]));
     temporary_sp = stack;
     start();
 }

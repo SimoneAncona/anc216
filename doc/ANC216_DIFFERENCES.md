@@ -26,7 +26,8 @@ See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full executable profile and
 - **MTU and S:** S=0 rebases absolute IMEM operands using the IMEM lower
   index and enforces user bounds. EMEM addresses are physical and bounds checked,
   without rebasing, in every IO addressing mode. S=1 uses physical addresses and bypasses user
-  bounds. PC/SP/BP, PC/BP-relative addresses and stack accesses are physical;
+  bounds. User PC/SP/BP are logical IMEM offsets; instruction fetches, PC/BP-relative
+  addresses and stack accesses are rebased through the IMEM MTU base;
   user accesses still undergo their applicable bounds checks. Interrupt/syscall
   entry sets S; restoring SR with POSR can resume user mode. This explicit
   execution contract resolves ambiguity in the PDF's general MTU description.
@@ -106,16 +107,19 @@ emulator command/texture packing concern their own format/device documents,
 rather than ANC216.pdf alone. Their corrections and implementation contracts
 remain in IMPLEMENTATION.md and REVIEW.md.
 
-## Corrected emulator ROM mapping
-
-The earlier emulator incorrectly gave ROM an MPME-like internal-offset protocol:
-it read different bytes from one EMEM address using R1. This was an invented
-behavior, not an ANC216.pdf rule. It has been removed. ROM now maps consecutive
-EMEM bytes; firmware advances the bus address, and complete mapping ranges are
-checked for overlap. The OS length-prefixed ROM format and origin `0100` remain
-OS conventions; the PDF's example reset loader uses EMEM `0000..2fff`.
-
 ## IREQ
 
 IREQ is not a system priv. instruction anymore, as opposed to the PDF, and
 additionally, unlike write and read, doesnt follow the MTU bound
+
+## IMEM map in user mode
+
+One more thing, the PDF specify that only absolute mode is mapped based off
+the MTU lower index, but actually no, every indexing mode are mapped, BP is mapped
+in user-space, as well as SP and PC (based off the IMEM lower index always)
+
+User stack bounds remain physical MTU bounds. System-to-user status changes
+(POSR, LDSR, CLRS or RET) convert PC/SP/BP by subtracting the IMEM base.
+Interrupt entry saves user offsets in the context slots, then selects physical
+kernel PC/SP/BP. The kernel adds the base when preparing a user return frame in
+system mode; POSR converts back and POPC restores a logical user PC.

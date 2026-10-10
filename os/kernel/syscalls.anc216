@@ -76,12 +76,16 @@ user_buffer_bad: ; C: user_buffer_bad: (routine, branch target or data symbol)
     ret                                  ; C: return; // restore CALL PC/SR and discard frame
 
 syscall_return: ; C: syscall_return: (routine, branch target or data symbol)
-; Copy the original interrupt PC/SR, restore physical user SP/BP,
+; Copy the original interrupt PC/SR, convert saved logical user SP/BP to physical,
 ; push a return frame there, restore inputs, then switch back to user mode.
     load r5, & syscall_pc                ; C: r5 = *(syscall_pc);
     load r4, & syscall_sr                ; C: r4 = *(syscall_sr);
-    ldsp & SAVED_SP                      ; C: SP = *(SAVED_SP);
-    ldbp & SAVED_BP                      ; C: BP = *(SAVED_BP);
+    load r0, & SAVED_SP
+    add r0, USER_BASE
+    ldsp r0
+    load r0, & SAVED_BP
+    add r0, USER_BASE
+    ldbp r0                              ; POSR converts both back to user offsets
     push r5                              ; C: push(r5);
     push l4                              ; C: push(l4);
     load r0, & arg0                      ; C: r0 = *(arg0);

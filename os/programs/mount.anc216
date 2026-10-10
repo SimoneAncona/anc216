@@ -4,8 +4,6 @@ import "../libs/abi.anc216" ; C: #include "../libs/abi.anc216"
 _code:
     cmp r2, 0                            ; C: flags = compare(r2, 0); | compare r2 with 0
     jeq app_error                        ; C: if (Z) goto app_error; | if equal, goto app_error
-    tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
-    add r1, r5                           ; C: r1 += r5; | r1 += r5
     xor r4, r4                           ; C: r4 = 0; | decimal EMEM chip address accumulator
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
 mount_digit:

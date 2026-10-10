@@ -1,0 +1,12 @@
+; UALf logical-origin-zero startup. Import alongside generated C assembly.
+; OS entry: R1=logical command-line pointer, R2=byte length (not argc/argv).
+; C entry: int main(const char *args, unsigned length).
+_code:
+    tran r0, r1
+    tran r1, r2
+    phbp
+    call & _main
+    pobp
+    tran r1, r0
+    xor r0, r0
+    syscall

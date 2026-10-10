@@ -17,10 +17,8 @@ path_absolute:
     load r1, & path_input_length         ; C: r1 = *(path_input_length); | r1 = *(path_input_length)
     cmp r1, 0                            ; C: flags = compare(r1, 0); | compare r1 with 0
     jeq path_use_cwd                     ; C: if (Z) goto path_use_cwd; | if equal, goto path_use_cwd
-    tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
-    add r0, r5                           ; C: r0 += r5; | r0 += r5
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     cmp l3, ASCII_SLASH                  ; C: flags = compare(l3, ASCII_SLASH); | compare l3 with ASCII_SLASH
@@ -34,10 +32,9 @@ path_relative:
     cmp r2, OS_PATH_CAPACITY - 1         ; C: flags = compare(r2, OS_PATH_CAPACITY - 1); | compare r2 with OS_PATH_CAPACITY - 1
     jge path_bad                         ; C: if (N == O) goto path_bad; | if greater or equal, goto path_bad
     load r3, path_work                   ; C: r3 = path_work; | r3 = path_work
-    add r3, r5                           ; C: r3 += r5; | r3 += r5
     add r3, r2                           ; C: r3 += r2; | r3 += r2
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r3                              ; C: BP = r3; | BP = r3 (physical pointer or saved frame)
+    ldbp r3                              ; C: BP = r3; | BP = r3 (logical pointer or saved frame)
     store & bp + 0, byte ASCII_SLASH     ; C: *(bp + 0) = ASCII_SLASH; | *(bp + 0) = ASCII_SLASH
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     inc r2                               ; C: r2++; | r2++
@@ -48,35 +45,31 @@ path_append_input:
     cmp r2, OS_PATH_CAPACITY             ; C: flags = compare(r2, OS_PATH_CAPACITY); | compare r2 with OS_PATH_CAPACITY
     jge path_bad                         ; C: if (N == O) goto path_bad; | if greater or equal, goto path_bad
     load r2, path_work                   ; C: r2 = path_work; | r2 = path_work
-    add r2, r5                           ; C: r2 += r5; | r2 += r5
     add r2, & path_work_length           ; C: r2 += *(path_work_length); | r2 += *(path_work_length)
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
 path_append_loop:
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, l3                   ; C: *(bp + 0) = l3; | *(bp + 0) = l3
     inc r0                               ; C: r0++; | r0++
     inc r2                               ; C: r2++; | r2++
     dec r1                               ; C: r1--; | r1--
     jne path_append_loop                 ; C: if (!Z) goto path_append_loop; | if not equal, goto path_append_loop
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, byte ASCII_NUL       ; C: *(bp + 0) = ASCII_NUL; | *(bp + 0) = ASCII_NUL
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
 path_use_cwd:
     ; The combined source is absolute. Build a canonical result separately.
-    tili r5                              ; C: r5 = MTU.imem_lower; | r5 = MTU IMEM base
     load r0, path_work                   ; C: r0 = path_work; | r0 = path_work
-    add r0, r5                           ; C: r0 += r5; | r0 += r5
     load r2, path_result                 ; C: r2 = path_result; | r2 = path_result
-    add r2, r5                           ; C: r2 += r5; | r2 += r5
     store & path_result_length, word 1   ; C: *(path_result_length) = 1; | *(path_result_length) = 1
     phbp                                 ; C: push(BP); | save BP before pointer/helper use
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, byte ASCII_SLASH     ; C: *(bp + 0) = ASCII_SLASH; | *(bp + 0) = ASCII_SLASH
     inc r0                               ; C: r0++; | skip the source's leading slash
 path_component:
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     cmp l3, ASCII_NUL                    ; C: flags = compare(l3, ASCII_NUL); | compare l3 with ASCII_NUL
     jeq path_done                        ; C: if (Z) goto path_done; | if equal, goto path_done
@@ -88,7 +81,7 @@ path_component_start:
     store & path_component_pointer, r0   ; C: *(path_component_pointer) = r0; | *(path_component_pointer) = r0
     xor r1, r1                           ; C: r1 = 0; | r1 = 0
 path_measure:
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     cmp l3, ASCII_NUL                    ; C: flags = compare(l3, ASCII_NUL); | compare l3 with ASCII_NUL
     jeq path_measured                    ; C: if (Z) goto path_measured; | if equal, goto path_measured
@@ -100,7 +93,7 @@ path_measure:
 path_measured:
     store & path_cursor, r0              ; C: *(path_cursor) = r0; | *(path_cursor) = r0
     load r0, & path_component_pointer    ; C: r0 = *(path_component_pointer); | r0 = *(path_component_pointer)
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l3, & bp + 0                    ; C: l3 = *(bp + 0); | l3 = *(bp + 0)
     cmp l3, ASCII_DOT                    ; C: flags = compare(l3, ASCII_DOT); | compare l3 with ASCII_DOT
     jne path_keep_component              ; C: if (!Z) goto path_keep_component; | if not equal, goto path_keep_component
@@ -117,9 +110,8 @@ path_parent_loop:
     jeq path_parent_done                 ; C: if (Z) goto path_parent_done; | root has no parent above it
     dec r3                               ; C: r3--; | r3--
     load r2, path_result                 ; C: r2 = path_result; | r2 = path_result
-    add r2, r5                           ; C: r2 += r5; | r2 += r5
     add r2, r3                           ; C: r2 += r3; | r2 += r3
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     load l4, & bp + 0                    ; C: l4 = *(bp + 0); | l4 = *(bp + 0)
     cmp l4, ASCII_SLASH                  ; C: flags = compare(l4, ASCII_SLASH); | compare l4 with ASCII_SLASH
     jne path_parent_loop                 ; C: if (!Z) goto path_parent_loop; | if not equal, goto path_parent_loop
@@ -129,18 +121,17 @@ path_parent_done:
 path_keep_component:
     load r3, & path_result_length        ; C: r3 = *(path_result_length); | r3 = *(path_result_length)
     load r2, path_result                 ; C: r2 = path_result; | r2 = path_result
-    add r2, r5                           ; C: r2 += r5; | r2 += r5
     add r2, r3                           ; C: r2 += r3; | r2 += r3
     cmp r3, 1                            ; C: flags = compare(r3, 1); | compare r3 with 1
     jeq path_copy_component              ; C: if (Z) goto path_copy_component; | if equal, goto path_copy_component
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, byte ASCII_SLASH     ; C: *(bp + 0) = ASCII_SLASH; | *(bp + 0) = ASCII_SLASH
     inc r2                               ; C: r2++; | r2++
     inc r3                               ; C: r3++; | r3++
 path_copy_component:
-    ldbp r0                              ; C: BP = r0; | BP = r0 (physical pointer or saved frame)
+    ldbp r0                              ; C: BP = r0; | BP = r0 (logical pointer or saved frame)
     load l4, & bp + 0                    ; C: l4 = *(bp + 0); | l4 = *(bp + 0)
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, l4                   ; C: *(bp + 0) = l4; | *(bp + 0) = l4
     inc r0                               ; C: r0++; | r0++
     inc r2                               ; C: r2++; | r2++
@@ -153,9 +144,8 @@ path_resume:
     jmp path_component                   ; C: goto path_component; | goto path_component
 path_done:
     load r2, path_result                 ; C: r2 = path_result; | r2 = path_result
-    add r2, r5                           ; C: r2 += r5; | r2 += r5
     add r2, & path_result_length         ; C: r2 += *(path_result_length); | r2 += *(path_result_length)
-    ldbp r2                              ; C: BP = r2; | BP = r2 (physical pointer or saved frame)
+    ldbp r2                              ; C: BP = r2; | BP = r2 (logical pointer or saved frame)
     store & bp + 0, byte ASCII_NUL       ; C: *(bp + 0) = ASCII_NUL; | *(bp + 0) = ASCII_NUL
     pobp                                 ; C: BP = pop_word(); | restore the saved BP
     load r1, path_result                 ; C: r1 = path_result; | r1 = path_result

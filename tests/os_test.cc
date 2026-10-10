@@ -36,7 +36,7 @@ int main(int argc, char **argv)
             cpu.step();
         if (cpu.halted() || !cpu.error().empty())
             throw std::runtime_error("Kernel idle loop failed");
-        flags.cards.emplace_back(0x3000, directory + "/demo-disk0.afs");
+        flags.cards.emplace_back(0x4000, directory + "/demo-disk0.afs");
         flags.cards.emplace_back(0x3001, directory + "/disk1.afs");
         // Persistent guest writes use private copies, never shared build fixtures.
         for (auto &[address, image] : flags.cards)
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
                 output.write(reinterpret_cast<const char *>(image.data()), image.size());
             }
             auto test_flags = flags;
-            test_flags.cards = {{0x3000, card}};
+            test_flags.cards = {{0x4000, card}};
             ANC216::EmemMapper test_mapper(test_flags);
             ANC216::CPU test_cpu(&test_mapper, test_flags);
             for (unsigned cycle = 0; cycle < 1000000 && !test_cpu.halted(); ++cycle)

@@ -23,7 +23,7 @@ int main(int argc, char **argv)
         flags.bootfile = directory + "/boot.bin";
         flags.charmap = directory + "/charmap.bin";
         flags.inserts.emplace_back(0x0100, directory + "/system.rom");
-        flags.cards.emplace_back(0x3000, directory + "/shell-test.afs");
+        flags.cards.emplace_back(0x4000, directory + "/shell-test.afs");
         flags.cards.emplace_back(0x3001, directory + "/disk1.afs");
         // Persistent guest writes use private copies, never shared build fixtures.
         for (auto &[address, image] : flags.cards)
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
         };
         auto disk_byte = [&](unsigned at)
         {
-            return unsigned(devices.read(at, 0x3000) >> 8);
+            return unsigned(devices.read(at, 0x4000) >> 8);
         };
         auto directory_id = [&](const std::string &name)
         {
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
         {
             for (unsigned id = 1; id <= 196; ++id)
             {
-                const unsigned metadata = devices.read(257 + (id - 1) * 2, 0x3000);
+                const unsigned metadata = devices.read(257 + (id - 1) * 2, 0x4000);
                 if (metadata != (parent << 8 | 1))
                     continue;
                 const unsigned at = 2185 + (id - 1) * 323;
@@ -153,7 +153,7 @@ int main(int argc, char **argv)
         const std::vector<unsigned char> font((std::istreambuf_iterator<char>(font_file)), {});
         auto glyph = [&](char ch, unsigned column, unsigned row)
         {
-            const unsigned at = (unsigned(ch) - 32) * 14 + 6;
+            const unsigned at = (unsigned(ch) - 32) * 13 + 5;
             for (unsigned y = 0; y < 8; ++y)
                 for (unsigned x = 0; x < 8; ++x)
                     if (pixel(column * 8 + x, row * 8 + y) !=
@@ -172,13 +172,13 @@ int main(int argc, char **argv)
             for (unsigned x = 0; x < 24; ++x)
                 if (pixel(x, y) != prompt_pixels.at(y * 24 + x))
                     throw std::runtime_error("Redirected shell prompt disappeared from the console");
-        if (devices.read(prompt_base + 21, 0x3000) != 0)
+        if (devices.read(prompt_base + 21, 0x4000) != 0)
             throw std::runtime_error("Shell prompt entered the redirected file");
         command("");
-        if (devices.read(prompt_base + 21, 0x3000) != 0)
+        if (devices.read(prompt_base + 21, 0x4000) != 0)
             throw std::runtime_error("Repeated prompt entered the redirected file");
         command("pwd");
-        if (devices.read(prompt_base + 21, 0x3000) != 2 ||
+        if (devices.read(prompt_base + 21, 0x4000) != 2 ||
             disk_byte(prompt_base + 23) != '/' || disk_byte(prompt_base + 24) != '\n')
             throw std::runtime_error("Prompt bypass disturbed command redirection");
         command("redct");
@@ -193,14 +193,14 @@ int main(int argc, char **argv)
         command("echo ciao");
         command("echo hello");
         const std::string expected_echo = "ciao\nhello\n";
-        if (devices.read(echo_base + 21, 0x3000) != expected_echo.size())
+        if (devices.read(echo_base + 21, 0x4000) != expected_echo.size())
             throw std::runtime_error("Redirected echo wrote an incorrect file length");
         for (unsigned i = 0; i < expected_echo.size(); ++i)
             if (disk_byte(echo_base + 23 + i) != unsigned(expected_echo[i]))
                 throw std::runtime_error("Redirected echo lost its arguments or newline");
         command("redct");
         command("cat test.txt");
-        if (devices.read(echo_base + 21, 0x3000) != expected_echo.size())
+        if (devices.read(echo_base + 21, 0x4000) != expected_echo.size())
             throw std::runtime_error("Stopping redirection changed the file");
         command("rm test.txt");
         command("more", 1);
@@ -233,13 +233,20 @@ int main(int argc, char **argv)
             if (cpu.peek(0x00f3) != 0)
                 throw std::runtime_error("more failed after paging");
         }
-        command("help");
+        command("edit"); // C syscall wrapper and return through logical frames.
+        for (char ch : std::string("help\n")) devices.keyboard_input(ch);
+        steps(1500000);
+        for (unsigned page = 0; page < 128 && cpu.peek(0x6200) != 0x53; ++page) {
+            devices.keyboard_input(10);
+            steps(500000);
+        }
+        ready();
         command("test-strings");
         command("test-fs_namespace");
         command("test-video");
         command("lscpu");
-        command("stat /data/message.txt");
-        command("stat /data");
+        command("fstat /data/message.txt");
+        command("fstat /data");
         command("mkdir /work");
         const auto work = directory_id("work");
         if (!work)
@@ -249,7 +256,7 @@ int main(int argc, char **argv)
             throw std::runtime_error("Cwd did not survive reloading init");
         command("touch note.txt");
         const auto note = file_id(work, "note.txt");
-        if (!note || devices.read(2185 + (note - 1) * 323 + 21, 0x3000) != 0)
+        if (!note || devices.read(2185 + (note - 1) * 323 + 21, 0x4000) != 0)
             throw std::runtime_error("touch did not allocate a zero-length file head");
         command("ls");
         command("cat note.txt");
@@ -276,7 +283,7 @@ int main(int argc, char **argv)
         command("clear");
         command("mount 12289");
         command("cat /other.txt");
-        command("mount 12288");
+        command("mount 16384");
         command("ls /bin");
         command("touch /Case");
         command("touch /case");

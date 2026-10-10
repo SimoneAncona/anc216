@@ -2,12 +2,13 @@
 use KERNEL_ORIGIN as 0x0100                ; first byte loaded from the firmware ROM
 use KERNEL_STACK as 0x3000                 ; first free byte of the ordinary CALL stack
 use INTERRUPT_STACK as 0x3100              ; syscall/IRQ frame stack, separate from CALL frames
-use SAVED_BP as 0x31fc                     ; interrupted physical BP, two bytes
-use SAVED_SP as 0x31fe                     ; interrupted physical SP, two bytes
+use SAVED_BP as 0x31fc                     ; interrupted BP: logical in user mode, physical in system mode
+use SAVED_SP as 0x31fe                     ; interrupted SP: logical in user mode, physical in system mode
 use USER_BASE as 0x4000                    ; base added to logical IMEM data operands
 use USER_LIMIT as 0x7fff                   ; inclusive user instruction/data bound
-use USER_STACK as 0x7800                   ; initial user SP/BP
-use USER_RETURN_LIMIT as 0x7ffd            ; room for the three-byte syscall return frame
+use USER_STACK as 0x3800                   ; initial logical user SP/BP
+use USER_STACK_PHYSICAL as 0x7800          ; physical stack base and system-mode launch frame
+use USER_RETURN_LIMIT as 0x3ffd            ; logical limit leaving room for the three-byte return frame
 use RETURN_STUB as 0x7ff0                  ; POSR, then POPC, inside user executable memory
 use RETURN_STUB_PC as 0x7ff2               ; address of the POPC instruction
 use RETURN_POSR_WORD as 0x000b             ; encoded implied POSR header

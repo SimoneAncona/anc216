@@ -6,11 +6,8 @@ use NUMBER_BUFFER as 6                     ; five digits plus the terminating NU
 app_print_unsigned:
     store & number_remaining, r1         ; C: *(number_remaining) = r1;
     store & number_length, word 0        ; C: *(number_length) = 0;
-    tili r6                              ; C: r6 = MTU.imem_lower;
     load r2, number_factors              ; C: r2 = number_factors;
-    add r2, r6                           ; C: r2 += r6;
     load r3, number_text                 ; C: r3 = number_text;
-    add r3, r6                           ; C: r3 += r6;
     load r1, NUMBER_FACTORS              ; C: r1 = NUMBER_FACTORS;
     phbp                                 ; C: push(BP);
 number_position:

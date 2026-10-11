@@ -1,9 +1,9 @@
 # User syscall ABI
 
-Load the service number into L0, arguments into registers, then execute `syscall`. R0–R5 are preserved, R6 returns a count/value, and R7 returns zero on success or an error. Pointers are logical user IMEM offsets, never host pointers. Buffer sizes are bytes. Buffers must stay below logical offset `3ff0`, which reserves the mode-switch stub.
+Load the service number into L0, arguments into registers, then execute `syscall`. R0–R5 are preserved, R6 returns a count/value, and R7 returns zero on success or an error. Pointers are logical user IMEM offsets, never host pointers. Buffer sizes are bytes. Buffers must stay below logical offset `bef0`, which reserves the mode-switch stub.
 
-User PC/SP/BP are also logical offsets. The initial SP/BP is `3800`, mapping to
-physical `7800` with IMEM base `4000`. Interrupts save those logical values before
+User PC/SP/BP are also logical offsets. The initial SP/BP is `b000`, mapping to
+physical `f000` with IMEM base `4000`. Interrupts save those logical values before
 selecting the physical kernel stack; syscall return restores the same user context.
 
 Services 00–06 use the original PDF's numbering. The fwrite packing below resolves its overlapping mode/size description. 07 and 10–1e are OS extensions (hexadecimal).

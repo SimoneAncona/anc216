@@ -96,8 +96,6 @@ def main():
                         str(application.resolve()), '-h=ualf'], check=True)
         data = bytearray(application.read_bytes())
         data[7] = 0x80 if name in ('echo', 'clear') else 0xa0
-        if len(data) > 0x0e00:
-            raise ValueError(f"{name} exceeds the 3584-byte executable staging region")
         print(f"{name}:\t{len(data)} bytes")
         application.write_bytes(data)
     cardreader = str(args.cardreader.resolve())
@@ -116,6 +114,39 @@ def main():
     card(disk0, 'put', '/bin/init', args.output / 'sh.ual')
     card(disk0, 'put', '/data/help.txt', str(ROOT / 'programs/help.txt'))
     if args.test_fixtures:
+        # Independent cards leave room to exercise the full user IMEM range.
+        for case, payload_size, header_size in (
+                ('large', 4096, 11), ('limit', 0xbf00, 11),
+                ('overflow', 0xbf01, 11), ('symbols', 64, 4096)):
+            source = args.output / f'loader-{case}.anc216'
+            source.write_text(f'''_code:
+    xor r2, r2
+    load l2, & {payload_size - 1}
+    load r1, 42
+    cmp l2, 0x5a
+    jeq done
+    load r1, 43
+done:
+    xor r0, r0
+    syscall
+''')
+            executable = args.output / f'loader-{case}.ual'
+            subprocess.run([str(args.assembler.resolve()), str(source.resolve()),
+                            str(executable.resolve()), '-h=ualf'], check=True)
+            data = executable.read_bytes()
+            original_header = int.from_bytes(data[9:11], 'big')
+            header = bytearray(data[:11])
+            header[4:6] = header_size.to_bytes(2, 'big')
+            header[9:11] = header_size.to_bytes(2, 'big')
+            symbols = (b'n' * (header_size - 16) + b'\0' * 5) if header_size > 11 else b''
+            payload = data[original_header:]
+            executable.write_bytes(header + symbols + payload +
+                                   bytes(payload_size - len(payload) - 1) + b'\x5a')
+            fixture = args.output / f'loader-{case}.afs'
+            fixture.unlink(missing_ok=True)
+            card('--format', fixture)
+            card(fixture, 'mkdir', '/bin')
+            card(fixture, 'put', '/bin/init', executable)
         disk1 = args.output / 'disk1.afs'
         disk1.unlink(missing_ok=True)
         card('--format', disk1)

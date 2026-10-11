@@ -68,14 +68,14 @@ the regression cards and sample files; CMake passes this only with
 | `00f0..00f7` | State, exit code, fault code, last keyboard IRQ payload |
 | `0100..2eff` | Kernel code/data |
 | `3000..31ef` | Kernel CALL stack; IRQ/syscall stack starts at 3100; interrupted BP/SP saved at `31fc/31fe` |
-| `3200..3fff` | UALf staging, maximum entire file size 3584 bytes |
-| `4000..7fff` | User memory, with initial SP/BP `7800` |
-| `7ff0..7ff3` | Reinstalled POSR/POPC transition stub |
+| `3200..3fff` | Bounded UALf header/symbol scratch |
+| `4000..feff` | User memory, with initial physical SP/BP `f000` |
+| `fef0..fef3` | Reinstalled POSR/POPC transition stub |
 | `ff00..ffff` | Boot ROM |
 
-User absolute operands are logical offsets rebased by MTU `4000`; PC/SP/BP remain physical. Syscall buffers must remain inside logical `0000..3fef`; SP must be `7800..7ffd` to leave room for interrupt return. CALL sites save BP with `phbp; call routine; pobp`.
+User absolute operands are logical offsets rebased by MTU `4000`; PC/SP/BP are logical offsets. Syscall buffers must remain inside logical `0000..beef`; logical SP must be `b000..befd` to leave room for interrupt return. CALL sites save BP with `phbp; call routine; pobp`.
 
-UALf version 1, ANC216 architecture, application type 0, bounded optional symbol records, and a valid file-relative entry are required. Payloads use logical origin zero. Libraries and symbol-only files are rejected. Flag `80` grants console/input and `20` grants filesystem; other bits are rejected. The build grants console/filesystem flags `a0` to the shell and filesystem commands; pure console commands receive `80`; the assembler's default flags grant neither. A failed load keeps the current user memory intact. A successful exec replaces the single process and clears its prior memory.
+UALf version 1, ANC216 architecture, application type 0, bounded optional symbol records, and a valid file-relative entry are required. Payloads use logical origin zero. Libraries and symbol-only files are rejected. Flag `80` grants console/input and `20` grants filesystem; other bits are rejected. The build grants console/filesystem flags `a0` to the shell and filesystem commands; pure console commands receive `80`; the assembler's default flags grant neither. Header and symbol validation precedes replacement; invalid files keep the current user memory intact. Payloads stream directly into user IMEM and must fit `4000..feff`; the complete file has no staging-buffer size limit. A successful exec replaces the single process and clears its prior memory.
 
 See [the syscall ABI](SYSCALLS.md) for register arguments and errors.
 

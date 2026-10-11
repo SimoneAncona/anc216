@@ -1,6 +1,6 @@
 ; ANC216 kernel entry and module composition. All imported labels share this origin.
-; IMEM 0100..2eff kernel; 3000..31ef system stack; 3200..3fff executable staging;
-; 4000..7fff isolated user memory, with its stack at 7800..7ffc.
+; IMEM 0100..2eff kernel; 3000..31ef system stack; 3200..3fff loader scratch;
+; 4000..feff isolated user memory, with its stack at f000..fefc.
 import "libs/abi.anc216" ; C: #include "libs/abi.anc216"
 import "kernel/constants.anc216" ; C: #include "kernel/constants.anc216"
 

@@ -13,14 +13,10 @@ Dn: 8 bit used to store data such as colors or texture id
 
 The bus are
 
-8 bit data bus
-    - in single pixel mode is used for passing the color
-    - in clear mode is used to pass the color
-
 1 bit mode bus
     - 0 R (read) used to read a color of a certain pixel in single pixel mode
     - 1 W (write)
-4 bit operation bus
+first 8 bit data bus
     - SP (0x00) Single Pixel (R to read a color of a pixel, W to write a pixel, coordinates are stored in X and Y, color is in D1)
     - TX (0x01) TeXture (mode bus must be W, the texture ID high is stored in D1 and low in D2. For 2 colors mode only, FG color is stored in D3 and BG color in D4, coordinates are stored in X and Y)
     - CL (0x02) CLear the screen with the color specified in D1 register (mode bus must be W)
@@ -31,6 +27,10 @@ The bus are
     - D3 (0x07) Used to write or read the D3 register
     - D4 (0x08) Used to write or read the D4 register
     - NOP (0x09) No Operations
+last 8 bit data bus:
+    the data to transfer
+
+for example to write 0xFF in D1 use W on mode bus, and on data bus sends 0x05FF
 
 Video card internal mapping:
   from <included> to <included> <size B> <info>

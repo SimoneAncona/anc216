@@ -14,7 +14,7 @@ appear above routines. `use ... as` defines assembler aliases, not storage.
 | `constants.anc216` | Physical memory layout, vectors, user protection and hardware identities |
 | `../libs/abi.anc216` | Shared syscall IDs, record sizes and status codes |
 | `../kernel.anc216` | Entry, vector installation, idle loop, faults and shutdown |
-| `loader.anc216` | Validate a complete UALf before replacing user memory; reset EMEM grants |
+| `loader.anc216` | Validate UALf headers/symbols before replacement; stream payload within user bounds; reset EMEM grants |
 | `syscalls.anc216` | Capture arguments and registers; validate logical user buffers; restore frame |
 | `syscall_dispatch.anc216` | One permission policy and indexed table of physical handler addresses |
 | `syscall_files.anc216` | Descriptor operations, selected volume and plain exec |
@@ -45,11 +45,11 @@ Syscall entry captures R0–R5 before using the interrupt stack. The dispatcher
 checks the low-byte service number and UALf flags, then uses push/POPC to jump to
 a handler without another CALL frame. Handlers finish at `syscall_return`, which
 restores the caller's registers and physical SP/BP and returns R6/R7. POSR/POPC
-at `0x7ff0` provide the final transition inside the user's allowed IMEM region.
+at `0xfef0` provide the final transition inside the user's allowed IMEM region.
 This is distinct from RET, which is used for CALL helpers.
 
 `user_buffer` accepts logical offsets and sizes, checks the entire range below
-`0x3ff0`, then adds `USER_BASE`. Device addresses are different: user READ/WRITE
+`0xbef0`, then adds `USER_BASE`. Device addresses are different: user READ/WRITE
 use physical EMEM addresses and do not add the EMEM lower bound. New executables
 set lower > upper to deny direct IO. SYS_VIDEO checks console permission and
 identity, then grants exactly AVC64; revoke and process replacement remove it.

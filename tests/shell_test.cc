@@ -233,7 +233,60 @@ int main(int argc, char **argv)
             if (cpu.peek(0x00f3) != 0)
                 throw std::runtime_error("more failed after paging");
         }
-        command("edit"); // C syscall wrapper and return through logical frames.
+        command("edit", 1); // Missing path returns an error through the C wrapper.
+        for (char ch : std::string("edit /edit-save.txt\n"))
+            devices.keyboard_input(ch);
+        steps(1500000);
+        for (unsigned i = 0; i < 320; ++i)
+        {
+            devices.keyboard_input('A' + i % 26);
+            steps(150000);
+        }
+        devices.keyboard_input('\t');
+        steps(1500000);
+        ready();
+        const unsigned saved_file = file_id(0, "edit-save.txt");
+        if (!saved_file || cpu.peek(0x00f3) != 0)
+            throw std::runtime_error("C editor did not create and save its file");
+        const unsigned saved_base = 2185 + (saved_file - 1) * 323;
+        const unsigned continuation = disk_byte(saved_base + 20);
+        if (devices.read(saved_base + 21, 0x4000) != 300 || !continuation)
+            throw std::runtime_error("C editor save did not cross the head cluster");
+        const unsigned continuation_base = 2185 + (continuation - 1) * 323;
+        if (devices.read(continuation_base + 1, 0x4000) != 20)
+            throw std::runtime_error("C editor save has the wrong continuation length");
+        for (unsigned i = 0; i < 320; ++i)
+        {
+            const unsigned at = i < 300 ? saved_base + 23 + i
+                                       : continuation_base + 3 + i - 300;
+            if (disk_byte(at) != 'A' + i % 26)
+                throw std::runtime_error("C editor saved incorrect bytes");
+        }
+        // Reopen with a relative path: touch must preserve the file, and read
+        // must restore all bytes across both syscall and cluster boundaries.
+        for (char ch : std::string("edit edit-save.txt\n"))
+            devices.keyboard_input(ch);
+        steps(1500000);
+        if (cpu.halted() || cpu.peek(0x6200) == 0x53)
+            throw std::runtime_error("C editor did not reopen its existing file");
+        for (unsigned i = 0; i < 320; ++i)
+            if (cpu.peek(0xb000 + i) != 'A' + i % 26)
+                throw std::runtime_error("C editor read incorrect bytes");
+        devices.keyboard_input('Z');
+        steps(150000);
+        devices.keyboard_input('\t');
+        steps(1500000);
+        ready();
+        if (devices.read(continuation_base + 1, 0x4000) != 21 ||
+            disk_byte(continuation_base + 23) != 'Z')
+            throw std::runtime_error("C editor did not append after the loaded file");
+        for (unsigned i = 0; i < 320; ++i)
+        {
+            const unsigned at = i < 300 ? saved_base + 23 + i
+                                       : continuation_base + 3 + i - 300;
+            if (disk_byte(at) != 'A' + i % 26)
+                throw std::runtime_error("Touch or editor read destroyed existing contents");
+        }
         for (char ch : std::string("help\n")) devices.keyboard_input(ch);
         steps(1500000);
         for (unsigned page = 0; page < 128 && cpu.peek(0x6200) != 0x53; ++page) {

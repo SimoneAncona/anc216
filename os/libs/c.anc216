@@ -37,3 +37,10 @@ _kernel_service:
 _get_err:
     load r0, & __kernel_error
     ret
+
+_wemem:
+    phbp
+    ldbp r0
+    write & bp + 0, r1
+    pobp
+    ret

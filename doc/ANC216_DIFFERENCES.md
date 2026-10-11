@@ -89,8 +89,8 @@ See [the syscall ABI](../os/SYSCALLS.md#direct-video-access).
 ## OS conventions, not ISA changes
 
 The kernel at `0x0100`, flat ROM at EMEM `0x0100`, boot cards at `0x3000/0x3001`,
-user IMEM `0x4000..0x7fff`, interrupt stack at `0x3100`, and return stub at
-`0x7ff0` are this OS's choices. POSR at `0x7ff0` restores SR; POPC at `0x7ff2`
+user IMEM `0x4000..0xfeff`, interrupt stack at `0x3100`, and return stub at
+`0xfef0` are this OS's choices. POSR at `0xfef0` restores SR; POPC at `0xfef2`
 restores the actual user PC. The stub must be inside user IMEM after clearing S.
 It is not a new ISA instruction or a fixed architectural return address.
 

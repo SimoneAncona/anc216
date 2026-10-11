@@ -5,12 +5,12 @@ use INTERRUPT_STACK as 0x3100              ; syscall/IRQ frame stack, separate f
 use SAVED_BP as 0x31fc                     ; interrupted BP: logical in user mode, physical in system mode
 use SAVED_SP as 0x31fe                     ; interrupted SP: logical in user mode, physical in system mode
 use USER_BASE as 0x4000                    ; base added to logical IMEM data operands
-use USER_LIMIT as 0x7fff                   ; inclusive user instruction/data bound
-use USER_STACK as 0x3800                   ; initial logical user SP/BP
-use USER_STACK_PHYSICAL as 0x7800          ; physical stack base and system-mode launch frame
-use USER_RETURN_LIMIT as 0x3ffd            ; logical limit leaving room for the three-byte return frame
-use RETURN_STUB as 0x7ff0                  ; POSR, then POPC, inside user executable memory
-use RETURN_STUB_PC as 0x7ff2               ; address of the POPC instruction
+use USER_LIMIT as 0xfeff                   ; inclusive user instruction/data bound
+use USER_STACK_PHYSICAL as 0xf000          ; physical stack base and system-mode launch frame
+use USER_STACK as 0xb000                   ; initial logical user SP/BP
+use USER_RETURN_LIMIT as 0xbefd            ; logical limit leaving room for the three-byte return frame
+use RETURN_STUB as 0xfef0                  ; POSR, then POPC, inside user executable memory
+use RETURN_STUB_PC as 0xfef2               ; address of the POPC instruction
 use RETURN_POSR_WORD as 0x000b             ; encoded implied POSR header
 use RETURN_POPC_WORD as 0x0009             ; encoded implied POPC header
 use BOOT_DEVICE as 0x4000                  ; MPME containing /bin/init and commands
@@ -42,15 +42,14 @@ use EMEM_DENY_LOWER as 0xffff              ; lower > upper represents an empty g
 use EMEM_DENY_UPPER as 0                   ; deny direct device IO until explicitly granted
 use FAULT_RESET as 5                       ; soft-reset NMI code
 use FAULT_STACK as 4                       ; invalid user stack fault code
-use UAL_STAGING as 0x3200                  ; complete executable staging buffer
-use UAL_MAX_BYTES as 0x0e00                ; executable maximum, including header/symbols
+use UAL_STAGING as 0x3200                  ; bounded executable header/symbol scratch
 use GPU_SET_COLOR as 0x0500                ; AVC64 D1 command, pixel/clear color
 use GPU_CLEAR as 0x0200                    ; AVC64 clear command
 use GPU_FOREGROUND as 0x0700               ; monochrome foreground D3 command
 use GPU_BACKGROUND as 0x0800               ; monochrome background D4 command
 use GPU_WHITE_FOREGROUND as 0x07ff         ; foreground command with white RGB332
-use USER_BUFFER_LIMIT as 0x3ff0            ; exclusive logical buffer end; protects return stub
-use USER_END as 0x8000                     ; exclusive physical end of user IMEM
+use USER_BUFFER_LIMIT as 0xbef0            ; exclusive logical buffer end; protects return stub
+use USER_END as 0xff00                     ; exclusive physical end of user IMEM
 use BYTE_MASK as 0xff                      ; extract the low eight bits
 use WRITE_OVERWRITE as 0x8000              ; fwrite mode bit; lower byte is count
 use ROOT_CWD_WORD as 0x2f00                ; big-endian slash followed by NUL

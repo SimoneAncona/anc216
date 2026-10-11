@@ -28,10 +28,13 @@ syscall_handler: ; C: syscall_handler: (routine, branch target or data symbol)
     jeq panic                            ; C: if (Z) goto panic;
 ; Three free bytes above saved SP are needed for the return frame.
 ; User code can modify SP, so bounds must be checked in system mode.
+; Saved SP is logical: accept b000..befd (physical f000..fefd).
+; Both limits are above 8000; bias them and SP for signed comparisons.
     load r0, & SAVED_SP                  ; C: r0 = *(SAVED_SP);
-    cmp r0, USER_STACK                   ; C: flags = compare(r0, USER_STACK);
+    xor r0, 0x8000                      ; bias unsigned offsets for signed comparisons
+    cmp r0, USER_STACK - 0x8000          ; biased lower bound
     jls syscall_bad_stack                ; C: if (N != O) goto syscall_bad_stack;
-    cmp r0, USER_RETURN_LIMIT            ; C: flags = compare(r0, USER_RETURN_LIMIT);
+    cmp r0, USER_RETURN_LIMIT - 0x8000   ; biased upper bound
     jgr syscall_bad_stack                ; C: if (N == O && !Z) goto syscall_bad_stack;
     jmp syscall_dispatch                 ; C: goto syscall_dispatch;
 syscall_unsupported: ; C: syscall_unsupported: (routine, branch target or data symbol)
@@ -54,19 +57,20 @@ syscall_invalid: ; C: syscall_invalid: (routine, branch target or data symbol)
     jmp syscall_return                   ; C: goto syscall_return;
 
 ; R1 logical pointer, R2 length -> R1 physical pointer or R7=1.
-; User buffers stay below 7ff0, reserving the mode-switch stub at 7ff0.
+; User buffers stay below physical fef0, reserving the mode-switch stub at fef0.
 user_buffer: ; C: user_buffer: (routine, branch target or data symbol)
-    cmp r1, 0                            ; C: flags = compare(r1, 0);
-    jls user_buffer_bad                  ; C: if (N != O) goto user_buffer_bad;
-    cmp r1, USER_BUFFER_LIMIT            ; C: flags = compare(r1, USER_BUFFER_LIMIT);
-    jge user_buffer_bad                  ; C: if (N == O) goto user_buffer_bad;
+    tran r0, r1
+    xor r0, 0x8000                     ; unsigned pointer ordering via signed bias
+    cmp r0, USER_BUFFER_LIMIT - 0x8000
+    jge user_buffer_bad
     cmp r2, 0                            ; C: flags = compare(r2, 0);
     jls user_buffer_bad                  ; C: if (N != O) goto user_buffer_bad;
     cmp r2, 255                          ; C: flags = compare(r2, 255);
     jgr user_buffer_bad                  ; C: if (N == O && !Z) goto user_buffer_bad;
     tran r0, r1                          ; C: r0 = r1;
     add r0, r2                           ; C: r0 += r2;
-    cmp r0, USER_BUFFER_LIMIT            ; C: flags = compare(r0, USER_BUFFER_LIMIT);
+    xor r0, 0x8000
+    cmp r0, USER_BUFFER_LIMIT - 0x8000   ; biased exclusive buffer end
     jgr user_buffer_bad                  ; C: if (N == O && !Z) goto user_buffer_bad;
     add r1, USER_BASE                    ; C: r1 += USER_BASE;
     xor r7, r7                  ; C: r7 = OS_SUCCESS;

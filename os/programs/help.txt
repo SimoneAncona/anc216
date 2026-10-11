@@ -13,6 +13,9 @@ clear screen
 echo ARG
 print on screen
 
+edit FILE
+edit the content of a file
+
 fstat [PATH]
 show file/directory disk usage
 

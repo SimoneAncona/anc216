@@ -10,5 +10,5 @@ _code:
     syscall
 
 os_version:
-    "AOS 0.2 (SYS_REDCT)", 10
-    "utils pack version 0.1", 10
+    "AOS 0.3 (SYS_REDCT, loader limit)", 10
+    "utils pack version 1.0", 10

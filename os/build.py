@@ -79,7 +79,7 @@ def main():
     kernel += bytes(len(kernel) % 2)
     (args.output / 'system.rom').write_bytes(len(kernel).to_bytes(2, 'big') + kernel)
     # Shell and commands are real user executables; grants follow their services.
-    programs = ['sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'fstat', 'poweroff', 'lscpu', 'more', 'lsbus', 'redct', 'version']
+    programs = ['init', 'sh', 'ls', 'cat', 'touch', 'mkdir', 'rm', 'cd', 'pwd', 'echo', 'clear', 'help', 'mount', 'fstat', 'poweroff', 'lscpu', 'more', 'lsbus', 'redct', 'version']
     c_sources = {source.stem: source for source in (ROOT / 'programs').glob('*.c')}
     for name in c_sources:
         if (ROOT / f'programs/{name}.anc216').exists():
@@ -111,7 +111,6 @@ def main():
     card(disk0, 'mkdir', '/home')
     for name in programs:
         card(disk0, 'put', '/bin/' + name, args.output / f'{name}.ual')
-    card(disk0, 'put', '/bin/init', args.output / 'sh.ual')
     card(disk0, 'put', '/data/help.txt', str(ROOT / 'programs/help.txt'))
     if args.test_fixtures:
         # Independent cards leave room to exercise the full user IMEM range.

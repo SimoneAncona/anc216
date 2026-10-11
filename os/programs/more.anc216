@@ -160,10 +160,18 @@ more_close:
     load r0, SYS_CLOSE
     load r1, 1
     syscall
+    load r1, more_exit_msg
+    load r2, sizeof more_exit_msg
     phbp
-    call app_newline
+    call app_print
     pobp
-    jmp app_exit
+    load r0, SYS_GETK
+tab:syscall
+    cmp r7, OS_SUCCESS
+    jne app_error
+    cmp r6, 9           ; if the key is tab
+    jeq app_exit
+    jmp tab
 more_invalid:
     load r7, OS_INVALID
     jmp app_error
@@ -186,6 +194,8 @@ more_index:
     word 0
 more_enter_msg:
     "PRESS ENTER TO SCROLL DOWN:"
+more_exit_msg:
+    "PRESS TAB TO EXIT:"
 
 import "../libs/strings.anc216"
 import "../libs/paths.anc216"
